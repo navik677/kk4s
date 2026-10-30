@@ -13,6 +13,7 @@
 
 #include "tjsCommHead.h"
 #include "FreeType.h"
+#include "kk4s_compat.h" // kk4s
 #ifdef KK4S_WIN32_NATIVE
 #include "NativeFreeTypeFace.h"
 #endif
@@ -120,6 +121,8 @@ public:
 	void GetSystemFontList( std::vector<tjs_string>& faces );
 
 	tBaseFreeTypeFace* GetFace( const tjs_string& facename, tjs_uint32 options ) const;
+	// kk4s: best available face when the requested one does not exist
+	tBaseFreeTypeFace* GetFallbackFace( tjs_uint32 options, tjs_string* chosen ) const;
 	void GetFontList(std::vector<ttstr> & list, tjs_uint32 flags, const tTVPFont & font );
 };
 
@@ -328,7 +331,8 @@ tBaseFreeTypeFace* tTVPFreeTypeFaceList::GetFace( const tjs_string& facename, tj
 			FontInfo* font = *f;
 			return new tGenericFreeTypeFace( ttstr( font->filename ), TVP_FACE_OPTIONS_FACE_INDEX( font->index ) );
 		}
-	} else {
+	}
+	{ // kk4s: system fonts are searched too (krkrs skipped them once a game font was added)
 		FaceKey key( facename, options&( TVP_TF_ITALIC | TVP_TF_BOLD ) );
 		auto i = systemfont_.find( key );
 		if( i != systemfont_.end() ) {
@@ -336,7 +340,36 @@ tBaseFreeTypeFace* tTVPFreeTypeFaceList::GetFace( const tjs_string& facename, tj
 			return new tGenericFreeTypeFace( font->path, ttstr( facename ), font->index );
 		}
 	}
+	// kk4s: same name with any style
+	for( auto s = systemfaces_.begin(); s != systemfaces_.end(); ++s ) {
+		if( (*s)->facename == facename )
+			return new tGenericFreeTypeFace( (*s)->path, ttstr( facename ), (*s)->index );
+	}
 	return nullptr;
+}
+//---------------------------------------------------------------------------
+extern const tjs_char *TVPGetDefaultFontName();
+// kk4s: the default font if it exists, otherwise the font with the most
+// glyphs (a CJK font covers Japanese, Latin and usually Cyrillic).
+tBaseFreeTypeFace* tTVPFreeTypeFaceList::GetFallbackFace( tjs_uint32 options, tjs_string* chosen ) const {
+	tjs_string def( TVPGetDefaultFontName() );
+	const FontInfo* best = nullptr;
+	bool best_system = false;
+	for( auto s = systemfaces_.begin(); s != systemfaces_.end(); ++s ) {
+		if( (*s)->facename == def ) { best = *s; best_system = true; break; }
+		if( !best || (*s)->num_glyphs > best->num_glyphs ) { best = *s; best_system = true; }
+	}
+	if( !best || best->facename != def ) {
+		for( auto s = faces_.begin(); s != faces_.end(); ++s ) {
+			if( (*s)->facename == def || !best || (*s)->num_glyphs > best->num_glyphs ) { best = *s; best_system = false; }
+			if( (*s)->facename == def ) break;
+		}
+	}
+	if( !best ) return nullptr;
+	if( chosen ) *chosen = best->facename;
+	if( best_system )
+		return new tGenericFreeTypeFace( best->path, ttstr( best->facename ), best->index );
+	return new tGenericFreeTypeFace( ttstr( best->filename ), TVP_FACE_OPTIONS_FACE_INDEX( best->index ) );
 }
 //---------------------------------------------------------------------------
 bool tTVPFreeTypeFaceList::CheckFaceFlag( FontInfo& face, tjs_uint flags ) {
@@ -688,6 +721,13 @@ tFreeTypeFace::tFreeTypeFace(const std::vector<tjs_string> &fontname, tjs_uint32
 		}
 #endif
 
+		// kk4s: unknown font name (MS Gothic etc. on a system without it)
+		if( Faces[i]->Face == nullptr && ( options & TVP_FACE_OPTIONS_FILE ) == 0 )
+		{
+			tjs_string chosen;
+			Faces[i]->Face.reset( FreeTypeFaceList->GetFallbackFace( options, &chosen ) );
+			if( Faces[i]->Face ) kk4s::compat::ReportFontFallback( ttstr( fontname[i] ), ttstr( chosen ) );
+		}
 		if( Faces[i]->Face == nullptr )
 		{
 			TVPThrowExceptionMessage(TVPFontCannotBeUsed, fontname[i] );

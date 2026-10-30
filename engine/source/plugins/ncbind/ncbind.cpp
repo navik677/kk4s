@@ -16,7 +16,7 @@ bool ncbAutoRegister::LoadModule(const ttstr &_name)
 {
 	ttstr name = _name.AsLowerCase();
 	if (TVPRegisteredPlugins.find(name) != TVPRegisteredPlugins.end())
-		return false;
+		return true; // kk4s: already linked counts as success
 	auto it = _internal_plugins.find(name);
 	if (it != _internal_plugins.end()) {
 		for (int line = 0; line < ncbAutoRegister::LINE_COUNT; ++line) {

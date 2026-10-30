@@ -87,6 +87,7 @@ void InitDataDirsAndLog() {
     MakeDir(SavesDir());
     MakeDir(OverlayDir());
     MakeDir(ProfilesDir());
+    MakeDir(RootDir() + "/fonts");
 
     time_t now = time(nullptr);
     struct tm* t = localtime(&now);
@@ -162,6 +163,28 @@ void WriteLastPlayed(const std::string& name) {
     if (!f) return;
     fputs(name.c_str(), f);
     fclose(f);
+}
+
+void ListFontFiles(const std::string& dir, bool recursive, std::vector<std::string>& out) {
+    DIR* d = opendir(dir.c_str());
+    if (!d) return;
+    while (struct dirent* e = readdir(d)) {
+        if (e->d_name[0] == '.') continue;
+        std::string full = dir + "/" + e->d_name;
+        struct stat st;
+        if (stat(full.c_str(), &st) != 0) continue;
+        if (S_ISDIR(st.st_mode)) {
+            if (recursive) ListFontFiles(full, true, out);
+            continue;
+        }
+        size_t len = strlen(e->d_name);
+        if (len > 4) {
+            const char* ext = e->d_name + len - 4;
+            if (!strcasecmp(ext, ".ttf") || !strcasecmp(ext, ".ttc") || !strcasecmp(ext, ".otf"))
+                out.push_back(full);
+        }
+    }
+    closedir(d);
 }
 
 std::string SetGameDir(const std::string& dir) {

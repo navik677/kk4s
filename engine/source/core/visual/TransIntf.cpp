@@ -9,6 +9,7 @@
 // Transition handler mamagement & default transition handlers
 //---------------------------------------------------------------------------
 #include "tjsCommHead.h"
+#include <set> // kk4s
 
 #include "TransIntf.h"
 #include "LayerIntf.h"
@@ -363,10 +364,9 @@ iTVPTransHandlerProvider * TVPFindTransHandlerProvider(const ttstr &name)
 	tTVPTransHandlerProviderHolder *holder =
 		TVPTransHandlerProviders.Find(name);
 	if (!holder) {
-		static bool showed = false;
-		if (!showed) {
-			TVPAddLog(TVPFormatMessage(TVPCannotFindTransHander, name));
-			showed = true;
+		static std::set<ttstr> showed; // kk4s: log every missing transition once
+		if (showed.insert(name).second) {
+			TVPAddLog(TVPFormatMessage(TVPCannotFindTransHander, name) + TJS_W(" -> crossfade"));
 		}
 		holder = TVPTransHandlerProviders.Find(TJS_W("crossfade"));
 	}

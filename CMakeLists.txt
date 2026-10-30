@@ -121,6 +121,7 @@ set(SOURCES
     platform/common/kk4s_common.cpp
     compat/kk4s_compat.cpp
     compat/kk4s_plugins.cpp
+    compat/kk4s_layerfx.cpp
     platform/${KK4S_PLATFORM}/kk4s_platform.cpp
     engine/source/core/base/BinaryStream.cpp
     engine/source/core/base/CharacterSet.cpp

@@ -5,6 +5,7 @@
 #include <switch.h>
 
 #include <cstdio>
+#include <sys/stat.h>
 #include <SDL.h>
 
 #ifndef KK4S_VERSION
@@ -57,6 +58,40 @@ void Shutdown() {
     socketExit();
     romfsExit();
     g_inited = false;
+}
+
+// Nintendo's shared system font (Japanese + Latin + Cyrillic) is in memory;
+// FreeType here opens fonts by path, so it is cached on the SD card once.
+static std::string CacheSharedFont(PlSharedFontType type, const char* file) {
+    std::string path = RootDir() + "/fonts/.cache/" + file;
+    struct stat st;
+    if (stat(path.c_str(), &st) == 0 && st.st_size > 0) return path;
+    PlFontData fd;
+    if (R_FAILED(plGetSharedFontByType(&fd, type)) || !fd.address || !fd.size) return "";
+    MakeDir(RootDir() + "/fonts/.cache");
+    FILE* f = fopen(path.c_str(), "wb");
+    if (!f) return "";
+    bool ok = fwrite(fd.address, 1, fd.size, f) == fd.size;
+    fclose(f);
+    if (!ok) { remove(path.c_str()); return ""; }
+    Log("fonts: cached shared font %s (%u bytes)", file, (unsigned)fd.size);
+    return path;
+}
+
+std::vector<std::string> SystemFontFiles() {
+    std::vector<std::string> out;
+    ListFontFiles(RootDir() + "/fonts", false, out);
+    ListFontFiles("romfs:/fonts", true, out);
+    if (R_SUCCEEDED(plInitialize(PlServiceType_User))) {
+        std::string p = CacheSharedFont(PlSharedFontType_Standard, "nintendo_standard.ttf");
+        if (!p.empty()) out.push_back(p);
+        p = CacheSharedFont(PlSharedFontType_ChineseSimplified, "nintendo_chs.ttf");
+        if (!p.empty()) out.push_back(p);
+        p = CacheSharedFont(PlSharedFontType_KO, "nintendo_ko.ttf");
+        if (!p.empty()) out.push_back(p);
+        plExit();
+    }
+    return out;
 }
 
 // libnx gives the real argv through __system_argv (hbloader).

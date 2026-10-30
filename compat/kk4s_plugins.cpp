@@ -20,6 +20,7 @@
 #include <cctype>
 #include <cstdio>
 #include <functional>
+#include <set>
 #include <string>
 
 namespace kk4s {
@@ -153,6 +154,15 @@ static void LinkPDll() {
 // ---------------------------------------------------------------------------
 // registry
 
+// compat/kk4s_layerfx.cpp
+void LinkFilterDll();
+void LinkDrawerDll();
+void LinkSlideOpenDll();
+void LinkFireSparkDll();
+
+// The engine already does what these DLLs did (ogg decoding, video).
+static void ProvidedByEngine() {}
+
 struct PluginEntry {
     const char* dll;      // lower case
     void (*link)();
@@ -161,6 +171,15 @@ struct PluginEntry {
 static const PluginEntry kPlugins[] = {
     {"util.dll", LinkUtilDll},
     {"p.dll", LinkPDll},
+    {"filter.dll", LinkFilterDll},
+    {"drawer.dll", LinkDrawerDll},
+    {"slideopen.dll", LinkSlideOpenDll},
+    {"firespark.dll", LinkFireSparkDll},
+    {"wuvorbis.dll", ProvidedByEngine},
+    {"krmovie.dll", ProvidedByEngine},
+    // extrans transitions (wave, ripple, mosaic, rotate*...) fall back to
+    // crossfade in the engine until they are implemented.
+    {"extrans.dll", ProvidedByEngine},
 };
 
 bool LinkBuiltinPlugin(const ttstr& name) {
@@ -168,8 +187,11 @@ bool LinkBuiltinPlugin(const ttstr& name) {
     for (char& c : n) c = (char)tolower((unsigned char)c);
     for (const PluginEntry& e : kPlugins) {
         if (n == e.dll) {
-            e.link();
-            kk4s::Log("compat: plugin %s -> kk4s built-in", n.c_str());
+            static std::set<std::string> linked;
+            if (linked.insert(n).second) {
+                e.link();
+                kk4s::Log("compat: plugin %s -> kk4s built-in", n.c_str());
+            }
             return true;
         }
     }

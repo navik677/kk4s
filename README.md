@@ -2,7 +2,7 @@
 
 Homebrew-рушій для Nintendo Switch, який запускає візуальні новели на Kirikiri2 / Kirikiri Z **без змін файлів гри**: кидаєш папку гри на SD-карту, вибираєш її в меню — і граєш.
 
-> Стан: **M0 — перший білд**. Є лаунчер і запуск гри з папки; сумісність з реальними іграми ще не перевірена. Див. [docs/status.md](docs/status.md) і [docs/roadmap.md](docs/roadmap.md).
+> Стан: Switch-білд збирається (на залізі ще не запускався); PC viewer запускає Fate/stay night (папка для Kirikiroid2) без змін файлів гри. **Нова сесія — почни з [docs/HANDOFF.md](docs/HANDOFF.md).** Деталі: [docs/status.md](docs/status.md), [docs/roadmap.md](docs/roadmap.md).
 
 ## Як користуватись
 

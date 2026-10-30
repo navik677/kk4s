@@ -10,6 +10,7 @@
 //---------------------------------------------------------------------------
 
 #include "tjsCommHead.h"
+#include <thread> // kk4s
 
 #include "tjsInterCodeExec.h"
 #include "tjsInterCodeGen.h"
@@ -732,12 +733,28 @@ inline void tTJSVariantArrayStack::Deallocate(tjs_int num, tTJSVariant *ptr)
 }
 //---------------------------------------------------------------------------
 static tjs_int TJSVariantArrayStackRefCount = 0;
+// kk4s: TJS code can run on non-main threads (e.g. an xp3 extraction filter
+// written in TJS, called from the audio decoder thread). Sharing one register
+// stack corrupts the main thread's frames, so every other thread gets its own.
+static std::thread::id TJSVariantArrayStackOwner;
+struct tTJSThreadVariantArrayStack {
+	tTJSVariantArrayStack *Stack = NULL;
+	~tTJSThreadVariantArrayStack() { delete Stack; }
+};
+static thread_local tTJSThreadVariantArrayStack TJSThreadVariantArrayStack;
+static inline tTJSVariantArrayStack * TJSGetVariantArrayStack()
+{
+	if(std::this_thread::get_id() == TJSVariantArrayStackOwner) return TJSVariantArrayStack;
+	if(!TJSThreadVariantArrayStack.Stack) TJSThreadVariantArrayStack.Stack = new tTJSVariantArrayStack;
+	return TJSThreadVariantArrayStack.Stack;
+}
 //---------------------------------------------------------------------------
 void TJSVariantArrayStackAddRef()
 {
 	if(TJSVariantArrayStackRefCount == 0)
 	{
 		TJSVariantArrayStack = new tTJSVariantArrayStack;
+		TJSVariantArrayStackOwner = std::this_thread::get_id(); // kk4s
 	}
 	TJSVariantArrayStackRefCount++;
 }
@@ -783,7 +800,7 @@ void tTJSInterCodeContext::ExecuteAsFunction(iTJSDispatch2 *objthis,
 	try
 	{
 		tTJSVariant *regs =
-			TJSVariantArrayStack->Allocate(num_alloc);
+			TJSGetVariantArrayStack()->Allocate(num_alloc);
 		tTJSVariant *ra = regs + MaxVariableCount + VariableReserveCount; // register area
 
 		// objthis-proxy
@@ -907,7 +924,7 @@ void tTJSInterCodeContext::ExecuteAsFunction(iTJSDispatch2 *objthis,
 			for(tjs_int i=0; i<num_alloc; i++) regs[i].Clear();
 #endif
 			ra[-2].Clear(); // at least we must clear the object placed at local stack
-			TJSVariantArrayStack->Deallocate(num_alloc, regs);
+			TJSGetVariantArrayStack()->Deallocate(num_alloc, regs);
 			if(TJSStackTracerEnabled()) TJSStackTracerPop();
 			throw;
 		}
@@ -923,7 +940,7 @@ void tTJSInterCodeContext::ExecuteAsFunction(iTJSDispatch2 *objthis,
 #endif
 		ra[-2].Clear(); // at least we must clear the object placed at local stack
 
-		TJSVariantArrayStack->Deallocate(num_alloc, regs);
+		TJSGetVariantArrayStack()->Deallocate(num_alloc, regs);
 
 		if(TJSStackTracerEnabled()) TJSStackTracerPop();
 	}

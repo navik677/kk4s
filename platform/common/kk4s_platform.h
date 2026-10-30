@@ -7,6 +7,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace kk4s {
 
@@ -50,6 +51,11 @@ const std::string& GameDir();
 //   otherwise                 -> "<dir>/"
 // File names are matched case-insensitively. game_dir must end with '/'.
 std::string ResolveProjectDir(const std::string& game_dir);
+
+// Font files (native paths) the engine may use as "installed system fonts":
+// OS fonts that cover Japanese/Cyrillic/Latin, plus <RootDir>/fonts/.
+// Switch: Nintendo's shared system font (cached on SD) + romfs:/fonts/.
+std::vector<std::string> SystemFontFiles();
 
 // Full native path of a file directly inside the game folder, matched
 // case-insensitively ("xp3filter.tjs" finds "XP3Filter.tjs"). "" if missing.

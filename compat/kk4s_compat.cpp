@@ -20,12 +20,17 @@
 #include "XP3Archive.h"
 #include "tjsObject.h"
 #include "kk4s_platform.h"
+#include "kk4s_internal.h"
 
 #include <atomic>
 #include <cctype>
+#include <cstdlib>
 #include <mutex>
 #include <set>
 #include <string>
+
+// engine/source/core/visual/FreeType.cpp
+extern void TVPAddSystemFontToFreeType(const std::string& storage, std::vector<tjs_string>* faces);
 
 namespace kk4s {
 namespace compat {
@@ -57,6 +62,13 @@ static std::string Lower(std::string s) {
 static bool RunGameScript(const char* name) {
     std::string path = kk4s::FindGameFile(name);
     if (path.empty()) return false;
+    // Debugging aid: KK4S_SKIP=AfterInit2.tjs,Override2.tjs disables helpers.
+    if (const char* skip = getenv("KK4S_SKIP")) {
+        if (Lower(skip).find(Lower(name)) != std::string::npos) {
+            kk4s::Log("compat: %s skipped (KK4S_SKIP)", name);
+            return false;
+        }
+    }
     kk4s::Log("compat: running %s", path.c_str());
     try {
         TVPExecuteStorage(NativeToStorage(path));
@@ -258,6 +270,7 @@ static void RunAfterInit2() {
 }
 
 void BeforeStartup() {
+    RegisterFonts();
     RegisterStoragesExtensions();
     RunGameScript("xp3filter.tjs");
 }
@@ -279,6 +292,43 @@ void AfterStartup() {
     RunAfterInit2();
     if (g_filter_calls)
         kk4s::Log("compat: xp3 filter called %u times so far", g_filter_calls.load());
+}
+
+// ---------------------------------------------------------------------------
+// fonts
+
+
+void RegisterFonts() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    std::vector<std::string> files = kk4s::SystemFontFiles();
+    // Fonts shipped next to the game exe (krkr.exe games often expect them
+    // to be "installed"), e.g. monakrkr.ttf.
+    if (!kk4s::GameDir().empty()) kk4s::detail::ListFontFiles(kk4s::GameDir(), false, files);
+    unsigned count = 0;
+    for (const std::string& f : files) {
+        std::vector<tjs_string> faces;
+        try {
+            TVPAddSystemFontToFreeType(f, &faces);
+        } catch (...) {
+            kk4s::Log("fonts: cannot load %s", f.c_str());
+            continue;
+        }
+        for (const tjs_string& face : faces)
+            kk4s::Log("fonts: %s (%s)", ToUtf8(ttstr(face)).c_str(), f.c_str());
+        count += (unsigned)faces.size();
+    }
+    kk4s::Log("fonts: %u face(s) from %zu file(s)", count, files.size());
+}
+
+void ReportFontFallback(const ttstr& requested, const ttstr& chosen) {
+    static std::mutex m;
+    static std::set<std::string> seen;
+    std::string r = ToUtf8(requested);
+    std::lock_guard<std::mutex> lock(m);
+    if (seen.insert(r).second)
+        kk4s::Log("fonts: '%s' not found, using '%s'", r.c_str(), ToUtf8(chosen).c_str());
 }
 
 // ---------------------------------------------------------------------------

@@ -27,6 +27,12 @@ bool LinkBuiltinPlugin(const ttstr& name);
 // Plugins.link() for a DLL kk4s has no built-in replacement for.
 void ReportMissingPlugin(const ttstr& name);
 
+// Register game-folder fonts and OS fonts as "installed" fonts. Idempotent.
+void RegisterFonts();
+
+// A font name was not found and 'chosen' is used instead (logged once).
+void ReportFontFallback(const ttstr& requested, const ttstr& chosen);
+
 // Write an engine log line (TVPAddLog) to the kk4s log file as UTF-8.
 void LogTJS(const ttstr& line);
 

@@ -24,6 +24,9 @@ void WriteLastPlayed(const std::string& name);
 // Store the selected folder (adds trailing '/'), returns it.
 std::string SetGameDir(const std::string& dir);
 
+// Append font files (.ttf .ttc .otf) found in dir to out (optionally recursive).
+void ListFontFiles(const std::string& dir, bool recursive, std::vector<std::string>& out);
+
 void MakeDir(const std::string& path);
 
 } // namespace detail

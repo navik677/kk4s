@@ -12,7 +12,7 @@ Nothing has been run on a real Switch yet. The Windows PC viewer runs locally (b
 
 ## Real game: Fate/stay night (Kirikiroid2-ready folder)
 
-Boots to the intro on the PC viewer, unmodified: encrypted archives are decrypted through the folder's `xp3filter.tjs`, `Override2.tjs` / `AfterInit2.tjs` run, util.dll / p.dll are replaced natively. See [kirikiroid-compat.md](kirikiroid-compat.md).
+Plays on the PC viewer (Windows), unmodified — intro, prologue, Russian text, menus: encrypted archives are decrypted through the folder's `xp3filter.tjs`, `Override2.tjs` / `AfterInit2.tjs` run, util.dll / p.dll are replaced natively. See [kirikiroid-compat.md](kirikiroid-compat.md).
 
 ## M0 — first build: done
 
@@ -25,6 +25,9 @@ Boots to the intro on the PC viewer, unmodified: encrypted archives are decrypte
 Engine fixes so far (all marked `kk4s:` in `engine/`):
 - **Relative storage names never used the current directory** (krkrs prefixed every name with `file:/`), so nothing inside `data.xp3>` could be found. Now only native absolute paths get the prefix.
 - Engine log (`TVPAddLog`: script errors, `Debug.message`) goes to the kk4s log file (UTF-8).
+- TJS register stack was shared by all threads: a TJS xp3 filter running on the audio thread corrupted the main script (random "member does not exist"). Non-main threads now get their own stack.
+- Fonts: game-folder fonts and OS fonts are registered; unknown font names fall back to the default font instead of failing; system fonts are found even when the game adds its own.
+- `Plugins.link` of an already linked internal plugin no longer counts as missing.
 - FFmpeg audio decoder ported to the send/receive API (old API was removed in FFmpeg 5).
 - System headers were included inside `namespace TJS` (broke with current newlib).
 - TLG5 compressor wrote one byte past its buffer.
@@ -33,7 +36,9 @@ Engine fixes so far (all marked `kk4s:` in `engine/`):
 
 ## Not done / not checked
 
-- Plugins: only util.dll / p.dll replacements so far; wuvorbis (sound), extrans (transitions), drawer, etc. are next.
+- Plugins: see [plugins.md](plugins.md) (several are approximations or stubs).
+- FSN text: letters are spaced too widely (glyph advance / font metrics issue).
+- Sound not checked by ear yet; video not tested.
 - Non-ASCII game folder names (narrow → wide path conversion).
 - No large-stack thread for TJS, no memory budget yet.
 - Saves are written where the game asks (inside the game folder) — redirect comes in M2.

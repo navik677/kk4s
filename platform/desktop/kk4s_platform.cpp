@@ -63,6 +63,11 @@ static bool IsDir(const std::string& p) {
     return stat(p.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
 }
 
+static bool IsFile(const std::string& p) {
+    struct stat st;
+    return stat(p.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+}
+
 std::string RootDir() { return g_root; }
 
 MemoryInfo QueryMemory() { return MemoryInfo{0, 0, false}; }
@@ -97,6 +102,39 @@ void Shutdown() {
     Log("kk4s: shutdown");
     CloseLog();
     g_inited = false;
+}
+
+std::vector<std::string> SystemFontFiles() {
+    std::vector<std::string> out;
+    ListFontFiles(RootDir() + "/fonts", true, out);
+#ifdef _WIN32
+    // The fonts Windows games ask for by name (MS Gothic, Meiryo, ...).
+    const char* windir = getenv("WINDIR");
+    std::string fonts = std::string(windir ? windir : "C:/Windows") + "/Fonts/";
+    for (char& c : fonts)
+        if (c == '\\') c = '/';
+    static const char* const kNames[] = {
+        "msgothic.ttc", "msmincho.ttc", "meiryo.ttc", "YuGothR.ttc", "YuGothM.ttc",
+        "yumin.ttf", "msyh.ttc", "simsun.ttc", "malgun.ttf", "arial.ttf", "times.ttf",
+        "segoeui.ttf", "tahoma.ttf",
+    };
+    for (const char* n : kNames) {
+        std::string p = fonts + n;
+        if (IsFile(p)) out.push_back(p);
+    }
+#else
+    // Common Linux locations of CJK-capable fonts (Noto CJK, IPA, VL Gothic...).
+    static const char* const kDirs[] = {
+        "/usr/share/fonts/opentype/noto", "/usr/share/fonts/noto-cjk", "/usr/share/fonts/google-noto-cjk",
+        "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf", "/usr/share/fonts/opentype/ipafont-gothic",
+        "/usr/share/fonts/truetype/vlgothic", "/usr/share/fonts/truetype/dejavu",
+    };
+    for (const char* d : kDirs) {
+        if (IsFile(d)) out.push_back(d);
+        else ListFontFiles(d, false, out);
+    }
+#endif
+    return out;
 }
 
 int EngineArgc() { return (int)g_engine_argv.size() - 1; }

@@ -39,6 +39,7 @@
 #include <switch.h>
 #endif
 #include "kk4s_platform.h"
+#include "kk4s_compat.h"
 
 
 class TVPWindowLayer;
@@ -1053,9 +1054,9 @@ static bool TVPIsGetAllFontList = false;
 static ttstr TVPDefaultFontNameX;
 void TVPGetAllFontList( std::vector<tjs_string>& list ) {
 	TVPInitializeFont();
-	if( TVPIsGetAllFontList ) {
-		TVPGetSystemFontListFromFreeType( list );
-	}
+	// kk4s: always return the list (the first call used to return nothing)
+	kk4s::compat::RegisterFonts();
+	TVPGetSystemFontListFromFreeType( list );
 	TVPIsGetAllFontList = true;
 
 #if 0
@@ -1147,11 +1148,21 @@ const tjs_char *TVPGetDefaultFontName() {
 		ttstr str(opt);
 		TVPDefaultFontNameX = str;
 	} else {
+		// kk4s: what Japanese Windows games expect first, then free CJK fonts
 		tjs_string face;
-		std::vector<tjs_string> facenames{tjs_string(TJS_W("Noto Sans CJK JP"))};
+		std::vector<tjs_string> facenames{
+			TJS_W("MS Gothic"), TJS_W("ＭＳ ゴシック"), TJS_W("Meiryo"),
+			TJS_W("Noto Sans CJK JP"), TJS_W("Noto Sans JP"), TJS_W("Source Han Sans JP"),
+			TJS_W("IPAexGothic"), TJS_W("IPAGothic"), TJS_W("VL Gothic"), TJS_W("Yu Gothic"),
+			TJS_W("Nintendo Standard"), TJS_W("NintendoStandard") };
 		if( SelectFont( facenames, face ) ) {
 			TVPDefaultFontNameX = face;
+		} else {
+			std::vector<tjs_string> all;
+			TVPGetAllFontList( all );
+			if( !all.empty() ) TVPDefaultFontNameX = all[0];
 		}
+		kk4s::Log("fonts: default font: %s", ttstr(TVPDefaultFontNameX).AsNarrowStdString().c_str());
 	}
 	return TVPDefaultFontNameX.c_str();
 }
