@@ -65,7 +65,7 @@ struct tTVPLayerBitmapMemoryRecord
 };
 #pragma pack(pop)
 
-#ifdef WIN32
+#ifdef KK4S_WIN32_NATIVE
 //#define CHECK_MEM_OVERRUN
 #define MEM_COMMIT           0x1000     
 #define MEM_DECOMMIT         0x4000     
@@ -80,7 +80,7 @@ static void * TVPAllocBitmapBits(tjs_uint size, tjs_uint width, tjs_uint height)
 {
 	if (size == 0) return NULL;
 
-#if defined(WIN32) && defined(CHECK_MEM_OVERRUN)
+#if defined(KK4S_WIN32_NATIVE) && defined(CHECK_MEM_OVERRUN)
 	{
 		tjs_uint8 * ptr; size += sizeof(tTVPLayerBitmapMemoryRecord);
 		uint32_t pagesize = (size + 4095) & ~4095;
@@ -133,7 +133,7 @@ static void TVPFreeBitmapBits(void *ptr)
 {
 	if (ptr)
 	{
-#if defined(WIN32) && defined(CHECK_MEM_OVERRUN)
+#if defined(KK4S_WIN32_NATIVE) && defined(CHECK_MEM_OVERRUN)
 		tjs_uint8 * p = ((tjs_uint8 *)ptr) - sizeof(tTVPLayerBitmapMemoryRecord);
 		tTVPLayerBitmapMemoryRecord* hdr = (tTVPLayerBitmapMemoryRecord*)p;
 		DWORD old;

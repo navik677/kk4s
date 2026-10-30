@@ -45,7 +45,7 @@
 
 
 /*[*/
-#if defined(_WIN32)  && !defined(__GNUC__)
+#if defined(KK4S_WIN32_NATIVE)  && !defined(__GNUC__)
 /* VC++/BCC */
 
 typedef __int8 tjs_int8;

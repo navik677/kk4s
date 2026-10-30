@@ -15,7 +15,7 @@
 #include "math.h"
 #include "time.h"
 
-#ifdef __WIN32__
+#ifdef KK4S_WIN32_NATIVE
 #ifndef TJS_NO_MASK_MATHERR
 	#include <float.h>
 #endif
@@ -29,7 +29,7 @@
 //---------------------------------------------------------------------------
 // these functions invalidate the mathmarical error
 // (other exceptions, like divide-by-zero error, are not to be caught here)
-#if defined(__WIN32__) && !defined(__GNUC__)
+#if defined(KK4S_WIN32_NATIVE) && !defined(__GNUC__)
 #ifndef TJS_NO_MASK_MATHERR
 int _USERENTRY _matherr(struct _exception *e)
 {

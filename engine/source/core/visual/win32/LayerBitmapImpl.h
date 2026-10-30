@@ -83,7 +83,7 @@ public:
 	bool IsIndependent() const { return RefCount == 1; }
 
 	const BitmapInfomation* GetBitmapInfomation() const { return BitmapInfo; }
-#ifdef _WIN32
+#ifdef KK4S_WIN32_NATIVE
 	const TVPBITMAPINFO * GetBITMAPINFO() const { return BitmapInfo->GetBITMAPINFO(); }
 	const TVPBITMAPINFOHEADER * GetBITMAPINFOHEADER() const { return (const TVPBITMAPINFOHEADER*)(BitmapInfo->GetBITMAPINFO()); }
 #endif

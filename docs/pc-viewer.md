@@ -20,5 +20,6 @@ Window: 1280x720, resizable.
 
 ## Status
 - Linux: primary target, built with sanitizers in CI, smoke test runs `tests/tjs/hello` headless.
-- Windows: **experimental**. The engine still has ~66 `#ifdef _WIN32` branches written for MSVC +
-  the real Win32 API; MinGW builds hit them. They get fixed one by one (or routed to the SDL path).
+- Windows: **experimental**. Engine preprocessor checks for `_WIN32` / `WIN32` / `__WIN32__` were renamed to
+  `KK4S_WIN32_NATIVE` (never defined), so MinGW builds the same SDL/POSIX code path as Linux and Switch
+  instead of the MSVC + Win32 API branches. Differences left: 16-bit `wchar_t`, Windows paths.

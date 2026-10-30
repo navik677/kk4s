@@ -140,7 +140,7 @@ public:
 //---------------------------------------------------------------------------
 class DrawThreadPool {
 	std::vector<DrawThread*> workers;
-#ifdef _WIN32
+#ifdef KK4S_WIN32_NATIVE
 	std::vector<tjs_int> processor_ids;
 #endif
 	std::atomic<int> running_thread_count;
@@ -201,7 +201,7 @@ void DrawThread::Execute() {
 void DrawThreadPool::PoolThread( tjs_int taskNum ) {
 	tjs_int extraThreadNum = TVPGetThreadNum() - 1;
 
-#ifdef _WIN32
+#ifdef KK4S_WIN32_NATIVE
 	if( processor_ids.empty() ) {
 #ifndef TJS_64BIT_OS
 		DWORD processAffinityMask, systemAffinityMask;
@@ -227,7 +227,7 @@ void DrawThreadPool::PoolThread( tjs_int taskNum ) {
 	while( (tjs_int)workers.size() < extraThreadNum ) {
 		DrawThread* th = new DrawThread( this );
 		th->StartTread();
-#ifdef _WIN32
+#ifdef KK4S_WIN32_NATIVE
 		::SetThreadIdealProcessor( th->GetHandle(), processor_ids[workers.size() % processor_ids.size()] );
 #elif !defined( ANDROID )
 		// for pthread(!android)

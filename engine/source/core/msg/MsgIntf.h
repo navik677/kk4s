@@ -22,7 +22,7 @@
 
 #include "MsgImpl.h"
 
-#ifdef _WIN32
+#ifdef KK4S_WIN32_NATIVE
 #define WIDEN2(x) L ## x
 #define WIDEN(x) WIDEN2(x)
 #else

@@ -8,6 +8,6 @@ echo "::error title=failed targets::$(grep -E '\] Error [0-9]|FAILED:' "$log" | 
 n=$(grep -n -m1 -E 'error:' "$log" | cut -d: -f1)
 if [ -n "$n" ]; then
     s=$(( n > 30 ? n - 30 : 1 ))
-    echo "::error title=first error context::$(sed -n "${s},$((n + 8))p" "$log" | enc)"
+    echo "::error title=first error context::$(sed -n "${s},$((n + 12))p" "$log" | awk "length < 400" | grep -v "^\[[0-9]" | enc)"
 fi
 echo "::error title=build.log tail::$(tail -60 "$log" | enc)"

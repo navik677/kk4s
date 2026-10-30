@@ -2003,7 +2003,7 @@ int TVPLoadGraphic(iTVPBaseBitmap *dest, const ttstr &name, tjs_int32 keyidx,
 	}
 
 	// not found
-#if defined( WIN32 )&& defined(_DEBUG)
+#if defined( KK4S_WIN32_NATIVE )&& defined(_DEBUG)
 	TVPAddLog(TJS_W("load graphic: ") + nname);
 #endif
 
@@ -2195,7 +2195,7 @@ private:
         if (ptr) {
             return ptr->GetObjectNoAddRef()->GetSize(); // already in cache
         }
-#ifdef WIN32
+#ifdef KK4S_WIN32_NATIVE
 		char buf[16384] = { 0 };
 		ttstr msg = TJS_W("Touching Image: ") + item.main.filename;
 		WideCharToMultiByte(/*CP_ACP*/0, 0, msg.c_str(), -1, buf, sizeof(buf), nullptr, 0);

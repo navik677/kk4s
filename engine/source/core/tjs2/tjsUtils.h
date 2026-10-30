@@ -34,7 +34,7 @@ public:
 	void Leave() { SDL_UnlockMutex(Mutex); }
 };
 #else
-#ifdef __WIN32__
+#ifdef KK4S_WIN32_NATIVE
 class tTJSCriticalSection
 {
 	CRITICAL_SECTION CS;

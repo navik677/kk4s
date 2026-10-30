@@ -29,7 +29,7 @@ typedef struct _IID
 #endif
 
 #ifndef STDMETHODCALLTYPE
-#ifdef WIN32
+#ifdef KK4S_WIN32_NATIVE
 #define STDMETHODCALLTYPE __stdcall
 #else
 #define STDMETHODCALLTYPE

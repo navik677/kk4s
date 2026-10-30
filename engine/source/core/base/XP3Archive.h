@@ -39,7 +39,7 @@ struct tTVPXP3ExtractionFilterInfo
 #pragma pack(pop)
 
 #ifndef TVP_tTVPXP3ArchiveExtractionFilter_CONVENTION
-	#ifdef _WIN32
+	#ifdef KK4S_WIN32_NATIVE
 		#define	TVP_tTVPXP3ArchiveExtractionFilter_CONVENTION _stdcall
 	#else
 		#define TVP_tTVPXP3ArchiveExtractionFilter_CONVENTION

@@ -453,7 +453,7 @@ TJS_END_NATIVE_STATIC_PROP_DECL(exitOnNoWindowStartup)
 //----------------------------------------------------------------------
 TJS_BEGIN_NATIVE_PROP_DECL(isWindows) {
 	TJS_BEGIN_NATIVE_PROP_GETTER {
-#ifdef WIN32
+#ifdef KK4S_WIN32_NATIVE
 		*result = (tjs_int)1;
 #else
 		*result = (tjs_int)0;

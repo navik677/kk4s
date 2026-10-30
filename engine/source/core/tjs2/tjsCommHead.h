@@ -16,7 +16,7 @@
 #ifndef tjsCommHeadH
 #define tjsCommHeadH
 
-#ifdef __WIN32__
+#ifdef KK4S_WIN32_NATIVE
 #define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 #include "targetver.h"

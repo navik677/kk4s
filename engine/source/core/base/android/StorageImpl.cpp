@@ -25,7 +25,7 @@
 #include "FilePathUtil.h"
 #include "TickCount.h"
 
-#ifndef _WIN32
+#ifndef KK4S_WIN32_NATIVE
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <dirent.h>

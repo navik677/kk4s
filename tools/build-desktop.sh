@@ -11,7 +11,7 @@ install_deps() {
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends build-essential cmake pkg-config \
             libsdl2-dev libfreetype-dev libavcodec-dev libavformat-dev libavfilter-dev \
-            libavutil-dev libswscale-dev libpng-dev libturbojpeg0-dev libwebp-dev \
+            libavutil-dev libswscale-dev libpng-dev libturbojpeg0-dev libjpeg-turbo8-dev libwebp-dev \
             libogg-dev libvorbis-dev libopus-dev libopusfile-dev zlib1g-dev libonig-dev
     elif command -v pacman >/dev/null; then
         local p=mingw-w64-ucrt-x86_64

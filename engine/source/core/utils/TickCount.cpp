@@ -15,7 +15,7 @@
 #include "SysInitIntf.h"
 #include "ThreadIntf.h"
 
-#ifdef _WIN32
+#ifdef KK4S_WIN32_NATIVE
 #include <mmsystem.h>
 #else
 #include <time.h>
@@ -55,7 +55,7 @@ static tTJSCriticalSection TVPTickWatchCS;
 //---------------------------------------------------------------------------
 tjs_uint32 TVPGetRoughTickCount32()
 {
-#ifdef _WIN32
+#ifdef KK4S_WIN32_NATIVE
 	return timeGetTime();	// win32 mmsystem.h
 #else
 	struct timespec now;

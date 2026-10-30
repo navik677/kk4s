@@ -154,7 +154,7 @@ void TVPInitScriptEngine()
 	TVPScriptEngine->SetPPValue( TJS_W("kirikiriz"), 1 );
 
 	// system definition
-#ifdef WIN32
+#ifdef KK4S_WIN32_NATIVE
 	TVPScriptEngine->SetPPValue( TJS_W("windows"), 1 );
 #endif
 
@@ -852,7 +852,7 @@ void TVPShowScriptException(eTJSScriptError &e)
 				tjs_string scriptPath( path.AsStdString() );
 				tjs_int lineno = 1+e.GetBlockNoAddRef()->SrcPosToLine(e.GetPosition() )- e.GetBlockNoAddRef()->GetLineOffset();
 
-#if defined(WIN32) && defined(_DEBUG) && !defined(ENABLE_DEBUGGER)
+#if defined(KK4S_WIN32_NATIVE) && defined(_DEBUG) && !defined(ENABLE_DEBUGGER)
 // デバッガ実行されている時、Visual Studio で行ジャンプする時の指定をデバッグ出力に出して、break で停止する
 				if( ::IsDebuggerPresent() ) {
 					tjs_string debuglile( tjs_string(TJS_W("2>"))+path.AsStdString()+TJS_W("(")+to_tjs_string(lineno)+TJS_W("): error :") + errstr.AsStdString() );
@@ -878,7 +878,7 @@ void TVPShowScriptException(eTJSScriptError &e)
 							//_wsystem( exepath.c_str() );
 							arg = ttstr(str);
 							TVPAddLog( ttstr(TJS_W("(execute) "))+exepath+ttstr(TJS_W(" "))+arg);
-#if defined(WIN32)
+#if defined(KK4S_WIN32_NATIVE)
 							TVPShellExecute( exepath, arg );
 #endif	// Android では Intent で他のアプリに送れるようにする方がよい
 						}

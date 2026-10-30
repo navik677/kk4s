@@ -1211,7 +1211,7 @@ void tTVPComplexRect::RectangleSub(tTVPRegionRect *r, const tTVPRect *rr)
 //---------------------------------------------------------------------------
 void tTVPComplexRect::DumpChain()
 {
-#ifdef _WIN32
+#ifdef KK4S_WIN32_NATIVE
 	tjs_string str;
 	tIterator it = GetIterator();
 	while(it.Step()) {
