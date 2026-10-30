@@ -20,12 +20,18 @@ All folders are created on first start (except `covers/`).
 
 The launcher shows a card per game. Cover, first found wins:
 
-1. `games/<GameName>/cover.*`, `folder.*` or `poster.*` (png, jpg, jpeg, webp). These are extra
-   files you add next to the game; the game itself is not changed.
-2. `covers/<GameName>.*` (same formats) — keeps the game folder exactly as it was.
+1. `covers/<GameName>.*` (png, jpg, webp). **Y** in the launcher (or tap "Обкладинка") searches
+   [VNDB](https://vndb.org) for the selected game, shows the matches, and saves the chosen cover here
+   together with `covers/<GameName>.txt` (the official title). Covers VNDB marks as sexual are skipped.
+2. `games/<GameName>/cover.*`, `folder.*` or `poster.*` — files you add next to the game yourself.
 3. Otherwise a colored card with the game's icon (a `*.ico` in the folder, or the icon inside the
    game `.exe`) and the title.
 
-Title: first line of `games/<GameName>/title.txt` (UTF-8); without it the folder name is shown. Portrait images (about 5:7) fit the card best.
+Title: first line of `games/<GameName>/title.txt`, then `covers/<GameName>.txt` (UTF-8); otherwise
+the folder name. Portrait images (about 5:7) fit the card best.
 
-Debugging aid: `KK4S_LAUNCHER_SHOT=<file.bmp>` saves one launcher frame and quits (PC).
+Launcher controls: D-pad / left stick / swipe = choose, A / tap the selected card = play,
+Y = cover search, + = quit. In the search: A = take this cover, B = back.
+
+Debugging aids (PC): `KK4S_LAUNCHER_SHOT=<file.bmp>` saves one launcher frame and quits;
+`KK4S_LAUNCHER_SEARCH=1` opens the cover search first (`=pick` also takes the first result).

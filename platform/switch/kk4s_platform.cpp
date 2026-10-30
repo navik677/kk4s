@@ -94,6 +94,29 @@ std::vector<std::string> SystemFontFiles() {
     return out;
 }
 
+bool ReadPad(unsigned& held) {
+    static PadState pad;
+    static bool inited = false;
+    if (!inited) {
+        padConfigureInput(8, HidNpadStyleSet_NpadStandard);
+        padInitializeAny(&pad);
+        inited = true;
+    }
+    padUpdate(&pad);
+    u64 b = padGetButtons(&pad);
+    static const struct { u64 nx; unsigned pad; } kMap[] = {
+        {HidNpadButton_A, kPadA}, {HidNpadButton_B, kPadB}, {HidNpadButton_X, kPadX}, {HidNpadButton_Y, kPadY},
+        {HidNpadButton_L, kPadL}, {HidNpadButton_R, kPadR}, {HidNpadButton_ZL, kPadZL}, {HidNpadButton_ZR, kPadZR},
+        {HidNpadButton_Plus, kPadPlus}, {HidNpadButton_Minus, kPadMinus},
+        {HidNpadButton_Left | HidNpadButton_StickLLeft, kPadLeft}, {HidNpadButton_Up | HidNpadButton_StickLUp, kPadUp},
+        {HidNpadButton_Right | HidNpadButton_StickLRight, kPadRight}, {HidNpadButton_Down | HidNpadButton_StickLDown, kPadDown},
+    };
+    held = 0;
+    for (const auto& m : kMap)
+        if (b & m.nx) held |= m.pad;
+    return true;
+}
+
 // libnx gives the real argv through __system_argv (hbloader).
 int EngineArgc() { return __system_argc > 0 ? __system_argc : 0; }
 char** EngineArgv() { return __system_argv; }

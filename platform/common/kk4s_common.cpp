@@ -2,6 +2,7 @@
 // game folder scanning and project dir resolution.
 #include "kk4s_platform.h"
 #include "kk4s_internal.h"
+#include <SDL.h>
 
 #include <algorithm>
 #include <cstdarg>
@@ -77,6 +78,24 @@ void Log(const char* fmt, ...) {
 }
 
 const std::string& GameDir() { return g_game_dir; }
+
+unsigned PadFromSdlButton(int b) {
+    switch (b) {
+        case SDL_CONTROLLER_BUTTON_A: return kPadA;
+        case SDL_CONTROLLER_BUTTON_B: return kPadB;
+        case SDL_CONTROLLER_BUTTON_X: return kPadX;
+        case SDL_CONTROLLER_BUTTON_Y: return kPadY;
+        case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: return kPadL;
+        case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: return kPadR;
+        case SDL_CONTROLLER_BUTTON_START: return kPadPlus;
+        case SDL_CONTROLLER_BUTTON_BACK: return kPadMinus;
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT: return kPadLeft;
+        case SDL_CONTROLLER_BUTTON_DPAD_UP: return kPadUp;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: return kPadRight;
+        case SDL_CONTROLLER_BUTTON_DPAD_DOWN: return kPadDown;
+    }
+    return 0;
+}
 
 namespace detail {
 

@@ -15,7 +15,7 @@ PKGS=(
     switch-sdl2 switch-freetype switch-ffmpeg
     switch-libpng switch-libjpeg-turbo switch-libwebp
     switch-libogg switch-libvorbis switch-libopus switch-opusfile
-    switch-zlib switch-bzip2
+    switch-zlib switch-bzip2 switch-curl
 )
 
 install_deps() {

@@ -120,6 +120,7 @@ set(INCLUDES
 set(SOURCES
     platform/common/kk4s_common.cpp
     platform/common/kk4s_launcher.cpp
+    platform/common/kk4s_net.cpp
     compat/kk4s_compat.cpp
     compat/kk4s_plugins.cpp
     compat/kk4s_layerfx.cpp
@@ -288,7 +289,7 @@ find_package(PkgConfig REQUIRED)
 set(KK4S_PKG_MODULES
     freetype2 libavcodec libavfilter libavformat libavutil libswscale
     libpng libjpeg libturbojpeg libwebp ogg vorbis vorbisfile opus opusfile
-    oniguruma sdl2 zlib
+    oniguruma sdl2 zlib libcurl
 )
 pkg_check_modules(KK4S_DEPS REQUIRED ${KK4S_PKG_MODULES})
 

@@ -39,6 +39,23 @@ std::string SelectGame(SDL_Renderer* renderer);
 int EngineArgc();
 char** EngineArgv();
 
+// Gamepad buttons by their printed label (Nintendo layout).
+enum PadButton : unsigned {
+    kPadA = 1u << 0, kPadB = 1u << 1, kPadX = 1u << 2, kPadY = 1u << 3,
+    kPadL = 1u << 4, kPadR = 1u << 5, kPadZL = 1u << 6, kPadZR = 1u << 7,
+    kPadPlus = 1u << 8, kPadMinus = 1u << 9,
+    kPadLeft = 1u << 10, kPadUp = 1u << 11, kPadRight = 1u << 12, kPadDown = 1u << 13,
+};
+
+// Switch: buttons held right now, read straight from libnx (SDL's controller
+// mapping is positional, so its "A" arrives for the Nintendo B button). The
+// left stick counts as the D-pad. Returns false on platforms where SDL game
+// controller events are used instead (PC).
+bool ReadPad(unsigned& held);
+
+// SDL_GameControllerButton -> PadButton (0 if not used). For PC pads.
+unsigned PadFromSdlButton(int sdl_button);
+
 // Initial window size and SDL window flags for this platform.
 void WindowConfig(int& width, int& height, unsigned& sdl_flags);
 

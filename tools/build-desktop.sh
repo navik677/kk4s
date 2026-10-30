@@ -12,12 +12,12 @@ install_deps() {
         sudo apt-get install -y --no-install-recommends build-essential cmake pkg-config \
             libsdl2-dev libfreetype-dev libavcodec-dev libavformat-dev libavfilter-dev \
             libavutil-dev libswscale-dev libpng-dev libturbojpeg0-dev libjpeg-turbo8-dev libwebp-dev \
-            libogg-dev libvorbis-dev libopus-dev libopusfile-dev zlib1g-dev libonig-dev
+            libogg-dev libvorbis-dev libopus-dev libopusfile-dev zlib1g-dev libonig-dev libcurl4-openssl-dev
     elif command -v pacman >/dev/null; then
         local p=mingw-w64-ucrt-x86_64
         pacman -S --noconfirm --needed $p-gcc $p-cmake $p-ninja $p-pkgconf $p-SDL2 \
             $p-freetype $p-ffmpeg $p-libpng $p-libjpeg-turbo $p-libwebp $p-libogg \
-            $p-libvorbis $p-opus $p-opusfile $p-zlib $p-oniguruma
+            $p-libvorbis $p-opus $p-opusfile $p-zlib $p-oniguruma $p-curl
     fi
 }
 

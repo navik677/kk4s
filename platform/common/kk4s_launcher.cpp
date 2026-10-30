@@ -3,12 +3,13 @@
 // selected cover. Works with gamepad, touch (tap / swipe), keyboard and mouse.
 //
 // Covers, first found wins (see docs/sd-layout.md):
+//   <data>/covers/<game folder name>.*            (the Y button downloads one from VNDB)
 //   <game>/cover.* | folder.* | poster.*         (png, jpg, jpeg, webp)
-//   <data>/covers/<game folder name>.*
 //   otherwise a generated card with the game's icon (*.ico or the .exe icon).
-// Title: <game>/title.txt (UTF-8, first line), otherwise the folder name.
+// Title: <game>/title.txt, <data>/covers/<folder>.txt (UTF-8, first line), else the folder name.
 #include "kk4s_platform.h"
 #include "kk4s_internal.h"
+#include "kk4s_net.h"
 
 #include <SDL.h>
 #include <ft2build.h>
@@ -27,8 +28,11 @@
 #include <ctime>
 #include <dirent.h>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <strings.h>
+#include <thread>
 #include <sys/stat.h>
 #include <vector>
 
@@ -282,6 +286,20 @@ std::string Ext(const std::string& name) {
     return dot == std::string::npos ? "" : Lower(name.substr(dot + 1));
 }
 
+// Image in memory, format from its first bytes (downloads have no reliable extension).
+Image DecodeImageData(const uint8_t* d, size_t n) {
+    if (n >= 8 && memcmp(d, "\x89PNG", 4) == 0) return DecodePng(d, n);
+    if (n >= 3 && d[0] == 0xFF && d[1] == 0xD8) return DecodeJpeg(d, n);
+    if (n >= 12 && memcmp(d, "RIFF", 4) == 0 && memcmp(d + 8, "WEBP", 4) == 0) return DecodeWebp(d, n);
+    return {};
+}
+
+const char* ImageExt(const std::string& d) {
+    if (d.size() >= 4 && memcmp(d.data(), "\x89PNG", 4) == 0) return "png";
+    if (d.size() >= 12 && memcmp(d.data(), "RIFF", 4) == 0) return "webp";
+    return "jpg";
+}
+
 Image DecodeFile(const std::string& path) {
     std::vector<uint8_t> data;
     std::string ext = Ext(path);
@@ -477,17 +495,18 @@ struct Game {
     SDL_Color tint{60, 70, 110, 255};
 };
 
+// <data>/covers/<folder>.* first (where the cover search saves), then the game folder.
 std::string FindCover(const std::string& dir, const std::string& folder) {
-    static const char* const kNames[] = {"cover", "folder", "poster"};
-    for (const char* base : kNames) {
-        std::string want = base;
-        for (const std::string& f : ListFiles(dir, [](const std::string& n) { return IsImageExt(Ext(n)); }))
-            if (Lower(f.substr(0, f.rfind('.'))) == want) return dir + "/" + f;
-    }
     std::string covers = RootDir() + "/covers";
     std::string want = Lower(folder);
     for (const std::string& f : ListFiles(covers, [](const std::string& n) { return IsImageExt(Ext(n)); }))
         if (Lower(f.substr(0, f.rfind('.'))) == want) return covers + "/" + f;
+    static const char* const kNames[] = {"cover", "folder", "poster"};
+    for (const char* base : kNames) {
+        std::string w = base;
+        for (const std::string& f : ListFiles(dir, [](const std::string& n) { return IsImageExt(Ext(n)); }))
+            if (Lower(f.substr(0, f.rfind('.'))) == w) return dir + "/" + f;
+    }
     return "";
 }
 
@@ -507,16 +526,23 @@ std::string FindIcon(const std::string& dir, const std::string& folder) {
     return best.empty() ? "" : dir + "/" + best;
 }
 
-std::string ReadTitle(const std::string& dir, const std::string& folder) {
-    FILE* f = fopen((dir + "/title.txt").c_str(), "rb");
-    if (!f) return folder;
+std::string ReadFirstLine(const std::string& path) {
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) return "";
     char buf[256] = {0};
     if (!fgets(buf, sizeof(buf), f)) buf[0] = 0;
     fclose(f);
     char* s = buf;
     if ((unsigned char)s[0] == 0xEF && (unsigned char)s[1] == 0xBB && (unsigned char)s[2] == 0xBF) s += 3;
     s[strcspn(s, "\r\n")] = 0;
-    return *s ? std::string(s) : folder;
+    return s;
+}
+
+// <game>/title.txt, then <data>/covers/<folder>.txt (saved by the cover search), then the folder name.
+std::string ReadTitle(const std::string& dir, const std::string& folder) {
+    std::string t = ReadFirstLine(dir + "/title.txt");
+    if (t.empty()) t = ReadFirstLine(RootDir() + "/covers/" + folder + ".txt");
+    return t.empty() ? folder : t;
 }
 
 SDL_Color TintFor(const std::string& name) {
@@ -529,6 +555,9 @@ SDL_Color TintFor(const std::string& name) {
 }
 
 void LoadGame(SDL_Renderer* r, Game& g) {
+    if (g.cover) SDL_DestroyTexture(g.cover);
+    if (g.icon) SDL_DestroyTexture(g.icon);
+    g.cover = g.icon = nullptr;
     std::string dir = GamesDir() + "/" + g.folder;
     g.title = ReadTitle(dir, g.folder);
     g.tint = TintFor(g.folder);
@@ -687,11 +716,135 @@ void DrawCard(const View& v, Fonts& fonts, const Game& g, float cx, float cy, fl
     }
 }
 
+
+// Selection border used by the cover search.
+void Frame(const View& v, float x, float y, float w, float h, SDL_Color c) {
+    const float b = 4;
+    FillRect(v, x - b - 2, y - b - 2, w + 2 * b + 4, b, c);
+    FillRect(v, x - b - 2, y + h + 2, w + 2 * b + 4, b, c);
+    FillRect(v, x - b - 2, y - 2, b, h + 4, c);
+    FillRect(v, x + w + 2, y - 2, b, h + 4, c);
+}
+
+// ---------------------------------------------------------------------------
+// cover search (network work runs on a detached thread; the UI polls the job)
+
+struct SearchJob {
+    std::mutex m;
+    bool done = false, ok = false;
+    std::string err;
+    std::vector<net::CoverCandidate> found;
+    std::vector<Image> thumbs;
+};
+
+struct DownloadJob {
+    std::mutex m;
+    bool done = false, ok = false;
+    std::string err, data;
+};
+
+template <class F>
+void RunDetached(const char* name, F fn) {
+    // Own stack size: TLS + JSON + JPEG decoding need more than the default on Switch.
+    auto* heap = new F(std::move(fn));
+    SDL_Thread* t = SDL_CreateThreadWithStackSize(
+        [](void* p) -> int {
+            F* f = static_cast<F*>(p);
+            (*f)();
+            delete f;
+            return 0;
+        },
+        name, 1u << 20, heap);
+    if (t) SDL_DetachThread(t);
+    else { (*heap)(); delete heap; }
+}
+
+std::shared_ptr<SearchJob> StartSearch(const std::string& query) {
+    auto job = std::make_shared<SearchJob>();
+    RunDetached("kk4s-cover-search", [job, query] {
+        std::vector<net::CoverCandidate> found;
+        std::string err;
+        bool ok = net::SearchVndbCovers(query, found, err);
+        std::vector<Image> thumbs;
+        for (const net::CoverCandidate& c : found) {
+            std::string data, e;
+            Image img;
+            if (net::Request(c.thumb_url, nullptr, data, e))
+                img = Shrink(DecodeImageData((const uint8_t*)data.data(), data.size()), 300, 420);
+            thumbs.push_back(std::move(img));
+        }
+        std::lock_guard<std::mutex> lock(job->m);
+        job->found = std::move(found);
+        job->thumbs = std::move(thumbs);
+        job->err = err;
+        job->ok = ok;
+        job->done = true;
+    });
+    return job;
+}
+
+std::shared_ptr<DownloadJob> StartDownload(const std::string& url) {
+    auto job = std::make_shared<DownloadJob>();
+    RunDetached("kk4s-cover-download", [job, url] {
+        std::string data, err;
+        bool ok = net::Request(url, nullptr, data, err);
+        if (ok && !DecodeImageData((const uint8_t*)data.data(), data.size()).ok()) { ok = false; err = "not an image"; }
+        std::lock_guard<std::mutex> lock(job->m);
+        job->data = std::move(data);
+        job->err = err;
+        job->ok = ok;
+        job->done = true;
+    });
+    return job;
+}
+
+// Search text from a title / folder name: no [tags] or (notes), no separators.
+std::string CleanQuery(const std::string& t) {
+    std::string out;
+    int depth = 0;
+    for (char c : t) {
+        if (c == '[' || c == '(') { ++depth; continue; }
+        if ((c == ']' || c == ')') && depth > 0) { --depth; continue; }
+        if (depth) continue;
+        if (c == '_' || c == '-' || c == '.') c = ' ';
+        if (c == ' ' && (out.empty() || out.back() == ' ')) continue;
+        out += c;
+    }
+    while (!out.empty() && out.back() == ' ') out.pop_back();
+    return out.empty() ? t : out;
+}
+
+bool WriteFile(const std::string& path, const std::string& data) {
+    FILE* f = fopen(path.c_str(), "wb");
+    if (!f) return false;
+    bool ok = fwrite(data.data(), 1, data.size(), f) == data.size();
+    ok = (fclose(f) == 0) && ok;
+    return ok;
+}
+
+// Store the chosen cover as <data>/covers/<folder>.<ext> (+ .txt with the title).
+bool SaveCover(const std::string& folder, const std::string& data, const std::string& title) {
+    std::string dir = RootDir() + "/covers";
+    MakeDir(dir);
+    for (const char* ext : {"png", "jpg", "jpeg", "webp"}) remove((dir + "/" + folder + "." + ext).c_str());
+    if (!WriteFile(dir + "/" + folder + "." + ImageExt(data), data)) return false;
+    if (!title.empty()) WriteFile(dir + "/" + folder + ".txt", title + "\n");
+    return true;
+}
+
+enum class Action { None, Left, Right, PageLeft, PageRight, Ok, Back, Quit, Search };
+
 struct Input {
     float drag_start_x = 0, drag_last_x = 0, drag_pos = 0;
     bool dragging = false, moved = false;
     int held_dir = 0;
     Uint32 next_repeat = 0;
+    unsigned pad_prev = 0;
+};
+
+struct HintBox {
+    float x, y, w, h;
+    Action action;
 };
 
 } // namespace
@@ -715,11 +868,95 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
     std::string chosen;
     bool running = true;
     Uint32 prev = SDL_GetTicks();
+    std::vector<HintBox> hint_boxes;
+
+    // cover search state
+    bool searching = false;
+    std::shared_ptr<SearchJob> search;
+    std::shared_ptr<DownloadJob> download;
+    std::vector<net::CoverCandidate> found;
+    std::vector<SDL_Texture*> thumbs;
+    std::vector<SDL_Point> thumb_size;
+    size_t pick = 0;
+    float pick_pos = 0;
+    std::string search_query, search_msg;
+    auto clear_results = [&] {
+        for (SDL_Texture* t : thumbs) if (t) SDL_DestroyTexture(t);
+        thumbs.clear();
+        thumb_size.clear();
+        found.clear();
+    };
+    auto close_search = [&] {
+        searching = false;
+        search.reset();
+        download.reset();
+        clear_results();
+    };
 
     auto move = [&](int d) {
+        if (searching) {
+            if (!found.empty() && !download) pick = (size_t)std::max(0, std::min((int)found.size() - 1, (int)pick + d));
+            return;
+        }
         if (games.empty()) return;
-        int s = (int)sel + d;
-        sel = (size_t)std::max(0, std::min((int)games.size() - 1, s));
+        sel = (size_t)std::max(0, std::min((int)games.size() - 1, (int)sel + d));
+    };
+    auto act = [&](Action a) {
+        switch (a) {
+            case Action::Left: move(-1); break;
+            case Action::Right: move(1); break;
+            case Action::PageLeft: move(-5); break;
+            case Action::PageRight: move(5); break;
+            case Action::Ok:
+                if (searching) {
+                    if (!found.empty() && !download && search && search->done) {
+                        download = StartDownload(found[pick].image_url);
+                        search_msg.clear();
+                    }
+                } else if (!games.empty()) {
+                    chosen = games[sel].folder;
+                    running = false;
+                }
+                break;
+            case Action::Back:
+                if (searching) close_search();
+                break;
+            case Action::Quit:
+                if (searching) close_search();
+                else running = false;
+                break;
+            case Action::Search:
+                if (!searching && !games.empty()) {
+                    searching = true;
+                    pick = 0;
+                    pick_pos = 0;
+                    search_msg.clear();
+                    clear_results();
+                    search_query = CleanQuery(games[sel].title);
+                    Log("launcher: cover search '%s'", search_query.c_str());
+                    search = StartSearch(search_query);
+                }
+                break;
+            case Action::None: break;
+        }
+    };
+    auto pad = [&](unsigned bit, bool down) {
+        static int logged = 0;
+        if (down && logged < 20) { ++logged; Log("launcher: pad 0x%x", bit); }
+        if (!down) {
+            if (bit == kPadLeft || bit == kPadRight || bit == kPadUp || bit == kPadDown) in.held_dir = 0;
+            return;
+        }
+        switch (bit) {
+            case kPadLeft: case kPadUp: act(Action::Left); in.held_dir = -1; in.next_repeat = SDL_GetTicks() + 380; break;
+            case kPadRight: case kPadDown: act(Action::Right); in.held_dir = 1; in.next_repeat = SDL_GetTicks() + 380; break;
+            case kPadL: act(Action::PageLeft); break;
+            case kPadR: act(Action::PageRight); break;
+            case kPadA: act(Action::Ok); break;
+            case kPadB: act(Action::Back); break;
+            case kPadY: act(Action::Search); break;
+            case kPadPlus: act(Action::Quit); break;
+        }
     };
 
     while (running) {
@@ -729,7 +966,17 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
         v.s = std::min(ow / 1280.f, oh / 720.f);
         v.ox = (ow - 1280 * v.s) / 2;
         v.oy = (oh - 720 * v.s) / 2;
-        auto to_layout_x = [&](float px) { return (px - v.ox) / v.s; };
+        auto lx = [&](float px) { return (px - v.ox) / v.s; };
+        auto ly = [&](float py) { return (py - v.oy) / v.s; };
+
+        // Switch buttons straight from libnx (by label); PC uses SDL events below.
+        unsigned held;
+        if (ReadPad(held)) {
+            unsigned changed = held ^ in.pad_prev;
+            in.pad_prev = held;
+            for (unsigned bit = 1; changed && bit <= kPadDown; bit <<= 1)
+                if (changed & bit) pad(bit, (held & bit) != 0);
+        }
 
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -739,55 +986,45 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
                     if (SDL_GameControllerOpen(e.cdevice.which))
                         Log("input: controller '%s'", SDL_GameControllerNameForIndex(e.cdevice.which));
                     break;
-                case SDL_JOYDEVICEADDED:
-                    if (!SDL_IsGameController(e.jdevice.which) && SDL_JoystickOpen(e.jdevice.which))
-                        Log("input: joystick '%s' (no controller mapping)", SDL_JoystickNameForIndex(e.jdevice.which));
-                    break;
+#ifndef __SWITCH__
                 case SDL_CONTROLLERBUTTONDOWN:
-                    switch (e.cbutton.button) {
-                        case SDL_CONTROLLER_BUTTON_DPAD_LEFT: move(-1); in.held_dir = -1; in.next_repeat = SDL_GetTicks() + 380; break;
-                        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: move(1); in.held_dir = 1; in.next_repeat = SDL_GetTicks() + 380; break;
-                        case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: move(-5); break;
-                        case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: move(5); break;
-                        case SDL_CONTROLLER_BUTTON_A: if (!games.empty()) { chosen = games[sel].folder; running = false; } break;
-                        case SDL_CONTROLLER_BUTTON_START: running = false; break;
-                    }
-                    break;
                 case SDL_CONTROLLERBUTTONUP:
-                    if (e.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_LEFT || e.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_RIGHT)
-                        in.held_dir = 0;
+                    pad(PadFromSdlButton(e.cbutton.button), e.type == SDL_CONTROLLERBUTTONDOWN);
                     break;
                 case SDL_CONTROLLERAXISMOTION:
                     if (e.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
                         int dir = e.caxis.value < -20000 ? -1 : e.caxis.value > 20000 ? 1 : 0;
-                        if (dir != 0 && in.held_dir != dir) { move(dir); in.next_repeat = SDL_GetTicks() + 380; }
+                        if (dir != 0 && in.held_dir != dir) { act(dir < 0 ? Action::Left : Action::Right); in.next_repeat = SDL_GetTicks() + 380; }
                         if (dir != 0 || std::abs(e.caxis.value) < 12000) in.held_dir = dir;
                     }
                     break;
+#endif
                 case SDL_KEYDOWN:
                     switch (e.key.keysym.sym) {
-                        case SDLK_LEFT: case SDLK_UP: move(-1); break;
-                        case SDLK_RIGHT: case SDLK_DOWN: move(1); break;
-                        case SDLK_RETURN: case SDLK_KP_ENTER: case SDLK_SPACE:
-                            if (!games.empty()) { chosen = games[sel].folder; running = false; }
-                            break;
-                        case SDLK_ESCAPE: running = false; break;
+                        case SDLK_LEFT: case SDLK_UP: act(Action::Left); break;
+                        case SDLK_RIGHT: case SDLK_DOWN: act(Action::Right); break;
+                        case SDLK_PAGEUP: act(Action::PageLeft); break;
+                        case SDLK_PAGEDOWN: act(Action::PageRight); break;
+                        case SDLK_RETURN: case SDLK_KP_ENTER: case SDLK_SPACE: act(Action::Ok); break;
+                        case SDLK_BACKSPACE: act(Action::Back); break;
+                        case SDLK_ESCAPE: act(Action::Quit); break;
+                        case SDLK_y: case SDLK_F3: act(Action::Search); break;
                     }
                     break;
-                case SDL_MOUSEWHEEL: move(e.wheel.y > 0 ? -1 : e.wheel.y < 0 ? 1 : 0); break;
+                case SDL_MOUSEWHEEL: act(e.wheel.y > 0 ? Action::Left : e.wheel.y < 0 ? Action::Right : Action::None); break;
                 case SDL_FINGERDOWN: case SDL_MOUSEBUTTONDOWN: {
                     if (e.type == SDL_MOUSEBUTTONDOWN && (e.button.which == SDL_TOUCH_MOUSEID || e.button.button != SDL_BUTTON_LEFT)) break;
-                    float x = e.type == SDL_FINGERDOWN ? to_layout_x(e.tfinger.x * ow) : to_layout_x((float)e.button.x);
+                    float x = e.type == SDL_FINGERDOWN ? lx(e.tfinger.x * ow) : lx((float)e.button.x);
                     in.dragging = true;
                     in.moved = false;
                     in.drag_start_x = in.drag_last_x = x;
-                    in.drag_pos = pos;
+                    in.drag_pos = searching ? pick_pos : pos;
                     break;
                 }
                 case SDL_FINGERMOTION: case SDL_MOUSEMOTION: {
                     if (!in.dragging) break;
                     if (e.type == SDL_MOUSEMOTION && e.motion.which == SDL_TOUCH_MOUSEID) break;
-                    float x = e.type == SDL_FINGERMOTION ? to_layout_x(e.tfinger.x * ow) : to_layout_x((float)e.motion.x);
+                    float x = e.type == SDL_FINGERMOTION ? lx(e.tfinger.x * ow) : lx((float)e.motion.x);
                     in.drag_last_x = x;
                     if (std::fabs(x - in.drag_start_x) > 12) in.moved = true;
                     break;
@@ -797,18 +1034,38 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
                     if (e.type == SDL_MOUSEBUTTONUP && e.button.which == SDL_TOUCH_MOUSEID) break;
                     in.dragging = false;
                     float x, y;
-                    if (e.type == SDL_FINGERUP) { x = to_layout_x(e.tfinger.x * ow); y = (e.tfinger.y * oh - v.oy) / v.s; }
-                    else { x = to_layout_x((float)e.button.x); y = ((float)e.button.y - v.oy) / v.s; }
+                    if (e.type == SDL_FINGERUP) { x = lx(e.tfinger.x * ow); y = ly(e.tfinger.y * oh); }
+                    else { x = lx((float)e.button.x); y = ly((float)e.button.y); }
+                    // footer / panel hints are buttons too
+                    bool hit_hint = false;
+                    for (const HintBox& h : hint_boxes)
+                        if (!in.moved && x >= h.x && x < h.x + h.w && y >= h.y && y < h.y + h.h) { act(h.action); hit_hint = true; break; }
+                    if (hit_hint) break;
+                    if (searching) {
+                        const float tstep = 200;
+                        if (x < 80 || x > 1200 || y < 90 || y > 630) { if (!in.moved) act(Action::Back); break; }
+                        if (found.empty()) break;
+                        if (in.moved) {
+                            float p = in.drag_pos - (x - in.drag_start_x) / tstep;
+                            pick = (size_t)std::max(0, std::min((int)found.size() - 1, (int)std::lround(p)));
+                        } else if (std::fabs(y - 340) < 140) {
+                            int hit = (int)std::lround(pick_pos + (x - 640) / tstep);
+                            if (hit >= 0 && hit < (int)found.size()) {
+                                if ((size_t)hit == pick) act(Action::Ok);
+                                else pick = (size_t)hit;
+                            }
+                        }
+                        break;
+                    }
                     if (games.empty()) break;
                     if (in.moved) {
                         float p = in.drag_pos - (x - in.drag_start_x) / step;
                         sel = (size_t)std::max(0, std::min((int)games.size() - 1, (int)std::lround(p)));
                         pos = std::max(0.f, std::min((float)games.size() - 1, p));
                     } else if (std::fabs(y - center_y) < card_h * 0.6f) {
-                        // tap: which card is under the finger?
                         int hit = (int)std::lround(pos + (x - 640) / step);
                         if (hit >= 0 && hit < (int)games.size()) {
-                            if ((size_t)hit == sel) { chosen = games[sel].folder; running = false; }
+                            if ((size_t)hit == sel) act(Action::Ok);
                             else sel = (size_t)hit;
                         }
                     }
@@ -820,11 +1077,52 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
         float dt = std::min(0.1f, (now - prev) / 1000.f);
         prev = now;
         if (in.held_dir != 0 && now >= in.next_repeat) { move(in.held_dir); in.next_repeat = now + 120; }
-        if (in.dragging && in.moved)
+        if (!searching && in.dragging && in.moved)
             pos = std::max(-0.4f, std::min((float)games.size() - 0.6f, in.drag_pos - (in.drag_last_x - in.drag_start_x) / step));
         else
             pos += ((float)sel - pos) * std::min(1.f, dt * 12);
+        if (searching && in.dragging && in.moved && !found.empty())
+            pick_pos = std::max(-0.4f, std::min((float)found.size() - 0.6f, in.drag_pos - (in.drag_last_x - in.drag_start_x) / 200));
+        else
+            pick_pos += ((float)pick - pick_pos) * std::min(1.f, dt * 12);
         float glow = 0.5f + 0.5f * std::sin(now / 260.f);
+
+        // background jobs
+        if (searching && search && thumbs.empty() && found.empty()) {
+            std::lock_guard<std::mutex> lock(search->m);
+            if (search->done) {
+                found = search->found;
+                for (const Image& img : search->thumbs) {
+                    thumbs.push_back(MakeTexture(r, img));
+                    thumb_size.push_back({img.w, img.h});
+                }
+                if (!search->ok) search_msg = "Немає з'єднання з VNDB: " + search->err;
+                else if (found.empty()) search_msg = "Нічого не знайдено";
+                Log("launcher: cover search: %zu result(s)%s%s", found.size(), search->ok ? "" : ", error: ",
+                    search->err.c_str());
+            }
+        }
+        if (searching && download) {
+            bool done, ok;
+            std::string data, err;
+            {
+                std::lock_guard<std::mutex> lock(download->m);
+                done = download->done;
+                ok = download->ok;
+                if (done) { data.swap(download->data); err = download->err; }
+            }
+            if (done) {
+                download.reset();
+                Game& g = games[sel];
+                if (ok && SaveCover(g.folder, data, found[pick].title)) {
+                    Log("launcher: %s: downloaded cover %s", g.folder.c_str(), found[pick].image_url.c_str());
+                    LoadGame(r, g);
+                    close_search();
+                } else {
+                    search_msg = "Не вдалося завантажити: " + (ok ? std::string("не можу записати на SD") : err);
+                }
+            }
+        }
 
         // background: dark base, the selected cover dimmed over it, gradients for depth
         SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
@@ -878,25 +1176,97 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             DrawText(v, fonts, sub, 640, 570, 20, {160, 168, 190, 255}, 1, 1100);
         }
 
-        // footer
+        // footer hints (also tappable)
+        struct Hint { const char* key; const char* label; Action action; };
+        auto draw_hints = [&](const std::vector<Hint>& hints, float right, float y) {
+            float total = 0;
+            for (const Hint& h : hints) total += 30 + 10 + TextWidth(v, fonts, h.label, 22) + 34;
+            float hx = right - (total - 34);
+            for (const Hint& h : hints) {
+                float w = DrawHint(v, fonts, circle, hx, y, h.key, h.label);
+                hint_boxes.push_back({hx - 8, y - 10, w - 18, 50, h.action});
+                hx += w;
+            }
+        };
+        hint_boxes.clear();
         FillRect(v, 48, 644, 1184, 1, {255, 255, 255, 40});
-        float hx = 1232;
-        struct Hint { const char* key; const char* label; };
-        std::vector<Hint> hints;
-        if (!games.empty()) hints.push_back({"A", "Грати"});
-        hints.push_back({"+", "Вихід"});
-        float total = 0;
-        for (const Hint& h : hints) total += 30 + 10 + TextWidth(v, fonts, h.label, 22) + 34;
-        hx -= total - 34;
-        for (const Hint& h : hints) hx += DrawHint(v, fonts, circle, hx, 664, h.key, h.label);
-        if (!games.empty())
-            DrawText(v, fonts, "<  >   вибір", 48, 666, 22, {160, 168, 190, 255});
+        if (!searching) {
+            std::vector<Hint> hints;
+            if (!games.empty()) {
+                hints.push_back({"Y", "Обкладинка", Action::Search});
+                hints.push_back({"A", "Грати", Action::Ok});
+            }
+            hints.push_back({"+", "Вихід", Action::Quit});
+            draw_hints(hints, 1232, 664);
+            if (!games.empty()) DrawText(v, fonts, "<  >   вибір", 48, 666, 22, {160, 168, 190, 255});
+        }
+
+        // cover search panel
+        if (searching) {
+            FillRect(v, 0, 0, 1280, 720, {4, 6, 12, 200});
+            FillRect(v, 80, 90, 1120, 540, {22, 26, 40, 250});
+            FillRect(v, 80, 90, 1120, 3, {90, 200, 250, 255});
+            DrawText(v, fonts, "Обкладинка з інтернету", 112, 110, 30, {245, 247, 252, 255});
+            DrawText(v, fonts, "vndb.org", 1168, 120, 18, {140, 148, 170, 255}, 2);
+            DrawText(v, fonts, "Пошук: «" + search_query + "»", 112, 154, 20, {160, 168, 190, 255}, 0, 1050);
+            bool waiting = search && found.empty() && search_msg.empty();
+            if (waiting) {
+                std::string dots(1 + (now / 400) % 3, '.');
+                DrawText(v, fonts, "Шукаю" + dots, 640, 320, 28, {225, 228, 238, 255}, 1);
+            } else if (!found.empty()) {
+                const float tw = 170, th = 240, tstep = 200, ty = 340;
+                SDL_FRect clipf = v.Map(80, 90, 1120, 540);
+                SDL_Rect clip{(int)clipf.x, (int)clipf.y, (int)clipf.w, (int)clipf.h};
+                SDL_RenderSetClipRect(r, &clip);
+                for (int i = 0; i < (int)found.size(); ++i) {
+                    float cx = 640 + (i - pick_pos) * tstep;
+                    if (cx < 80 - tw || cx > 1200 + tw) continue;
+                    float k = 1 + 0.12f * std::max(0.f, 1 - std::fabs(i - pick_pos));
+                    float w = tw * k, h = th * k, x = cx - w / 2, y = ty - h / 2;
+                    FillRect(v, x + 5, y + 8, w, h, {0, 0, 0, 90});
+                    if (thumbs[i]) {
+                        SDL_FRect rc = v.Map(x, y, w, h);
+                        float ar = (float)thumb_size[i].x / thumb_size[i].y;
+                        if (ar > w / h) { float nh = w / ar; rc = v.Map(x, y + (h - nh) / 2, w, nh); }
+                        else { float nw = h * ar; rc = v.Map(x + (w - nw) / 2, y, nw, h); }
+                        SDL_SetTextureAlphaMod(thumbs[i], 255);
+                        SDL_RenderCopyF(r, thumbs[i], nullptr, &rc);
+                    } else {
+                        FillRect(v, x, y, w, h, {50, 56, 80, 255});
+                    }
+                    if ((size_t)i == pick) Frame(v, x, y, w, h, {90, 200, 250, (Uint8)(200 + 55 * glow)});
+                }
+                SDL_RenderSetClipRect(r, nullptr);
+                const net::CoverCandidate& c = found[pick];
+                DrawText(v, fonts, c.title, 640, 482, 24, {245, 247, 252, 255}, 1, 1060);
+                std::string info = c.alt_title;
+                if (!c.released.empty() && c.released != "TBA")
+                    info += (info.empty() ? "" : "   ·   ") + c.released.substr(0, 4);
+                DrawText(v, fonts, info, 640, 516, 18, {160, 168, 190, 255}, 1, 1060);
+                if (download) {
+                    std::string dots(1 + (now / 400) % 3, '.');
+                    DrawText(v, fonts, "Завантажую" + dots, 112, 584, 20, {90, 200, 250, 255});
+                }
+            }
+            if (!search_msg.empty())
+                DrawText(v, fonts, search_msg, 640, found.empty() ? 320 : 552, 22, {255, 170, 150, 255}, 1, 1050);
+            std::vector<Hint> hints;
+            if (!found.empty()) hints.push_back({"A", "Вибрати", Action::Ok});
+            hints.push_back({"B", "Назад", Action::Back});
+            draw_hints(hints, 1168, 580);
+        }
 
         // Debugging aid: KK4S_LAUNCHER_SHOT=<file.bmp> saves a frame and quits
         // (screen capture does not work everywhere, e.g. KDE Wayland).
+        // KK4S_LAUNCHER_SEARCH=1 opens the cover search first (=pick: and takes the first result).
         static int frames = 0;
+        ++frames;
+        if (frames == 2 && getenv("KK4S_LAUNCHER_SEARCH")) act(Action::Search);
+        if (frames == 600 && getenv("KK4S_LAUNCHER_SEARCH") && strcmp(getenv("KK4S_LAUNCHER_SEARCH"), "pick") == 0)
+            act(Action::Ok); // KK4S_LAUNCHER_SEARCH=pick also takes the first result
         if (const char* shot = getenv("KK4S_LAUNCHER_SHOT")) {
-            if (++frames == 40) {
+            int at = getenv("KK4S_LAUNCHER_SEARCH") ? 900 : 40;
+            if (frames == at) {
                 SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(0, ow, oh, 32, SDL_PIXELFORMAT_ARGB8888);
                 if (surf && SDL_RenderReadPixels(r, nullptr, SDL_PIXELFORMAT_ARGB8888, surf->pixels, surf->pitch) == 0)
                     SDL_SaveBMP(surf, shot);
@@ -907,6 +1277,7 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
         SDL_RenderPresent(r);
     }
 
+    clear_results();
     for (Game& g : games) {
         if (g.cover) SDL_DestroyTexture(g.cover);
         if (g.icon) SDL_DestroyTexture(g.icon);

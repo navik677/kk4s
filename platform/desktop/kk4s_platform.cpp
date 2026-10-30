@@ -62,6 +62,8 @@ static bool IsFile(const std::string& p) {
 
 std::string RootDir() { return g_root; }
 
+bool ReadPad(unsigned& held) { held = 0; return false; } // SDL controller events on PC
+
 MemoryInfo QueryMemory() { return MemoryInfo{0, 0, false}; }
 
 void Init(int argc, char** argv) {

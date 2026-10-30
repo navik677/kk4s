@@ -619,31 +619,43 @@ public:
 			TVPPostInputEvent(new tTVPOnMouseUpInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, btn, 0));
 		}
 	}
-	// Gamepad layout (Switch labels; same positions on PC pads):
+	// Gamepad layout (buttons by their printed label, see kk4s::PadButton):
 	//   A = Enter (next / OK)         B = right click (menu / cancel / hide text)
 	//   X, ZR = Ctrl held (skip)      Y = Space
 	//   L = Page Up (backlog)         R = Page Down
 	//   ZL = Shift                    + = Esc, - = Tab
 	//   D-pad, left stick = arrows (move between buttons)
-	void kk4sPadButton(int b, bool down) {
-		static int logged = 0; // kk4s: diagnostics for the first presses
-		if (down && logged < 40) { ++logged; kk4s::Log("input: pad button %d -> game", b); }
-		switch (b) {
-			case SDL_CONTROLLER_BUTTON_A: kk4sPostKey(VK_RETURN, down); break;
-			case SDL_CONTROLLER_BUTTON_B: kk4sPostMouseButton(tTVPMouseButton::mbRight, down); break;
-			case SDL_CONTROLLER_BUTTON_X: kk4sPostKey(VK_CONTROL, down); break;
-			case SDL_CONTROLLER_BUTTON_Y: kk4sPostKey(VK_SPACE, down); break;
-			case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: kk4sPostKey(VK_PRIOR, down); break;
-			case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: kk4sPostKey(VK_NEXT, down); break;
-			case SDL_CONTROLLER_BUTTON_START: kk4sPostKey(VK_ESCAPE, down); break;
-			case SDL_CONTROLLER_BUTTON_BACK: kk4sPostKey(VK_TAB, down); break;
-			case SDL_CONTROLLER_BUTTON_DPAD_LEFT: kk4sPostKey(VK_LEFT, down); break;
-			case SDL_CONTROLLER_BUTTON_DPAD_UP: kk4sPostKey(VK_UP, down); break;
-			case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: kk4sPostKey(VK_RIGHT, down); break;
-			case SDL_CONTROLLER_BUTTON_DPAD_DOWN: kk4sPostKey(VK_DOWN, down); break;
+	void kk4sPadPress(unsigned button, bool down) {
+		static int logged = 0; // diagnostics for the first presses
+		if (down && logged < 40) { ++logged; kk4s::Log("input: pad 0x%x -> game", button); }
+		switch (button) {
+			case kk4s::kPadA: kk4sPostKey(VK_RETURN, down); break;
+			case kk4s::kPadB: kk4sPostMouseButton(tTVPMouseButton::mbRight, down); break;
+			case kk4s::kPadX: case kk4s::kPadZR: kk4sPostKey(VK_CONTROL, down); break;
+			case kk4s::kPadY: kk4sPostKey(VK_SPACE, down); break;
+			case kk4s::kPadL: kk4sPostKey(VK_PRIOR, down); break;
+			case kk4s::kPadR: kk4sPostKey(VK_NEXT, down); break;
+			case kk4s::kPadZL: kk4sPostKey(VK_SHIFT, down); break;
+			case kk4s::kPadPlus: kk4sPostKey(VK_ESCAPE, down); break;
+			case kk4s::kPadMinus: kk4sPostKey(VK_TAB, down); break;
+			case kk4s::kPadLeft: kk4sPostKey(VK_LEFT, down); break;
+			case kk4s::kPadUp: kk4sPostKey(VK_UP, down); break;
+			case kk4s::kPadRight: kk4sPostKey(VK_RIGHT, down); break;
+			case kk4s::kPadDown: kk4sPostKey(VK_DOWN, down); break;
 		}
 	}
-	// Analog input -> keys, with hysteresis so a resting stick does not chatter.
+	// Switch: poll libnx once per frame and turn button changes into presses.
+	void kk4sPadFrame() {
+		static unsigned prev = 0;
+		unsigned held;
+		if (!kk4s::ReadPad(held)) return;
+		if (!window || !hasDrawn || !TJSNativeInstance->CanDeliverEvents()) { prev = held; return; }
+		unsigned changed = held ^ prev;
+		prev = held;
+		for (unsigned bit = 1; changed && bit <= kk4s::kPadDown; bit <<= 1)
+			if (changed & bit) kk4sPadPress(bit, (held & bit) != 0);
+	}
+	// PC pads: analog input -> keys, with hysteresis so a resting stick does not chatter.
 	void kk4sAxisKey(Sint16 value, tjs_uint negKey, tjs_uint posKey) {
 		const int press = 20000, release = 12000;
 		bool negDown = kk4sKeyState[negKey] & 1, posDown = posKey ? (kk4sKeyState[posKey] & 1) : false;
@@ -664,21 +676,6 @@ public:
 			case SDL_CONTROLLER_AXIS_TRIGGERRIGHT: kk4sAxisKey(value, 0, VK_CONTROL); break;
 		}
 	}
-#ifdef __SWITCH__
-	// Raw joystick fallback (no game controller mapping): libnx SDL button order.
-	void kk4sSwitchJoyButton(int b, bool down) {
-		static const int map[] = {
-			SDL_CONTROLLER_BUTTON_A, SDL_CONTROLLER_BUTTON_B, SDL_CONTROLLER_BUTTON_X, SDL_CONTROLLER_BUTTON_Y,
-			-1, -1, SDL_CONTROLLER_BUTTON_LEFTSHOULDER, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
-			-2, -3, SDL_CONTROLLER_BUTTON_START, SDL_CONTROLLER_BUTTON_BACK,
-			SDL_CONTROLLER_BUTTON_DPAD_LEFT, SDL_CONTROLLER_BUTTON_DPAD_UP,
-			SDL_CONTROLLER_BUTTON_DPAD_RIGHT, SDL_CONTROLLER_BUTTON_DPAD_DOWN };
-		if (b < 0 || b >= (int)(sizeof(map) / sizeof(map[0]))) return;
-		if (map[b] == -2) kk4sPostKey(VK_SHIFT, down);        // ZL
-		else if (map[b] == -3) kk4sPostKey(VK_CONTROL, down); // ZR
-		else if (map[b] >= 0) kk4sPadButton(map[b], down);
-	}
-#endif
 
 	void sdlRecvEvent(SDL_Event event) {
 		if (isBeingDeleted) {
@@ -808,20 +805,15 @@ public:
 						kk4sPostKey(kk4sSdlKeyToVK(event.key.keysym.sym), event.type == SDL_KEYDOWN);
 						break;
 					}
+#ifndef __SWITCH__
+					// kk4s: PC gamepads (the Switch reads libnx directly, see kk4sPadFrame)
 					case SDL_CONTROLLERBUTTONDOWN:
-					case SDL_CONTROLLERBUTTONUP: { // kk4s: gamepad
-						kk4sPadButton(event.cbutton.button, event.type == SDL_CONTROLLERBUTTONDOWN);
+					case SDL_CONTROLLERBUTTONUP: {
+						kk4sPadPress(kk4s::PadFromSdlButton(event.cbutton.button), event.type == SDL_CONTROLLERBUTTONDOWN);
 						break;
 					}
 					case SDL_CONTROLLERAXISMOTION: {
 						kk4sPadAxis(event.caxis.axis, event.caxis.value);
-						break;
-					}
-#ifdef __SWITCH__
-					case SDL_JOYBUTTONDOWN:
-					case SDL_JOYBUTTONUP: { // kk4s: only pads without a game controller mapping
-						if (!SDL_GameControllerFromInstanceID(event.jbutton.which))
-							kk4sSwitchJoyButton(event.jbutton.button, event.type == SDL_JOYBUTTONDOWN);
 						break;
 					}
 #endif
@@ -869,20 +861,11 @@ bool sdlProcessEvents() {
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 		kk4sOpenInputDevice(event); // kk4s
-		{ // kk4s: diagnostics for the first presses (does SDL deliver them?)
-			static int logged = 0;
-			if ((event.type == SDL_CONTROLLERBUTTONDOWN || event.type == SDL_JOYBUTTONDOWN) && logged < 40) {
-				++logged;
-				kk4s::Log("input: SDL %s button %d (window layer: %s)",
-					event.type == SDL_CONTROLLERBUTTONDOWN ? "controller" : "joystick",
-					event.type == SDL_CONTROLLERBUTTONDOWN ? event.cbutton.button : event.jbutton.button,
-					_currentWindowLayer ? "yes" : "no");
-			}
-		}
 		if (_currentWindowLayer) {
 			_currentWindowLayer->sdlRecvEvent(event);
 		}
 	}
+	if (_currentWindowLayer) _currentWindowLayer->kk4sPadFrame(); // kk4s: Switch buttons
 	Uint32 kk4sStart = SDL_GetTicks();
 	::Application->Run();
 	iTVPTexture2D::RecycleProcess();
