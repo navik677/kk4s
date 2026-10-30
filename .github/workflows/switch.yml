@@ -32,10 +32,6 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          # Turn compiler errors into annotations (visible without opening the log)
-          grep -E "(error|Error|ERROR)[: ]" build.log | grep -v "^--" | head -40 | while IFS= read -r line; do
-            echo "::error::${line//%/%25}"
-          done
           enc() { sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}'; }
           # which objects failed
           echo "::error title=failed targets::$(grep -E '\] Error [0-9]' build.log | head -20 | enc)"
