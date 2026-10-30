@@ -1,0 +1,81 @@
+name: switch
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mark repo safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Build kk4s.nro
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tools/build-switch.sh 2>&1 | tee build.log
+
+      - name: Report build errors
+        if: failure()
+        shell: bash
+        run: |
+          # Turn compiler errors into annotations (visible without opening the log)
+          grep -E "(error|Error|ERROR)[: ]" build.log | grep -v "^--" | head -40 | while IFS= read -r line; do
+            echo "::error::${line//%/%25}"
+          done
+          tail -80 build.log | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' > tail.txt
+          echo "::error title=build.log tail::$(cat tail.txt)"
+
+      - name: Upload build
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kk4s-${{ github.sha }}
+          path: |
+            out/kk4s.nro
+            out/kk4s.elf
+            build.log
+          if-no-files-found: warn
+
+      - name: Move nightly tag
+        if: github.ref == 'refs/heads/main' && success()
+        run: |
+          git tag -f nightly
+          git push -f origin nightly
+
+      - name: Publish nightly release
+        if: github.ref == 'refs/heads/main' && success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: nightly (${{ github.sha }})
+          prerelease: true
+          make_latest: false
+          body: |
+            Automatic build of ${{ github.sha }}.
+            Copy kk4s.nro to sdmc:/switch/kk4s/ and games to sdmc:/switch/kk4s/games/<Game>/.
+            Keep kk4s.elf to decode crash reports (docs/debugging.md).
+          files: |
+            out/kk4s.nro
+            out/kk4s.elf
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/v') && success()
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/kk4s.nro
+            out/kk4s.elf

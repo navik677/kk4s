@@ -1,0 +1,12 @@
+{
+  "game_id": "example",
+  "title": "Example profile (template)",
+  "display": { "width": 1280, "height": 720, "scale": "fit" },
+  "fonts": {},
+  "plugins": [],
+  "xp3_filter": { "id": "none", "params": {} },
+  "quirks": [],
+  "input": {},
+  "video": { "decoder": "ffmpeg" },
+  "hooks": []
+}

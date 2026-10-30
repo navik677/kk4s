@@ -1,0 +1,21 @@
+# build output
+build*/
+out/
+*.elf
+*.nso
+*.pfs0
+*.nacp
+*.nro
+*.nsp
+*.npdm
+*.bz2
+build.log
+*~
+
+# local copies, not part of the repo
+krkrs-master/
+kirikiri-switch-prompt.md
+
+# never commit game files
+tests/games/
+*.xp3

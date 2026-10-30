@@ -1,0 +1,29 @@
+// kk4s smoke test: open a window, fill it, print to the log.
+Debug.message("kk4s hello: startup.tjs running");
+Debug.message("System.exePath = " + System.exePath);
+
+class HelloWindow extends Window
+{
+	var base;
+	function HelloWindow()
+	{
+		super.Window();
+		setInnerSize(1280, 720);
+		caption = "kk4s hello";
+		base = new Layer(this, null);
+		base.setImageSize(1280, 720);
+		base.setSizeToImageSize();
+		base.fillRect(0, 0, 1280, 720, 0xff2050a0);
+		base.fillRect(440, 260, 400, 200, 0xffffffff);
+		base.visible = true;
+		visible = true;
+		Debug.message("kk4s hello: window created");
+	}
+	function finalize()
+	{
+		invalidate base;
+		super.finalize(...);
+	}
+}
+
+var hello = new HelloWindow();

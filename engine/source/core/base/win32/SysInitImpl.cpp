@@ -57,6 +57,7 @@
 #undef IID
 #endif
 #include "Platform.h"
+#include "kk4s_platform.h" // kk4s
 
 //---------------------------------------------------------------------------
 // global data
@@ -1253,6 +1254,16 @@ void TVPBeforeSystemInit()
 		TVPAddImportantLog( TVPFormatMessage(TVPInfoSelectedProjectDirectory, TVPProjectDir) );
 	}
 #endif
+	// kk4s: a game picked in the launcher wins over romfs / app folder
+	if (!kk4s::GameDir().empty())
+	{
+		std::string proj = kk4s::ResolveProjectDir(kk4s::GameDir());
+		chdir(kk4s::GameDir().c_str());
+		TVPProjectDirSelected = true;
+		TVPProjectDir = TVPNormalizeStorageName(ttstr(proj.c_str()));
+		TVPSetCurrentDirectory(TVPProjectDir);
+		return;
+	}
 	FILE* startup_file = fopen("romfs:/startup.tjs", "rb");
 	if (startup_file == NULL)
 	{

@@ -36,6 +36,7 @@
 #include <string> 
 #include <locale> 
 #include <switch.h>
+#include "kk4s_platform.h"
 
 
 class TVPWindowLayer;
@@ -804,25 +805,42 @@ bool sdlProcessEventsForFrames(int frames) {
 	for (int i = 0; i < frames; ++i) {
 		sdlProcessEvents();
 	}
+	return true; // kk4s: missing return was UB
 }
 
 u32 __nx_applet_exit_mode = 1;
 extern int __system_argc;
 extern char** __system_argv;
 
+// kk4s: copy a narrow string into a new wide string for _wargv
+static tjs_char* kk4sWiden(const char* s) {
+	ttstr w(s);
+	size_t len = w.length();
+	tjs_char* out = new tjs_char[len + 1];
+	memcpy(out, w.c_str(), sizeof(tjs_char) * len);
+	out[len] = TJS_W('\0');
+	return out;
+}
+
 int main(int argc, char **argv) {
-	_argc = __system_argc;
-	_wargv = new tjs_char*[__system_argc];
-
-	for (int i = 0; i < __system_argc; i += 1) {
-		const tjs_char* warg;
-		warg = ttstr(__system_argv[i]).c_str();
-
-		tjs_char* warg_copy = new tjs_char[strlen(__system_argv[i]) + 1];
-		warg_copy[strlen(__system_argv[i])] = TJS_W('\0');
-		memcpy(warg_copy, warg, sizeof(tjs_char) * (strlen(__system_argv[i])));
-		_wargv[i] = warg_copy;
+	// kk4s: platform init + game launcher before the engine starts
+	kk4s::Init();
+	std::string kk4sGameDir = kk4s::SelectGame();
+	if (kk4sGameDir.empty()) {
+		kk4s::Shutdown();
+		return 0;
 	}
+
+	_argc = __system_argc > 0 ? __system_argc : 1;
+	_wargv = new tjs_char*[_argc];
+	for (int i = 0; i < _argc; i += 1) {
+		_wargv[i] = kk4sWiden(i < __system_argc ? __system_argv[i] : "");
+	}
+	// kk4s: pretend the exe lives inside the game folder, like krkr.exe on
+	// Windows. System.exePath, patch.xp3 lookup and plugin paths then point
+	// at the game folder.
+	delete[] _wargv[0];
+	_wargv[0] = kk4sWiden((kk4sGameDir + "krkr.exe").c_str());
 
 	SDL_Init(SDL_INIT_EVERYTHING);
 	SDL_GameController *controller = NULL;
@@ -835,9 +853,7 @@ int main(int argc, char **argv) {
 	    }
 	}
 
-    romfsInit();
-    socketInitializeDefault();
-    nxlinkStdio();
+    // kk4s: romfs/socket/nxlink are initialized in kk4s::Init()
 
     SDL_SetHint("SDL_HINT_TOUCH_MOUSE_EVENTS", "0");
     SDL_SetHint("SDL_HINT_MOUSE_TOUCH_EVENTS", "0");
@@ -870,6 +886,7 @@ int main(int argc, char **argv) {
 #endif
 	}
 	SDL_Quit();
+	kk4s::Shutdown(); // kk4s
 	return 0;
 }
 
@@ -937,6 +954,8 @@ void TVPExitApplication(int code) {
 	SDL_DestroyWindow(window);
 	window = NULL;
 	SDL_Quit();
+	kk4s::Log("TVPExitApplication(%d)", code); // kk4s
+	kk4s::Shutdown(); // kk4s
 	exit(code);
 }
 
@@ -952,13 +971,13 @@ iWindowLayer *TVPCreateAndAddWindow(tTJSNI_Window *w) {
 }
 
 void TVPConsoleLog(const ttstr &l, bool important) {
-	fprintf(stderr, "%s", l.AsNarrowStdString().c_str());
+	kk4s::Log("%s", l.AsNarrowStdString().c_str()); // kk4s
 }
 
 namespace TJS {
 	static const int MAX_LOG_LENGTH = 16 * 1024;
 	void TVPConsoleLog(const tjs_char *l) {
-		fprintf(stderr, "%s", ttstr(l).AsNarrowStdString().c_str());
+		kk4s::Log("%s", ttstr(l).AsNarrowStdString().c_str()); // kk4s
 	}
 
 	void TVPConsoleLog(const tjs_nchar *format, ...) {
@@ -966,7 +985,7 @@ namespace TJS {
 		va_start(args, format);
 		char buf[MAX_LOG_LENGTH];
 		vsnprintf(buf, MAX_LOG_LENGTH - 3, format, args);
-		fprintf(stderr, "%s", buf);
+		kk4s::Log("%s", buf); // kk4s
 		va_end(args);
 	}
 }
