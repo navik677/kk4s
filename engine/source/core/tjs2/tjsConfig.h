@@ -13,6 +13,14 @@
 #ifndef tjsConfigH
 #define tjsConfigH
 
+// kk4s: system headers must not be pulled in inside namespace TJS (tjsTypes.h
+// includes them below); include them here first so their guards are set.
+#include <sys/types.h>
+#include <stdint.h>
+#include <stdarg.h>
+#include <time.h>
+#include <sys/time.h>
+
 namespace TJS
 {
 //---------------------------------------------------------------------------
