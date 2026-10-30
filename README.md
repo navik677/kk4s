@@ -19,6 +19,10 @@ Homebrew-рушій для Nintendo Switch, який запускає візуа
 
 Гра розпізнається, якщо в папці є `startup.tjs` або будь-який `*.xp3`. Project dir вибирається як у `krkr.exe`: `startup.tjs` → `data.xp3` → `data/`.
 
+## PC viewer
+
+Той самий рушій працює і на ПК (Linux, Windows — експериментально): `kk4s <папка гри>` або поклади ігри в `games/` поруч з exe. Деталі: [docs/pc-viewer.md](docs/pc-viewer.md).
+
 ## Збірка
 
 Локально інструменти не потрібні — кожен push у `main` збирається в GitHub Actions (контейнер `devkitpro/devkita64`), `.nro` + `.elf` з'являються в артефактах і в релізі `nightly`.
@@ -35,7 +39,9 @@ docker run --rm -v "$PWD":/src kk4s-build bash tools/build-switch.sh
 | Папка | Що там |
 |---|---|
 | `engine/` | Рушій [krkrs](https://github.com/uyjulian/krkrs) (uyjulian), майже без змін; наші правки позначені коментарем `kk4s:` |
-| `platform/switch/` | Код kk4s для Switch: лаунчер, логер, шляхи SD, пам'ять |
+| `platform/common/` | Спільне: логер, пошук ігор, вибір project dir |
+| `platform/switch/` | Switch (libnx): консольний лаунчер, nxlink, пам'ять |
+| `platform/desktop/` | PC viewer (Linux / Windows) |
 | `profiles/` | Профілі ігор (JSON) — фікси без зміни файлів гри |
 | `docs/` | План, дебаг, чекліст тестів на залізі, схема профілів |
 | `tools/` | Скрипт збірки, розбір краш-репортів |

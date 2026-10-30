@@ -35,7 +35,9 @@
 
 #include <string> 
 #include <locale> 
+#ifdef __SWITCH__
 #include <switch.h>
+#endif
 #include "kk4s_platform.h"
 
 
@@ -808,10 +810,6 @@ bool sdlProcessEventsForFrames(int frames) {
 	return true; // kk4s: missing return was UB
 }
 
-u32 __nx_applet_exit_mode = 1;
-extern int __system_argc;
-extern char** __system_argv;
-
 // kk4s: copy a narrow string into a new wide string for _wargv
 static tjs_char* kk4sWiden(const char* s) {
 	ttstr w(s);
@@ -824,17 +822,19 @@ static tjs_char* kk4sWiden(const char* s) {
 
 int main(int argc, char **argv) {
 	// kk4s: platform init + game launcher before the engine starts
-	kk4s::Init();
+	kk4s::Init(argc, argv);
 	std::string kk4sGameDir = kk4s::SelectGame();
 	if (kk4sGameDir.empty()) {
 		kk4s::Shutdown();
 		return 0;
 	}
 
-	_argc = __system_argc > 0 ? __system_argc : 1;
+	int kk4sArgc = kk4s::EngineArgc();
+	char** kk4sArgv = kk4s::EngineArgv();
+	_argc = kk4sArgc > 0 ? kk4sArgc : 1;
 	_wargv = new tjs_char*[_argc];
 	for (int i = 0; i < _argc; i += 1) {
-		_wargv[i] = kk4sWiden(i < __system_argc ? __system_argv[i] : "");
+		_wargv[i] = kk4sWiden(i < kk4sArgc ? kk4sArgv[i] : "");
 	}
 	// kk4s: pretend the exe lives inside the game folder, like krkr.exe on
 	// Windows. System.exePath, patch.xp3 lookup and plugin paths then point
@@ -858,8 +858,12 @@ int main(int argc, char **argv) {
     SDL_SetHint("SDL_HINT_TOUCH_MOUSE_EVENTS", "0");
     SDL_SetHint("SDL_HINT_MOUSE_TOUCH_EVENTS", "0");
 
-	window = SDL_CreateWindow("Kirikiri for Switch", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1920, 1080, 0);
-	renderer = SDL_CreateRenderer(window, 0, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+	// kk4s: window size/flags come from the platform layer
+	int kk4sW = 1920, kk4sH = 1080;
+	unsigned kk4sFlags = 0;
+	kk4s::WindowConfig(kk4sW, kk4sH, kk4sFlags);
+	window = SDL_CreateWindow("kk4s", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, kk4sW, kk4sH, kk4sFlags);
+	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
 	::Application = new tTVPApplication();
 	::Application->StartApplication( _argc, _wargv );

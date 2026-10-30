@@ -1,8 +1,13 @@
-# kk4s - Kirikiri for Nintendo Switch
-# Engine: krkrs by uyjulian (engine/), Switch layer: platform/switch/
+# kk4s - Kirikiri for Nintendo Switch (+ PC viewer)
+# Engine: krkrs by uyjulian (engine/), platform layers: platform/
+#   Switch:  aarch64-none-elf-cmake -S . -B build-switch          (or tools/build-switch.sh)
+#   PC:      cmake -S . -B build-desktop -DKK4S_PLATFORM=desktop  (or tools/build-desktop.sh)
 cmake_minimum_required(VERSION 3.13)
 
-if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+set(KK4S_PLATFORM "switch" CACHE STRING "Target platform: switch or desktop")
+set_property(CACHE KK4S_PLATFORM PROPERTY STRINGS switch desktop)
+
+if(KK4S_PLATFORM STREQUAL "switch" AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     if(DEFINED ENV{DEVKITPRO})
         set(CMAKE_TOOLCHAIN_FILE "$ENV{DEVKITPRO}/cmake/Switch.cmake" CACHE PATH "toolchain file")
     else()
@@ -14,6 +19,12 @@ project(kk4s C CXX)
 
 if(NOT DEVKITPRO)
     set(DEVKITPRO $ENV{DEVKITPRO})
+endif()
+
+option(KK4S_ASAN "desktop: build with AddressSanitizer + UBSan" OFF)
+if(KK4S_PLATFORM STREQUAL "desktop" AND KK4S_ASAN)
+    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=address,undefined)
 endif()
 
 set(KK4S_VERSION "0.0.1")
@@ -76,7 +87,7 @@ set(OPTIMIZATION_FLAGS
 )
 
 set(INCLUDES
-    platform/switch
+    platform/common
     engine/source
     engine/source/core
     engine/source/core/base
@@ -105,7 +116,8 @@ set(INCLUDES
 )
 
 set(SOURCES
-    platform/switch/kk4s_platform.cpp
+    platform/common/kk4s_common.cpp
+    platform/${KK4S_PLATFORM}/kk4s_platform.cpp
     engine/source/core/base/BinaryStream.cpp
     engine/source/core/base/CharacterSet.cpp
     engine/source/core/base/EventIntf.cpp
@@ -267,44 +279,33 @@ set(SOURCES
     engine/source/plugins/wutcwf.cpp
 )
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(FREETYPE2 REQUIRED IMPORTED_TARGET freetype2)
-pkg_check_modules(LIBAVCODEC REQUIRED IMPORTED_TARGET libavcodec)
-pkg_check_modules(LIBAVFILTER REQUIRED IMPORTED_TARGET libavfilter)
-pkg_check_modules(LIBAVFORMAT REQUIRED IMPORTED_TARGET libavformat)
-pkg_check_modules(LIBAVUTIL REQUIRED IMPORTED_TARGET libavutil)
-pkg_check_modules(LIBPNG REQUIRED IMPORTED_TARGET libpng)
-pkg_check_modules(LIBSWSCALE REQUIRED IMPORTED_TARGET libswscale)
-pkg_check_modules(LIBTURBOJPEG REQUIRED IMPORTED_TARGET libturbojpeg)
-pkg_check_modules(LIBWEBP REQUIRED IMPORTED_TARGET libwebp)
-pkg_check_modules(OGG REQUIRED IMPORTED_TARGET ogg)
-pkg_check_modules(ONIGURUMA REQUIRED IMPORTED_TARGET oniguruma)
-pkg_check_modules(OPUS REQUIRED IMPORTED_TARGET opus)
-pkg_check_modules(OPUSFILE REQUIRED IMPORTED_TARGET opusfile)
-pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
-pkg_check_modules(VORBIS REQUIRED IMPORTED_TARGET vorbis)
-pkg_check_modules(VORBISFILE REQUIRED IMPORTED_TARGET vorbisfile)
-pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
+set(KK4S_PKG_MODULES
+    freetype2 libavcodec libavfilter libavformat libavutil libswscale
+    libpng libturbojpeg libwebp ogg vorbis vorbisfile opus opusfile
+    oniguruma sdl2 zlib
+)
+pkg_check_modules(KK4S_DEPS REQUIRED ${KK4S_PKG_MODULES})
 
 add_executable(${PROJECT_NAME} ${SOURCES})
-target_link_libraries(${PROJECT_NAME}
-    PkgConfig::FREETYPE2
-    PkgConfig::LIBAVCODEC
-    PkgConfig::LIBAVFILTER
-    PkgConfig::LIBAVFORMAT
-    PkgConfig::LIBAVUTIL
-    PkgConfig::LIBPNG
-    PkgConfig::LIBSWSCALE
-    PkgConfig::LIBTURBOJPEG
-    PkgConfig::LIBWEBP
-    PkgConfig::OGG
-    PkgConfig::ONIGURUMA
-    PkgConfig::OPUS
-    PkgConfig::OPUSFILE
-    PkgConfig::SDL2
-    PkgConfig::VORBIS
-    PkgConfig::VORBISFILE
-    PkgConfig::ZLIB
-)
+
+if(KK4S_PLATFORM STREQUAL "switch")
+    # Everything is a static portlib: use the --static flags and a link group
+    # (freetype <-> harfbuzz and ffmpeg libraries depend on each other).
+    target_include_directories(${PROJECT_NAME} PRIVATE ${KK4S_DEPS_STATIC_INCLUDE_DIRS})
+    target_compile_options(${PROJECT_NAME} PRIVATE ${KK4S_DEPS_STATIC_CFLAGS_OTHER})
+    target_link_directories(${PROJECT_NAME} PRIVATE ${KK4S_DEPS_STATIC_LIBRARY_DIRS})
+    target_link_libraries(${PROJECT_NAME}
+        -Wl,--start-group ${KK4S_DEPS_STATIC_LIBRARIES} -Wl,--end-group
+        ${KK4S_DEPS_STATIC_LDFLAGS_OTHER}
+    )
+else()
+    target_include_directories(${PROJECT_NAME} PRIVATE ${KK4S_DEPS_INCLUDE_DIRS})
+    target_compile_options(${PROJECT_NAME} PRIVATE ${KK4S_DEPS_CFLAGS_OTHER})
+    target_link_directories(${PROJECT_NAME} PRIVATE ${KK4S_DEPS_LIBRARY_DIRS})
+    target_link_libraries(${PROJECT_NAME} ${KK4S_DEPS_LIBRARIES} ${KK4S_DEPS_LDFLAGS_OTHER})
+    find_package(Threads REQUIRED)
+    target_link_libraries(${PROJECT_NAME} Threads::Threads)
+endif()
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${INCLUDES})
 target_compile_options(${PROJECT_NAME} PUBLIC $<$<COMPILE_LANGUAGE:C>:${C_FLAGS}>)
@@ -313,6 +314,15 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE KK4S_VERSION="${KK4S_VERSION}
 target_compile_options(${PROJECT_NAME} PUBLIC $<$<COMPILE_LANGUAGE:CXX>:${CXX_FLAGS}>)
 target_compile_options(${PROJECT_NAME} PUBLIC $<$<CONFIG:RELEASE>:${OPTIMIZATION_FLAGS}>)
 target_compile_options(${PROJECT_NAME} PUBLIC $<$<CONFIG:RELWITHDEBINFO>:${OPTIMIZATION_FLAGS}>)
+
+if(KK4S_PLATFORM STREQUAL "desktop")
+    # PC viewer: plain executable, no packaging
+    set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME kk4s)
+    if(WIN32)
+        target_link_options(${PROJECT_NAME} PRIVATE -static-libgcc -static-libstdc++)
+    endif()
+    return()
+endif()
 
 # --- .nro packaging (keeps the .elf next to it for crash analysis) ---
 set(KK4S_ICON ${CMAKE_SOURCE_DIR}/platform/switch/icon.jpg)

@@ -1,0 +1,85 @@
+name: desktop
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build PC viewer (Linux, ASan + UBSan)
+        shell: bash
+        run: |
+          set -o pipefail
+          DEPS=1 ASAN=1 bash tools/build-desktop.sh 2>&1 | tee build.log
+      - name: Report build errors
+        if: failure()
+        run: bash tools/ci-report.sh build.log
+      - name: Smoke test (hello game, headless)
+        if: success()
+        shell: bash
+        run: |
+          export SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy KK4S_ROOT="$PWD/run-data"
+          export ASAN_OPTIONS=detect_leaks=0
+          timeout 10s ./out-desktop/kk4s tests/tjs/hello > smoke.log 2>&1 || code=$?
+          cat smoke.log
+          # 124 = still running after 10s (good: main loop alive)
+          if [ "${code:-0}" != "124" ] && [ "${code:-0}" != "0" ]; then
+            echo "::error title=smoke test::$(tail -40 smoke.log | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kk4s-linux-${{ github.sha }}
+          path: |
+            out-desktop/kk4s
+            build.log
+            smoke.log
+          if-no-files-found: warn
+
+  windows:
+    runs-on: windows-latest
+    continue-on-error: true   # experimental: engine has many MSVC-only branches
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: git
+      - name: Build PC viewer (Windows)
+        run: |
+          set -o pipefail
+          DEPS=1 bash tools/build-desktop.sh 2>&1 | tee build.log
+      - name: Report build errors
+        if: failure()
+        run: bash tools/ci-report.sh build.log
+      - name: Bundle DLLs
+        if: success()
+        run: |
+          mkdir -p dist && cp out-desktop/kk4s.exe dist/
+          ldd dist/kk4s.exe | grep -i ucrt64 | awk '{print $3}' | xargs -r -I{} cp {} dist/
+          mkdir -p dist/games && echo "Put game folders here" > dist/games/README.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kk4s-windows-${{ github.sha }}
+          path: |
+            dist/
+            build.log
+          if-no-files-found: warn

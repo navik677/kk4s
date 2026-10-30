@@ -19,3 +19,7 @@ kirikiri-switch-prompt.md
 # never commit game files
 tests/games/
 *.xp3
+out-desktop/
+run-data/
+dist/
+smoke.log
