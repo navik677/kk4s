@@ -23,3 +23,5 @@ out-desktop/
 run-data/
 dist/
 smoke.log
+game/
+games/

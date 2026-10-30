@@ -281,7 +281,7 @@ set(SOURCES
 find_package(PkgConfig REQUIRED)
 set(KK4S_PKG_MODULES
     freetype2 libavcodec libavfilter libavformat libavutil libswscale
-    libpng libturbojpeg libwebp ogg vorbis vorbisfile opus opusfile
+    libpng libjpeg libturbojpeg libwebp ogg vorbis vorbisfile opus opusfile
     oniguruma sdl2 zlib
 )
 pkg_check_modules(KK4S_DEPS REQUIRED ${KK4S_PKG_MODULES})

@@ -35,3 +35,15 @@ bool TVP_stat(const tjs_char *name, tTVP_stat &s);
 bool TVP_stat(const char *name, tTVP_stat &s);
 
 void TVPGetLocalFileListAt(const ttstr &name, const std::function<void(const ttstr&, tTVPLocalFileInfo*)>& cb);
+
+// kk4s: dirent::d_type is missing on MinGW and can be DT_UNKNOWN on some
+// file systems; fall back to stat() in those cases.
+#include <sys/stat.h>
+inline bool kk4sIsRegularFile(const std::string &dir, const struct dirent *e) {
+#if defined(DT_REG) && defined(DT_UNKNOWN)
+	if (e->d_type != DT_UNKNOWN) return e->d_type == DT_REG;
+#endif
+	struct stat st;
+	std::string full = dir + "/" + e->d_name;
+	return stat(full.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+}

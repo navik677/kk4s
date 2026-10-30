@@ -12,7 +12,7 @@ void TVPGetLocalFileListAt(const ttstr &name, const std::function<void(const tts
 		{
 			while ((direntp = readdir(dirp)) != NULL)
 			{
-				if( direntp->d_type == DT_REG ) {
+				if( kk4sIsRegularFile(nname, direntp) ) { // kk4s
 					std::string fullpath = nname + "/" + direntp->d_name;
 					if (!TVP_stat(fullpath.c_str(), stat_buf))
 						continue;

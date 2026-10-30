@@ -21,6 +21,7 @@
 #include "Random.h"
 
 #include "Application.h"
+#include "GetLocalFileListAt.h" // kk4s: kk4sIsRegularFile
 #include "StringUtil.h"
 #include "FilePathUtil.h"
 #include "TickCount.h"
@@ -126,7 +127,7 @@ void TJS_INTF_METHOD tTVPFileMedia::GetListAt(const ttstr &_name, iTVPStorageLis
 		if( ( dr = opendir(nname.c_str()) ) != nullptr ) {
 			struct dirent* entry;
 			while( ( entry = readdir( dr ) ) != nullptr ) {
-				if( entry->d_type == DT_REG ) {
+				if( kk4sIsRegularFile(nname, entry) ) { // kk4s
 					tjs_char fname[256];
 					tjs_int count = TVPUtf8ToWideCharString( entry->d_name, fname );
 					fname[count] = TJS_W('\0');
