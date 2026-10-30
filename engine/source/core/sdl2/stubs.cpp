@@ -272,7 +272,7 @@ public:
 		// right = tjs_int64(right) * ActualZoomNumer / ActualZoomDenom;
 		// bottom = tjs_int64(bottom) * ActualZoomNumer / ActualZoomDenom;
 		if (_currentWindowLayer != this) {
-			if (_currentWindowLayer) {
+			if (_currentWindowLayer && _currentWindowLayer->TJSNativeInstance) { // kk4s: null once closed
 				// const Size &size = _currentWindowLayer->getViewSize();
 				// _currentWindowLayer->setPosition(Vec2(size.width, 0));
 				_currentWindowLayer->TJSNativeInstance->OnReleaseCapture();
@@ -649,7 +649,11 @@ public:
 		static unsigned prev = 0;
 		unsigned held;
 		if (!kk4s::ReadPad(held)) return;
-		if (!window || !hasDrawn || !TJSNativeInstance->CanDeliverEvents()) { prev = held; return; }
+		// A closed window (e.g. the save dialog) has no TJS instance until it is deleted.
+		if (isBeingDeleted || !window || !hasDrawn || !TJSNativeInstance || !TJSNativeInstance->CanDeliverEvents()) {
+			prev = held;
+			return;
+		}
 		unsigned changed = held ^ prev;
 		prev = held;
 		for (unsigned bit = 1; changed && bit <= kk4s::kPadDown; bit <<= 1)
@@ -721,7 +725,7 @@ public:
 			}
 		}
 		if (window && hasDrawn) {
-			if (TJSNativeInstance->CanDeliverEvents()) {
+			if (TJSNativeInstance && TJSNativeInstance->CanDeliverEvents()) { // kk4s: null once the window is closed
 				switch (event.type) { 
 					// kk4s: touch = left mouse button; each case used to fall through
 					// into the next, so one tap clicked twice

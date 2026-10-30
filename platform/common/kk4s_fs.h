@@ -22,7 +22,10 @@ inline bool kk4sIsRegularFile(const std::string &dir, const struct dirent *e) {
 // The engine lower-cases ASCII letters in storage names (a Windows habit), so
 // on a case-sensitive file system "Override2.tjs" is looked up as
 // "override2.tjs". When the exact path does not exist, match each missing
-// component case-insensitively against its directory. Unchanged if not found.
+// component case-insensitively against its directory. Components that do not
+// exist at all are kept as given, after the real spelling of the existing
+// part, so creating "savedata/" lands inside the real game folder (not in a
+// new lower-cased copy of the whole path).
 inline std::string kk4sResolveCase(const std::string &path) {
 	struct stat st;
 	if (path.empty() || stat(path.c_str(), &st) == 0) return path;
@@ -48,7 +51,7 @@ inline std::string kk4sResolveCase(const std::string &path) {
 					}
 					closedir(d);
 				}
-				if (!found) return path;
+				if (!found) return out + path.substr(pos);
 			}
 			out = cand;
 			if (end < path.size()) out += '/';
