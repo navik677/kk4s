@@ -21,7 +21,7 @@
 #include "Random.h"
 
 #include "Application.h"
-#include "GetLocalFileListAt.h" // kk4s: kk4sIsRegularFile
+#include "kk4s_fs.h" // kk4s
 #include "StringUtil.h"
 #include "FilePathUtil.h"
 #include "TickCount.h"
