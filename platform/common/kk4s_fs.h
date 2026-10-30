@@ -17,6 +17,10 @@ inline bool kk4sIsRegularFile(const std::string &dir, const struct dirent *e) {
 }
 
 #ifdef _WIN32
+#include <direct.h>
+// MinGW mkdir() takes no mode argument.
+inline int mkdir(const char *path, int) { return _mkdir(path); }
+
 // MinGW has no realpath(); _fullpath() does the same (malloc'd result when buf is NULL).
 inline char *realpath(const char *path, char *resolved) {
 	char *r = _fullpath(resolved, path, 4096);
