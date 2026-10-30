@@ -39,17 +39,25 @@ static std::string g_game_dir;
 // ---------------------------------------------------------------------------
 // logging
 
+// Every line is flushed to the OS, but fsync (slow on the Switch SD card:
+// syncing every line froze games that log each scenario tag) runs at most
+// every 2 seconds. Shutdown closes the file, which syncs the rest.
 void LogRaw(const char* text) {
     if (!text) return;
     fputs(text, stderr);
     if (g_log) {
         fputs(text, g_log);
         fflush(g_log);
+        static time_t last_sync = 0;
+        time_t now = time(nullptr);
+        if (now - last_sync >= 2) {
+            last_sync = now;
 #ifdef _WIN32
-        _commit(_fileno(g_log));
+            _commit(_fileno(g_log));
 #else
-        fsync(fileno(g_log));
+            fsync(fileno(g_log));
 #endif
+        }
     }
 }
 

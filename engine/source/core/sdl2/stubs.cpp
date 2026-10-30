@@ -61,6 +61,49 @@ static TVPWindowLayer *_lastWindowLayer, *_currentWindowLayer;
 bool sdlProcessEvents();
 bool sdlProcessEventsForFrames(int frames);
 
+// kk4s: input. KAG scripts expect Windows virtual-key codes (VK_*), SDL gives
+// its own keycodes (they only match for Enter/Esc/Space). kk4sKeyState backs
+// System.getKeyState(), which KAG polls for "skip while Ctrl is held".
+static tjs_uint8 kk4sKeyState[256]; // bit 0: down now, bit 4: went down since last query
+static void kk4sSetKeyState(tjs_uint vk, bool down) {
+	if (vk >= 256) return;
+	if (down) kk4sKeyState[vk] |= 0x11;
+	else kk4sKeyState[vk] &= ~0x01;
+}
+static tjs_uint32 kk4sShiftState() {
+	tjs_uint32 s = 0;
+	if (kk4sKeyState[VK_SHIFT] & 1) s |= TVP_SS_SHIFT;
+	if (kk4sKeyState[VK_CONTROL] & 1) s |= TVP_SS_CTRL;
+	if (kk4sKeyState[VK_MENU] & 1) s |= TVP_SS_ALT;
+	return s;
+}
+static tjs_uint kk4sSdlKeyToVK(SDL_Keycode k) {
+	if (k >= SDLK_a && k <= SDLK_z) return 0x41 + (k - SDLK_a); // VK_A..VK_Z
+	if (k >= SDLK_0 && k <= SDLK_9) return 0x30 + (k - SDLK_0); // VK_0..VK_9
+	if (k >= SDLK_F1 && k <= SDLK_F12) return VK_F1 + (k - SDLK_F1);
+	switch (k) {
+		case SDLK_RETURN: case SDLK_KP_ENTER: return VK_RETURN;
+		case SDLK_ESCAPE: return VK_ESCAPE;
+		case SDLK_SPACE: return VK_SPACE;
+		case SDLK_TAB: return VK_TAB;
+		case SDLK_BACKSPACE: return VK_BACK;
+		case SDLK_LEFT: return VK_LEFT;
+		case SDLK_UP: return VK_UP;
+		case SDLK_RIGHT: return VK_RIGHT;
+		case SDLK_DOWN: return VK_DOWN;
+		case SDLK_PAGEUP: return VK_PRIOR;
+		case SDLK_PAGEDOWN: return VK_NEXT;
+		case SDLK_HOME: return VK_HOME;
+		case SDLK_END: return VK_END;
+		case SDLK_INSERT: return VK_INSERT;
+		case SDLK_DELETE: return VK_DELETE;
+		case SDLK_LSHIFT: case SDLK_RSHIFT: return VK_SHIFT;
+		case SDLK_LCTRL: case SDLK_RCTRL: return VK_CONTROL;
+		case SDLK_LALT: case SDLK_RALT: return VK_MENU;
+	}
+	return 0;
+}
+
 #include <iostream>
 
 SDL_Window *window;
@@ -557,6 +600,84 @@ public:
 	}
 	Sint32 mouseLastX = 0;
 	Sint32 mouseLastY = 0;
+
+	// kk4s: key / mouse button events from keyboard and gamepad
+	void kk4sPostKey(tjs_uint vk, bool down) {
+		if (vk == 0 || vk >= 256) return;
+		bool was = kk4sKeyState[vk] & 1;
+		kk4sSetKeyState(vk, down);
+		if (down)
+			TVPPostInputEvent(new tTVPOnKeyDownInputEvent(TJSNativeInstance, vk, kk4sShiftState() | (was ? TVP_SS_REPEAT : 0)));
+		else if (was)
+			TVPPostInputEvent(new tTVPOnKeyUpInputEvent(TJSNativeInstance, vk, kk4sShiftState()));
+	}
+	void kk4sPostMouseButton(tTVPMouseButton btn, bool down) {
+		if (down) {
+			TVPPostInputEvent(new tTVPOnMouseDownInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, btn, 0));
+		} else {
+			TVPPostInputEvent(new tTVPOnClickInputEvent(TJSNativeInstance, mouseLastX, mouseLastY));
+			TVPPostInputEvent(new tTVPOnMouseUpInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, btn, 0));
+		}
+	}
+	// Gamepad layout (Switch labels; same positions on PC pads):
+	//   A = Enter (next / OK)         B = right click (menu / cancel / hide text)
+	//   X, ZR = Ctrl held (skip)      Y = Space
+	//   L = Page Up (backlog)         R = Page Down
+	//   ZL = Shift                    + = Esc, - = Tab
+	//   D-pad, left stick = arrows (move between buttons)
+	void kk4sPadButton(int b, bool down) {
+		switch (b) {
+			case SDL_CONTROLLER_BUTTON_A: kk4sPostKey(VK_RETURN, down); break;
+			case SDL_CONTROLLER_BUTTON_B: kk4sPostMouseButton(tTVPMouseButton::mbRight, down); break;
+			case SDL_CONTROLLER_BUTTON_X: kk4sPostKey(VK_CONTROL, down); break;
+			case SDL_CONTROLLER_BUTTON_Y: kk4sPostKey(VK_SPACE, down); break;
+			case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: kk4sPostKey(VK_PRIOR, down); break;
+			case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: kk4sPostKey(VK_NEXT, down); break;
+			case SDL_CONTROLLER_BUTTON_START: kk4sPostKey(VK_ESCAPE, down); break;
+			case SDL_CONTROLLER_BUTTON_BACK: kk4sPostKey(VK_TAB, down); break;
+			case SDL_CONTROLLER_BUTTON_DPAD_LEFT: kk4sPostKey(VK_LEFT, down); break;
+			case SDL_CONTROLLER_BUTTON_DPAD_UP: kk4sPostKey(VK_UP, down); break;
+			case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: kk4sPostKey(VK_RIGHT, down); break;
+			case SDL_CONTROLLER_BUTTON_DPAD_DOWN: kk4sPostKey(VK_DOWN, down); break;
+		}
+	}
+	// Analog input -> keys, with hysteresis so a resting stick does not chatter.
+	void kk4sAxisKey(Sint16 value, tjs_uint negKey, tjs_uint posKey) {
+		const int press = 20000, release = 12000;
+		bool negDown = kk4sKeyState[negKey] & 1, posDown = posKey ? (kk4sKeyState[posKey] & 1) : false;
+		if (negKey) {
+			if (!negDown && value <= -press) kk4sPostKey(negKey, true);
+			else if (negDown && value > -release) kk4sPostKey(negKey, false);
+		}
+		if (posKey) {
+			if (!posDown && value >= press) kk4sPostKey(posKey, true);
+			else if (posDown && value < release) kk4sPostKey(posKey, false);
+		}
+	}
+	void kk4sPadAxis(int axis, Sint16 value) {
+		switch (axis) {
+			case SDL_CONTROLLER_AXIS_LEFTX: kk4sAxisKey(value, VK_LEFT, VK_RIGHT); break;
+			case SDL_CONTROLLER_AXIS_LEFTY: kk4sAxisKey(value, VK_UP, VK_DOWN); break;
+			case SDL_CONTROLLER_AXIS_TRIGGERLEFT: kk4sAxisKey(value, 0, VK_SHIFT); break;
+			case SDL_CONTROLLER_AXIS_TRIGGERRIGHT: kk4sAxisKey(value, 0, VK_CONTROL); break;
+		}
+	}
+#ifdef __SWITCH__
+	// Raw joystick fallback (no game controller mapping): libnx SDL button order.
+	void kk4sSwitchJoyButton(int b, bool down) {
+		static const int map[] = {
+			SDL_CONTROLLER_BUTTON_A, SDL_CONTROLLER_BUTTON_B, SDL_CONTROLLER_BUTTON_X, SDL_CONTROLLER_BUTTON_Y,
+			-1, -1, SDL_CONTROLLER_BUTTON_LEFTSHOULDER, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
+			-2, -3, SDL_CONTROLLER_BUTTON_START, SDL_CONTROLLER_BUTTON_BACK,
+			SDL_CONTROLLER_BUTTON_DPAD_LEFT, SDL_CONTROLLER_BUTTON_DPAD_UP,
+			SDL_CONTROLLER_BUTTON_DPAD_RIGHT, SDL_CONTROLLER_BUTTON_DPAD_DOWN };
+		if (b < 0 || b >= (int)(sizeof(map) / sizeof(map[0]))) return;
+		if (map[b] == -2) kk4sPostKey(VK_SHIFT, down);        // ZL
+		else if (map[b] == -3) kk4sPostKey(VK_CONTROL, down); // ZR
+		else if (map[b] >= 0) kk4sPadButton(map[b], down);
+	}
+#endif
+
 	void sdlRecvEvent(SDL_Event event) {
 		if (isBeingDeleted) {
 			delete this;
@@ -603,27 +724,27 @@ public:
 		if (window && hasDrawn) {
 			if (TJSNativeInstance->CanDeliverEvents()) {
 				switch (event.type) { 
+					// kk4s: touch = left mouse button; each case used to fall through
+					// into the next, so one tap clicked twice
 					case SDL_FINGERDOWN: {
-						//int w, h;
-						//SDL_GetWindowSize(window, &w, &h);
 						mouseLastX = curWindowW * event.tfinger.x;
 						mouseLastY = curWindowH * event.tfinger.y;
-						TVPPostInputEvent(new tTVPOnMouseDownInputEvent(TJSNativeInstance, curWindowW * event.tfinger.x, curWindowH * event.tfinger.y, tTVPMouseButton::mbLeft, 0));
+						TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, 0));
+						TVPPostInputEvent(new tTVPOnMouseDownInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, tTVPMouseButton::mbLeft, 0));
+						break;
 					}
 					case SDL_FINGERUP: {
-						//int w, h;
-						//SDL_GetWindowSize(window, &w, &h);
 						mouseLastX = curWindowW * event.tfinger.x;
 						mouseLastY = curWindowH * event.tfinger.y;
-						TVPPostInputEvent(new tTVPOnClickInputEvent(TJSNativeInstance, curWindowW * event.tfinger.x, curWindowH * event.tfinger.y));
-						TVPPostInputEvent(new tTVPOnMouseUpInputEvent(TJSNativeInstance, curWindowW * event.tfinger.x, curWindowH * event.tfinger.y, tTVPMouseButton::mbLeft, 0));
+						TVPPostInputEvent(new tTVPOnClickInputEvent(TJSNativeInstance, mouseLastX, mouseLastY));
+						TVPPostInputEvent(new tTVPOnMouseUpInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, tTVPMouseButton::mbLeft, 0));
+						break;
 					}
 					case SDL_FINGERMOTION: {
-						//int w, h;
-						//SDL_GetWindowSize(window, &w, &h);
 						mouseLastX = curWindowW * event.tfinger.x;
 						mouseLastY = curWindowH * event.tfinger.y;
-						TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, curWindowW * event.tfinger.x, curWindowH * event.tfinger.y, 0));
+						TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, 0));
+						break;
 					}
 					case SDL_MOUSEMOTION: {
 						mouseLastX = event.motion.x;
@@ -680,89 +801,28 @@ public:
 						}
 						break;
 					}
-					case SDL_KEYDOWN: {
-						TVPPostInputEvent(new tTVPOnKeyDownInputEvent(TJSNativeInstance, event.key.keysym.sym, 0));
+					case SDL_KEYDOWN:
+					case SDL_KEYUP: { // kk4s: SDL keycode -> VK
+						kk4sPostKey(kk4sSdlKeyToVK(event.key.keysym.sym), event.type == SDL_KEYDOWN);
 						break;
 					}
-					case SDL_KEYUP: {
-						TVPPostInputEvent(new tTVPOnKeyUpInputEvent(TJSNativeInstance, event.key.keysym.sym, 0));
+					case SDL_CONTROLLERBUTTONDOWN:
+					case SDL_CONTROLLERBUTTONUP: { // kk4s: gamepad
+						kk4sPadButton(event.cbutton.button, event.type == SDL_CONTROLLERBUTTONDOWN);
 						break;
 					}
+					case SDL_CONTROLLERAXISMOTION: {
+						kk4sPadAxis(event.caxis.axis, event.caxis.value);
+						break;
+					}
+#ifdef __SWITCH__
 					case SDL_JOYBUTTONDOWN:
-					case SDL_JOYBUTTONUP: { //
-						SDL_Keycode ssym = SDLK_UNKNOWN;
-						switch(event.jbutton.button) {
-							case 0: //A
-								ssym = SDLK_RETURN;
-								break;
-							case 1: //B
-								ssym = SDLK_ESCAPE;
-								break;
-							case 2: //X
-								ssym = SDLK_LCTRL;
-								break;
-							case 3: //Y
-								ssym = SDLK_QUOTE;
-								break;
-							//skip 4
-							case 6: //L
-								ssym = SDLK_SPACE;
-								break;
-							case 7: //R
-								ssym = SDLK_LSHIFT;
-								break;
-							case 8: //ZL
-								if (event.jbutton.type == SDL_JOYBUTTONDOWN)
-									TVPPostInputEvent(new tTVPOnMouseDownInputEvent(TJSNativeInstance, 0, 0, tTVPMouseButton::mbLeft, 0));
-								else {
-									TVPPostInputEvent(new tTVPOnClickInputEvent(TJSNativeInstance, 0, 0));
-									TVPPostInputEvent(new tTVPOnMouseUpInputEvent(TJSNativeInstance, 0, 0, tTVPMouseButton::mbLeft, 0));
-								}
-								return;
-							case 9: //ZR
-								if (event.jbutton.type == SDL_JOYBUTTONDOWN)
-									TVPPostInputEvent(new tTVPOnMouseDownInputEvent(TJSNativeInstance, 0, 0, tTVPMouseButton::mbRight, 0));
-								else {
-									TVPPostInputEvent(new tTVPOnClickInputEvent(TJSNativeInstance, 0, 0));
-									TVPPostInputEvent(new tTVPOnMouseUpInputEvent(TJSNativeInstance, 0, 0, tTVPMouseButton::mbRight, 0));
-								}
-								return;
-							case 10: //PLUS
-								if (event.jbutton.type == SDL_JOYBUTTONDOWN)
-									TVPPostInputEvent(new tTVPOnMouseDownInputEvent(TJSNativeInstance, 0, 0, tTVPMouseButton::mbRight, 0));
-								else {
-									TVPPostInputEvent(new tTVPOnClickInputEvent(TJSNativeInstance, 0, 0));
-									TVPPostInputEvent(new tTVPOnMouseUpInputEvent(TJSNativeInstance, 0, 0, tTVPMouseButton::mbRight, 0));
-								}
-								return;
-							case 11: //MINUS
-								ssym = SDLK_TAB;
-								break;
-							case 12: //LEFT
-								ssym = SDLK_LEFT;
-								break;
-							case 13: //UP
-								ssym = SDLK_UP;
-								break;
-							case 14: //RIGHT
-								ssym = SDLK_RIGHT;
-								break;
-							case 15: //DOWN
-								ssym = SDLK_DOWN;
-								break;
-							//skip 16-18
-							default:
-								ssym = SDLK_UNKNOWN;
-								break;
-						}
-						if (ssym != SDLK_UNKNOWN) {
-							if (event.jbutton.type == SDL_JOYBUTTONDOWN)
-								TVPPostInputEvent(new tTVPOnKeyDownInputEvent(TJSNativeInstance, ssym, 0));
-							else
-								TVPPostInputEvent(new tTVPOnKeyUpInputEvent(TJSNativeInstance, ssym, 0));
-						}
+					case SDL_JOYBUTTONUP: { // kk4s: only pads without a game controller mapping
+						if (!SDL_GameControllerFromInstanceID(event.jbutton.which))
+							kk4sSwitchJoyButton(event.jbutton.button, event.type == SDL_JOYBUTTONDOWN);
 						break;
 					}
+#endif
 					case SDL_MOUSEWHEEL: {
 						TVPPostInputEvent(new tTVPOnMouseWheelInputEvent(TJSNativeInstance, 0, event.wheel.y, mouseLastX, mouseLastY));
 						break;
@@ -792,15 +852,31 @@ public:
 //TODO: Rendering: On every frame copy from GetAdapterTexture
 //TODO: Startup game at path ::Application->StartApplication(path);
 
+// kk4s: open gamepads as they appear (SDL also reports the ones present at start)
+static void kk4sOpenInputDevice(const SDL_Event& event) {
+	if (event.type == SDL_CONTROLLERDEVICEADDED) {
+		if (SDL_GameControllerOpen(event.cdevice.which))
+			kk4s::Log("input: controller '%s'", SDL_GameControllerNameForIndex(event.cdevice.which));
+	} else if (event.type == SDL_JOYDEVICEADDED && !SDL_IsGameController(event.jdevice.which)) {
+		if (SDL_JoystickOpen(event.jdevice.which))
+			kk4s::Log("input: joystick '%s' (no controller mapping)", SDL_JoystickNameForIndex(event.jdevice.which));
+	}
+}
+
 bool sdlProcessEvents() {
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
+		kk4sOpenInputDevice(event); // kk4s
 		if (_currentWindowLayer) {
 			_currentWindowLayer->sdlRecvEvent(event);
 		}
 	}
+	Uint32 kk4sStart = SDL_GetTicks();
 	::Application->Run();
 	iTVPTexture2D::RecycleProcess();
+	// kk4s: log frames that stall (helps find freezes on Switch)
+	Uint32 kk4sTime = SDL_GetTicks() - kk4sStart;
+	if (kk4sTime >= 200) kk4s::Log("slow frame: %u ms", (unsigned)kk4sTime);
 	return true;
 }
 
@@ -843,21 +919,13 @@ int main(int argc, char **argv) {
 	delete[] _wargv[0];
 	_wargv[0] = kk4sWiden((kk4sGameDir + "krkr.exe").c_str());
 
+	// kk4s: the old code set hints named "SDL_HINT_..." (not the real names),
+	// so SDL also turned every touch into mouse events: double clicks
+	SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+	SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
 	SDL_Init(SDL_INIT_EVERYTHING);
-	SDL_GameController *controller = NULL;
-	for (int i = 0; i < SDL_NumJoysticks(); ++i) {
-	    if (SDL_IsGameController(i)) {
-	        controller = SDL_GameControllerOpen(i);
-	        if (controller) {
-	            break;
-	        }
-	    }
-	}
-
-    // kk4s: romfs/socket/nxlink are initialized in kk4s::Init()
-
-    SDL_SetHint("SDL_HINT_TOUCH_MOUSE_EVENTS", "0");
-    SDL_SetHint("SDL_HINT_MOUSE_TOUCH_EVENTS", "0");
+	// kk4s: gamepads are opened in sdlProcessEvents (device-added events)
+	// romfs/socket/nxlink are initialized in kk4s::Init()
 
 	// kk4s: window size/flags come from the platform layer
 	int kk4sW = 1920, kk4sH = 1080;
@@ -920,11 +988,11 @@ int main(int argc, char **argv) {
 
 bool TVPGetKeyMouseAsyncState(tjs_uint keycode, bool getcurrent)
 {
-	// if (keycode >= sizeof(_scancode) / sizeof(_scancode[0])) return false;
-	// tjs_uint8 code = _scancode[keycode];
-	// _scancode[keycode] &= 1;
-	// return code & (getcurrent ? 1 : 0x10);
-	return false;
+	// kk4s: getcurrent -> is it down now; otherwise -> was it pressed since the last query
+	if (keycode >= sizeof(kk4sKeyState)) return false;
+	tjs_uint8 code = kk4sKeyState[keycode];
+	kk4sKeyState[keycode] &= 0x01;
+	return code & (getcurrent ? 0x01 : 0x11);
 }
 
 
