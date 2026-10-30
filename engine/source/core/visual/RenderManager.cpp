@@ -1844,7 +1844,7 @@ void TVPDoBoxBlurAvg<tTVPARGB_AA<tjs_uint32>, tjs_uint32  >(tjs_uint32 *dest, tj
 namespace TJS {
 	void TVPConsoleLog(const tjs_nchar *format, ...);
 }
-static void _log_ptr(const char *n, void *_p, uint l) {
+static void _log_ptr(const char *n, void *_p, unsigned int l) { // kk4s: uint is not portable
 	unsigned char *p = (unsigned char *)_p;
 	TVPConsoleLog("%s %p: %02X %02X %02X %02X %02X %02X %02X %02X ... %p: %02X %02X %02X %02X ... %p: %02X %02X %02X %02X %02X %02X %02X %02X",
 		n, p - 8, p[-8], p[-7], p[-6], p[-5], p[-4], p[-3], p[-2], p[-1], p, p[0], p[1], p[2], p[3], p + l,

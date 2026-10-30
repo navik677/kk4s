@@ -15,7 +15,7 @@
 SlideCompressor::SlideCompressor()
 {
 	S = 0;
-	for(int i = 0; i < SLIDE_N + SLIDE_M; i++) Text[i] = 0;
+	for(int i = 0; i < (int)sizeof(Text); i++) Text[i] = 0; // kk4s: was N+M, one past the end
 	for(int i = 0; i < 256*256; i++)
 		Map[i] = -1;
 	for(int i = 0; i < SLIDE_N; i++)

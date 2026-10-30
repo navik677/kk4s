@@ -23,8 +23,9 @@ endif()
 
 option(KK4S_ASAN "desktop: build with AddressSanitizer + UBSan" OFF)
 if(KK4S_PLATFORM STREQUAL "desktop" AND KK4S_ASAN)
-    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -g)
-    add_link_options(-fsanitize=address,undefined)
+    # vptr check needs RTTI for classes whose key function is never defined (tTJSNI_Pad)
+    add_compile_options(-fsanitize=address,undefined -fno-sanitize=vptr -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=address,undefined -fno-sanitize=vptr)
 endif()
 
 set(KK4S_VERSION "0.0.1")
