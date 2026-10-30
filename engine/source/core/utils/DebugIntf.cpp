@@ -25,6 +25,7 @@
 #include "Application.h"
 #include "SystemControl.h"
 #include "NativeFile.h"
+#include "kk4s_compat.h" // kk4s
 //---------------------------------------------------------------------------
 // global variables
 //---------------------------------------------------------------------------
@@ -433,6 +434,7 @@ void TVPAddLog(const ttstr &line, bool appendtoimportant)
 	p++;
 	TJS_strcpy(p, line.c_str());
 	if(TVPOnLog) TVPOnLog(buf);
+	kk4s::compat::LogTJS(buf); // kk4s: engine log -> kk4s log file
 #ifdef ENABLE_DEBUGGER
 	if( TJSEnableDebugMode ) TJSDebuggerLog(buf,appendtoimportant);
 	//OutputDebugStringW( buf.c_str() );

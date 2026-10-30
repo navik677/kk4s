@@ -50,6 +50,7 @@
 #include "Application.h"
 #include "SysInitImpl.h"
 #include <set>
+#include "kk4s_compat.h" // kk4s
 
 
 #if 0
@@ -453,6 +454,8 @@ static bool TVPPluginLoading = false;
 void TVPLoadPlugin(const ttstr & name)
 {
 	bool success = TVPLoadInternalPlugin(name);
+	if (!success && !kk4s::compat::LinkBuiltinPlugin(name)) // kk4s
+		kk4s::compat::ReportMissingPlugin(name); // kk4s
     return; // seal all plugins
 #if 0
 	// load plugin

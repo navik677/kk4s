@@ -54,6 +54,7 @@
 #include "BitmapLayerTreeOwner.h"
 #include "Extension.h"
 #include "Platform.h"
+#include "kk4s_compat.h" // kk4s
 
 //---------------------------------------------------------------------------
 // global variables
@@ -442,7 +443,10 @@ void TVPExecuteStorage(const ttstr &name, iTJSDispatch2 *context, tTJSVariant *r
 				throw;
 			}
 			delete stream;
-			if( isbytecode ) return;
+			if( isbytecode ) {
+				kk4s::compat::AfterExecuteStorage(shortname); // kk4s
+				return;
+			}
 		}
 	}
 
@@ -471,6 +475,7 @@ void TVPExecuteStorage(const ttstr &name, iTJSDispatch2 *context, tTJSVariant *r
 			TVPScriptEngine->EvalExpression(buffer, result, context,
 				&shortname);
 	}
+	if(!isexpression) kk4s::compat::AfterExecuteStorage(shortname); // kk4s
 }
 //---------------------------------------------------------------------------
 void TVPCompileStorage( const ttstr& name, bool isrequestresult, bool outputdebug, bool isexpression, const ttstr& outputpath ) {
@@ -574,9 +579,11 @@ void TVPExecuteStartupScript()
 	{
 		try
 		{
+			kk4s::compat::BeforeStartup(); // kk4s: xp3filter.tjs etc.
 			TVPAddLog( TVPInfoLoadingStartupScript + TVPStartupScriptName );
 			TVPExecuteStorage(TVPStartupScriptName);
 			TVPAddLog( (const tjs_char*)TVPInfoStartupScriptEnded );
+			kk4s::compat::AfterStartup(); // kk4s
 		}
 		TJS_CONVERT_TO_TJS_EXCEPTION
 	}

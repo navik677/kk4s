@@ -1262,6 +1262,8 @@ void TVPBeforeSystemInit()
 		TVPProjectDirSelected = true;
 		TVPProjectDir = TVPNormalizeStorageName(ttstr(proj.c_str()));
 		TVPSetCurrentDirectory(TVPProjectDir);
+		kk4s::Log("storage project dir: %s", TVPProjectDir.AsNarrowStdString().c_str());
+		kk4s::Log("startup.tjs -> %s", TVPNormalizeStorageName(TJS_W("startup.tjs")).AsNarrowStdString().c_str());
 		return;
 	}
 	FILE* startup_file = fopen("romfs:/startup.tjs", "rb");

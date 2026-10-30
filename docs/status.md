@@ -6,9 +6,13 @@
 |---|---|---|
 | Switch `kk4s.nro` (+ `.elf`) | builds | [nightly release](https://github.com/navik677/kk4s/releases/tag/nightly) |
 | PC viewer, Linux (ASan + UBSan) | builds, smoke test passes (hello game runs 15 s under xvfb without crashing) | Actions → desktop → artifact `kk4s-linux-<sha>` |
-| PC viewer, Windows (MinGW) | builds (experimental) | Actions → desktop → artifact `kk4s-windows-<sha>` (exe + DLLs) |
+| PC viewer, Windows (MinGW) | builds, runs FSN to the intro locally | Actions → desktop → artifact `kk4s-windows-<sha>` (exe + DLLs) |
 
-Nothing has been run on a real Switch or a real Windows PC yet.
+Nothing has been run on a real Switch yet. The Windows PC viewer runs locally (built with MSYS2).
+
+## Real game: Fate/stay night (Kirikiroid2-ready folder)
+
+Boots to the intro on the PC viewer, unmodified: encrypted archives are decrypted through the folder's `xp3filter.tjs`, `Override2.tjs` / `AfterInit2.tjs` run, util.dll / p.dll are replaced natively. See [kirikiroid-compat.md](kirikiroid-compat.md).
 
 ## M0 — first build: done
 
@@ -19,6 +23,8 @@ Nothing has been run on a real Switch or a real Windows PC yet.
 - SDL renderer falls back to software when there is no GPU; window/renderer errors are logged.
 
 Engine fixes so far (all marked `kk4s:` in `engine/`):
+- **Relative storage names never used the current directory** (krkrs prefixed every name with `file:/`), so nothing inside `data.xp3>` could be found. Now only native absolute paths get the prefix.
+- Engine log (`TVPAddLog`: script errors, `Debug.message`) goes to the kk4s log file (UTF-8).
 - FFmpeg audio decoder ported to the send/receive API (old API was removed in FFmpeg 5).
 - System headers were included inside `namespace TJS` (broke with current newlib).
 - TLG5 compressor wrote one byte past its buffer.
@@ -27,8 +33,8 @@ Engine fixes so far (all marked `kk4s:` in `engine/`):
 
 ## Not done / not checked
 
-- Real game compatibility. A Kirikiroid2-ready test game (encrypted xp3 + many plugins) is expected to stop early: needs `xp3filter.tjs` support and plugins, see [kirikiroid-compat.md](kirikiroid-compat.md) and [roadmap.md](roadmap.md).
+- Plugins: only util.dll / p.dll replacements so far; wuvorbis (sound), extrans (transitions), drawer, etc. are next.
 - Non-ASCII game folder names (narrow → wide path conversion).
 - No large-stack thread for TJS, no memory budget yet.
 - Saves are written where the game asks (inside the game folder) — redirect comes in M2.
-- Windows build: 16-bit `wchar_t` differs from Switch/Linux; not run yet.
+- Windows build: 16-bit `wchar_t` differs from Switch/Linux (works so far, keep an eye on text handling).

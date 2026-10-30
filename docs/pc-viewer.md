@@ -15,6 +15,8 @@ Window: 1280x720, resizable.
 - Linux: `DEPS=1 bash tools/build-desktop.sh` (apt deps), `ASAN=1` for AddressSanitizer + UBSan.
   Run: `tools/run-linux.sh <game_dir>`.
 - Windows: in MSYS2 UCRT64 shell: `DEPS=1 bash tools/build-desktop.sh`.
+  Portable MSYS2 without admin rights: extract `msys2-base-x86_64-latest.sfx.exe` from github.com/msys2/msys2-installer, run `pacman -Syu` twice, then the command above. Incremental rebuild: `cmake --build build-desktop`.
+- Diagnostics: `g++ -O2 -o xp3ls tools/xp3ls.cpp -lz`, then `xp3ls archive.xp3 [filter]` lists files inside an XP3.
 - CI (`.github/workflows/desktop.yml`) builds both; download from the Actions run artifacts:
   `kk4s-linux-<sha>` and `kk4s-windows-<sha>` (exe + DLLs).
 

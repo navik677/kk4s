@@ -89,6 +89,7 @@ set(OPTIMIZATION_FLAGS
 
 set(INCLUDES
     platform/common
+    compat
     engine/source
     engine/source/core
     engine/source/core/base
@@ -118,6 +119,8 @@ set(INCLUDES
 
 set(SOURCES
     platform/common/kk4s_common.cpp
+    compat/kk4s_compat.cpp
+    compat/kk4s_plugins.cpp
     platform/${KK4S_PLATFORM}/kk4s_platform.cpp
     engine/source/core/base/BinaryStream.cpp
     engine/source/core/base/CharacterSet.cpp

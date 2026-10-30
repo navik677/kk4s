@@ -342,6 +342,15 @@ iTVPStorageMedia * TVPCreateFileMedia()
 
 
 //---------------------------------------------------------------------------
+// kk4s: "/path", "\path", "C:/path", "sdmc:/path", "romfs:/path"
+static bool kk4sIsNativeAbsolutePath(const tjs_char *p)
+{
+	if (p[0] == TJS_W('/') || p[0] == TJS_W('\\')) return true;
+	const tjs_char *q = p;
+	while ((*q >= TJS_W('A') && *q <= TJS_W('Z')) || (*q >= TJS_W('a') && *q <= TJS_W('z'))) q++;
+	return q != p && q[0] == TJS_W(':') && (q[1] == TJS_W('/') || q[1] == TJS_W('\\'));
+}
+//---------------------------------------------------------------------------
 // TVPPreNormalizeStorageName
 //---------------------------------------------------------------------------
 void TVPPreNormalizeStorageName(ttstr &name)
@@ -352,6 +361,16 @@ void TVPPreNormalizeStorageName(ttstr &name)
 	if(namelen == 0) return;
 
 	tjs_char lastchar = name.GetLastChar();
+
+	// kk4s: only native absolute paths ("/x", "C:/x", "sdmc:/x", "romfs:/x")
+	// become "file:/..." names. Relative names ("startup.tjs",
+	// "system/Initialize.tjs") must stay relative so the current directory
+	// is applied - otherwise nothing inside "data.xp3>" can be found.
+	if( TJS_strstr(name.c_str(), TJS_W("file:/")) == nullptr &&
+		TJS_strstr(name.c_str(), TJS_W("://")) == nullptr &&
+		!kk4sIsNativeAbsolutePath(name.c_str()) ) {
+		return;
+	}
 
 	if( TJS_strstr(name.c_str(), TJS_W("file:/")) == nullptr ) {
 		ttstr newname(TJS_W("file:/"));

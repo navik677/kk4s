@@ -196,6 +196,12 @@ static std::string FindEntry(const std::string& dir, const char* name, bool want
     return found;
 }
 
+std::string FindGameFile(const char* name) {
+    if (g_game_dir.empty()) return "";
+    std::string n = FindEntry(g_game_dir, name, false);
+    return n.empty() ? std::string() : g_game_dir + n;
+}
+
 std::string ResolveProjectDir(const std::string& game_dir) {
     std::string result;
     std::string n;

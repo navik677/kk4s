@@ -51,6 +51,10 @@ const std::string& GameDir();
 // File names are matched case-insensitively. game_dir must end with '/'.
 std::string ResolveProjectDir(const std::string& game_dir);
 
+// Full native path of a file directly inside the game folder, matched
+// case-insensitively ("xp3filter.tjs" finds "XP3Filter.tjs"). "" if missing.
+std::string FindGameFile(const char* name);
+
 // Logging. Every line goes to the log file (fflush + fsync, so the last line
 // before a crash is on disk) and to stderr (nxlink, if connected).
 void Log(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
