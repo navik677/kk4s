@@ -331,6 +331,18 @@ void ReportFontFallback(const ttstr& requested, const ttstr& chosen) {
         kk4s::Log("fonts: '%s' not found, using '%s'", r.c_str(), ToUtf8(chosen).c_str());
 }
 
+void ReportCyrillicSubstitute(const ttstr& font, const ttstr& chosen) {
+    static std::mutex m;
+    static std::set<std::string> seen;
+    std::string f = ToUtf8(font);
+    std::lock_guard<std::mutex> lock(m);
+    if (!seen.insert(f).second) return;
+    if (chosen.IsEmpty())
+        kk4s::Log("fonts: '%s' has full-width Cyrillic, no proportional font to replace it", f.c_str());
+    else
+        kk4s::Log("fonts: '%s' has full-width Cyrillic, Cyrillic taken from '%s'", f.c_str(), ToUtf8(chosen).c_str());
+}
+
 // ---------------------------------------------------------------------------
 // diagnostics
 

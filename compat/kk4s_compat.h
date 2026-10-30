@@ -33,6 +33,10 @@ void RegisterFonts();
 // A font name was not found and 'chosen' is used instead (logged once).
 void ReportFontFallback(const ttstr& requested, const ttstr& chosen);
 
+// 'font' draws Cyrillic full-width; its Cyrillic comes from 'chosen'
+// (empty: no suitable font found). Logged once per font.
+void ReportCyrillicSubstitute(const ttstr& font, const ttstr& chosen);
+
 // Write an engine log line (TVPAddLog) to the kk4s log file as UTF-8.
 void LogTJS(const ttstr& line);
 

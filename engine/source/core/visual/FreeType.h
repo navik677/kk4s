@@ -62,6 +62,9 @@ struct FaceSet {
 	/** UnicodeをSJISなどに変換する関数 */
 	tjs_char (*LocalCharToUnicode)(tjs_uint in);
 
+	/** kk4s: substitute face for Cyrillic (the main face has full-width Cyrillic) */
+	bool CyrillicSubst = false;
+
 	FaceSet() : UnicodeToLocalChar(nullptr), LocalCharToUnicode(nullptr) {}
 };
 

@@ -6,6 +6,7 @@
 // Data folder = $KK4S_ROOT, or the folder of the executable.
 #include "kk4s_platform.h"
 #include "kk4s_internal.h"
+#include "kk4s_fs.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -82,7 +83,13 @@ void Init(int argc, char** argv) {
     // First non-option argument that is a folder = game folder.
     for (int i = 0; i < argc; ++i) {
         if (i > 0 && g_cli_game.empty() && argv[i][0] != '-' && IsDir(argv[i])) {
-            g_cli_game = argv[i];
+            // Absolute path: the engine turns relative paths into broken storage names.
+            if (char* abs = realpath(argv[i], nullptr)) {
+                g_cli_game = abs;
+                free(abs);
+            } else {
+                g_cli_game = argv[i];
+            }
             continue;
         }
         g_engine_argv.push_back(argv[i]);
@@ -128,6 +135,9 @@ std::vector<std::string> SystemFontFiles() {
         "/usr/share/fonts/opentype/noto", "/usr/share/fonts/noto-cjk", "/usr/share/fonts/google-noto-cjk",
         "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf", "/usr/share/fonts/opentype/ipafont-gothic",
         "/usr/share/fonts/truetype/vlgothic", "/usr/share/fonts/truetype/dejavu",
+        // Fedora
+        "/usr/share/fonts/google-noto-sans-cjk-vf-fonts", "/usr/share/fonts/google-noto-sans-cjk-fonts",
+        "/usr/share/fonts/google-droid-sans-fonts", "/usr/share/fonts/dejavu-sans-fonts",
     };
     for (const char* d : kDirs) {
         if (IsFile(d)) out.push_back(d);

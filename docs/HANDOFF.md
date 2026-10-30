@@ -1,6 +1,6 @@
 # Handoff — read this first in a new session
 
-Last update: 2026-10-30. Goal of the project: **any Kirikiri (KAG/TJS2) game folder runs unmodified** on Switch (and on PC via the viewer). No patching of game files; fixes live in the engine, `compat/`, profiles or the overlay folder. See `docs/original-prompt.md` for the full requirements and `docs/roadmap.md` for milestones.
+Last update: 2026-10-30 (second session, Fedora Linux). Goal of the project: **any Kirikiri (KAG/TJS2) game folder runs unmodified** on Switch (and on PC via the viewer). No patching of game files; fixes live in the engine, `compat/`, profiles or the overlay folder. See `docs/original-prompt.md` for the full requirements and `docs/roadmap.md` for milestones.
 
 ## Where we are
 
@@ -36,7 +36,7 @@ Engine hook points (all marked `kk4s:`): `sdl2/stubs.cpp` (main, window, logs, d
    ```
    Log: `$KK4S_ROOT/logs/kk4s-*.log` (engine log, script errors, compat decisions, fonts). Without `KK4S_ROOT` the data folder is next to the exe.
 
-Linux: `DEPS=1 ASAN=1 bash tools/build-desktop.sh`, then `tools/run-linux.sh <game_dir>`.
+Linux: `DEPS=1 ASAN=1 bash tools/build-desktop.sh`, then `tools/run-linux.sh <game_dir>`. Fedora packages (DEPS only knows apt/pacman): `sudo dnf install SDL2-devel freetype-devel ffmpeg-free-devel libpng-devel libjpeg-turbo-devel turbojpeg-devel libwebp-devel libogg-devel libvorbis-devel opus-devel opusfile-devel zlib-devel oniguruma-devel`.
 
 ## Debugging toolbox
 
@@ -46,6 +46,7 @@ Linux: `DEPS=1 ASAN=1 bash tools/build-desktop.sh`, then `tools/run-linux.sh <ga
 - **Probe technique** (read decrypted game scripts without touching the game): make a scratch folder with only a `startup.tjs` (save it as **UTF-16LE with BOM**, otherwise it is read as Shift_JIS) that does
   `Scripts.execStorage("file://./c:/.../fsn/xp3filter.tjs"); var a = [].load("file://./c:/.../fsn/rupatch.xp3>Scripts/Override.tjs"); a.save("file://./c:/tmp/out.tjs"); System.exit();`
   and run kk4s on that folder. Never commit dumped game files.
+- **Render probe** (Linux, no screen capture needed): a scratch `startup.tjs` that makes `new Window()`, a `new Layer(w, null)`, sets `font.face`, `drawText(...)`, then `saveLayerImage("/abs/path/out.bmp", "bmp")` and `System.exit()`. Used to check the Cyrillic font fix. Screen capture of the OpenGL window does not work on KDE Wayland (`import` gives black, `spectacle -b` saves nothing).
 - **Screenshots for checking a run**: PowerShell `System.Drawing` `CopyFromScreen` on the game window, `SendKeys "{ENTER}"` to advance text (used in this session).
 - **CI results without the `gh` CLI**: the public run page `https://github.com/navik677/kk4s/actions/runs/<id>` shows the annotations; `tools/ci-report.sh` puts the first compiler error context there. The REST API has a 60 req/h limit without login.
 - Switch crashes: `docs/debugging.md` (`tools/resolve-crash.py` + the `.elf` from the same build).
@@ -60,15 +61,14 @@ Linux: `DEPS=1 ASAN=1 bash tools/build-desktop.sh`, then `tools/run-linux.sh <ga
 
 ## Next steps (in priority order)
 
-1. **Text spacing in FSN**: letters are spaced too widely (Cyrillic shown with full-width advance). Look at glyph advance in `visual/FreeTypeFontRasterizer.cpp` / `CharacterData.cpp` and how `font.getTextWidth` is computed; compare fixed-pitch handling ("Mona" font).
-2. **Check sound** by ear (BGM/SE/voice from encrypted xp3) and **video** (`video.xp3`, krmovie path).
-3. **Commit the CI state**: check that the last pushes are green for switch + desktop (Linux ASan may find real bugs — fix them).
-4. **Real extrans transitions** (wave, ripple, mosaic, turn, rotatezoom/vanish/swap) instead of crossfade.
-5. **Native decryptor support**: built-in x86-32 interpreter + minimal PE loader to run a game's own `.tpm`/DLL decrypt routine (decided with the user: own interpreter, not Unicorn — Switch has no JIT for homebrew). This makes encrypted games work without `xp3filter.tjs`.
-6. **Saves**: redirect `savedata/` to `<data>/saves/<game_id>/` (M2), overlay folder, game id + profiles (M3).
-7. **Switch hardware test** (`docs/hardware-test-checklist.md`): launcher, log, hello game, then FSN. Watch memory (applet vs title takeover), input mapping (pad → KAG keys, touch → mouse) is not done yet.
-8. More plugins (layerExDraw, layerExImage, kagexopt, …) as other games need them — test more games, the log lists missing plugins/transitions/fonts.
-9. Synthetic tests for the compat layer (needs an xp3 packer tool for tests).
+1. **Check sound** by ear (BGM/SE/voice from encrypted xp3) and **video** (`video.xp3`, krmovie path).
+2. **Commit the CI state**: check that the last pushes are green for switch + desktop (Linux ASan may find real bugs — fix them).
+3. **Real extrans transitions** (wave, ripple, mosaic, turn, rotatezoom/vanish/swap) instead of crossfade.
+4. **Native decryptor support**: built-in x86-32 interpreter + minimal PE loader to run a game's own `.tpm`/DLL decrypt routine (decided with the user: own interpreter, not Unicorn — Switch has no JIT for homebrew). This makes encrypted games work without `xp3filter.tjs`.
+5. **Saves**: redirect `savedata/` to `<data>/saves/<game_id>/` (M2), overlay folder, game id + profiles (M3).
+6. **Switch hardware test** (`docs/hardware-test-checklist.md`): launcher, log, hello game, then FSN. Watch memory (applet vs title takeover), input mapping (pad → KAG keys, touch → mouse) is not done yet.
+7. More plugins (layerExDraw, layerExImage, kagexopt, …) as other games need them — test more games, the log lists missing plugins/transitions/fonts.
+8. Synthetic tests for the compat layer (needs an xp3 packer tool for tests).
 
 ## Local-only things on the old PC (not in git)
 

@@ -123,6 +123,8 @@ public:
 	tBaseFreeTypeFace* GetFace( const tjs_string& facename, tjs_uint32 options ) const;
 	// kk4s: best available face when the requested one does not exist
 	tBaseFreeTypeFace* GetFallbackFace( tjs_uint32 options, tjs_string* chosen ) const;
+	// kk4s: a face with proportional Cyrillic, for fonts that draw it full-width
+	tBaseFreeTypeFace* GetProportionalCyrillicFace( tjs_string* chosen ) const;
 	void GetFontList(std::vector<ttstr> & list, tjs_uint32 flags, const tTVPFont & font );
 };
 
@@ -370,6 +372,64 @@ tBaseFreeTypeFace* tTVPFreeTypeFaceList::GetFallbackFace( tjs_uint32 options, tj
 	if( best_system )
 		return new tGenericFreeTypeFace( best->path, ttstr( best->facename ), best->index );
 	return new tGenericFreeTypeFace( ttstr( best->filename ), TVP_FACE_OPTIONS_FACE_INDEX( best->index ) );
+}
+//---------------------------------------------------------------------------
+// kk4s: Japanese fonts (MS Gothic, the "Mona" font of Fate/stay night, ...)
+// draw Cyrillic full-width, like kanji, while their Latin is proportional.
+// Russian fan translations made for Kirikiroid2 expect proportional Cyrillic.
+// Advances are compared in font units, so no size has to be set.
+static FT_Pos Kk4sAdvanceUnits( FT_Face face, FT_ULong code ) {
+	if( !face->charmap || face->charmap->encoding != FT_ENCODING_UNICODE ) return -1;
+	FT_UInt g = FT_Get_Char_Index( face, code );
+	if( g == 0 || FT_Load_Glyph( face, g, FT_LOAD_NO_SCALE ) ) return -1;
+	return face->glyph->metrics.horiAdvance;
+}
+static bool Kk4sHasFullWidthCyrillic( FT_Face face ) {
+	FT_Pos em = face->units_per_EM;
+	FT_Pos cyr = Kk4sAdvanceUnits( face, 0x0430 ); // а
+	FT_Pos lat = Kk4sAdvanceUnits( face, 'a' );
+	return em > 0 && cyr >= em * 9 / 10 && lat > 0 && lat < em * 3 / 4;
+}
+static bool Kk4sHasProportionalCyrillic( FT_Face face ) {
+	FT_Pos em = face->units_per_EM;
+	FT_Pos cyr = Kk4sAdvanceUnits( face, 0x0430 );
+	return em > 0 && cyr > 0 && cyr < em * 3 / 4 && Kk4sAdvanceUnits( face, 0x0416 ) > 0; // а, Ж
+}
+tBaseFreeTypeFace* tTVPFreeTypeFaceList::GetProportionalCyrillicFace( tjs_string* chosen ) const {
+	// The search opens font files, so it runs once; the result is reused.
+	static bool searched = false;
+	static tjs_string found;
+	if( searched ) {
+		if( found.empty() ) return nullptr;
+		if( chosen ) *chosen = found;
+		return GetFace( found, 0 );
+	}
+	searched = true;
+	// Regular-weight sans faces close to what Kirikiroid2 (Android fonts) or
+	// the OS would use, then anything. Noto CJK comes late: its variable font
+	// loads in a light weight.
+	std::vector<tjs_string> names{
+		TJS_W("Droid Sans"), TJS_W("Noto Sans"), TJS_W("Meiryo"), TJS_W("Segoe UI"),
+		TJS_W("Tahoma"), TJS_W("Arial"), TJS_W("Nintendo Standard"), TJS_W("NintendoStandard"),
+		TJS_W("Noto Sans CJK JP"), TJS_W("DejaVu Sans") };
+	for( auto s = faces_.begin(); s != faces_.end(); ++s ) names.push_back( (*s)->facename );
+	for( auto s = systemfaces_.begin(); s != systemfaces_.end(); ++s ) names.push_back( (*s)->facename );
+	std::vector<tjs_string> tried;
+	for( auto n = names.begin(); n != names.end(); ++n ) {
+		if( std::find( tried.begin(), tried.end(), *n ) != tried.end() ) continue;
+		tried.push_back( *n );
+		try {
+			std::unique_ptr<tBaseFreeTypeFace> face( GetFace( *n, 0 ) );
+			if( face && Kk4sHasProportionalCyrillic( face->GetFTFace() ) ) {
+				found = *n;
+				if( chosen ) *chosen = found;
+				return face.release();
+			}
+		} catch( ... ) {
+			// unreadable font file: try the next one
+		}
+	}
+	return nullptr;
 }
 //---------------------------------------------------------------------------
 bool tTVPFreeTypeFaceList::CheckFaceFlag( FontInfo& face, tjs_uint flags ) {
@@ -768,6 +828,24 @@ tFreeTypeFace::tFreeTypeFace(const std::vector<tjs_string> &fontname, tjs_uint32
 			}
 		}
 	}
+
+	// kk4s: full-width Cyrillic in the main face -> take Cyrillic from a
+	// proportional face (see LoadGlyphSlotFromCharcode)
+	if( !Faces.empty() && ( options & TVP_FACE_OPTIONS_FILE ) == 0 &&
+		Kk4sHasFullWidthCyrillic( Faces[0]->FTFace ) )
+	{
+		tjs_string chosen;
+		std::unique_ptr<tBaseFreeTypeFace> subst( FreeTypeFaceList->GetProportionalCyrillicFace( &chosen ) );
+		if( subst ) {
+			std::unique_ptr<FaceSet> set( new FaceSet() );
+			set->FontName = chosen;
+			set->FTFace = subst->GetFTFace();
+			set->Face = std::move( subst );
+			set->CyrillicSubst = true;
+			Faces.push_back( std::move( set ) );
+		}
+		kk4s::compat::ReportCyrillicSubstitute( ttstr( Faces[0]->FontName ), ttstr( chosen ) );
+	}
 }
 //---------------------------------------------------------------------------
 
@@ -958,7 +1036,9 @@ tTVPCharacterData * tFreeTypeFace::GetGlyphFromCharcode(tjs_char code)
 
 		// tGlyphBitmap を作成して返す
 		//int baseline = (int)(face->height + face->descender) * face->size->metrics.y_ppem / face->units_per_EM;
-		int baseline = (int)( face->ascender ) * face->size->metrics.y_ppem / face->units_per_EM;
+		// kk4s: baseline of the main face, so glyphs from other faces line up
+		FT_Face mainface = Faces[0]->FTFace;
+		int baseline = (int)( mainface->ascender ) * mainface->size->metrics.y_ppem / mainface->units_per_EM;
 
 		glyph_bmp = new tTVPCharacterData(
 			ft_bmp->buffer,
@@ -1105,9 +1185,14 @@ tjs_int tFreeTypeFace::LoadGlyphSlotFromCharcode(tjs_char code)
 {
 	// TODO: スレッド保護
 
+	// kk4s: Cyrillic tries the substitute face first; everything else tries
+	// it last (it can still fill in glyphs the main faces lack)
+	const bool cyrillic = code >= 0x0400 && code <= 0x052F;
 	tjs_size count = Faces.size();
+	for( int pass = 0; pass < 2; pass++ )
 	for( tjs_size i = 0; i < count; i++ ) {
 		std::unique_ptr<FaceSet>& faceset = Faces[i];
+		if( ( faceset->CyrillicSubst == cyrillic ) != ( pass == 0 ) ) continue;
 		// 文字コードを得る
 		FT_ULong localcode;
 		if(faceset->UnicodeToLocalChar == NULL)

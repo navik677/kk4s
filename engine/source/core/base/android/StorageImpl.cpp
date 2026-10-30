@@ -315,6 +315,15 @@ void TJS_INTF_METHOD tTVPFileMedia::GetLocallyAccessibleName(ttstr &name)
     }
    	// wprintf(TJS_W("local name:%ls-->%ls\n"),
 	// name.c_str(),newname.c_str());
+	// kk4s: real spelling of the lower-cased path on case-sensitive file systems
+	if (!newname.IsEmpty()) {
+		std::string utf8;
+		if (TVPUtf16ToUtf8(utf8, newname.AsStdString())) {
+			std::string real = kk4sResolveCase(utf8);
+			tjs_string wide;
+			if (real != utf8 && TVPUtf8ToUtf16(wide, real)) newname = ttstr(wide);
+		}
+	}
 	name = newname;
 }
 //---------------------------------------------------------------------------
