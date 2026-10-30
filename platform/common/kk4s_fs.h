@@ -24,7 +24,7 @@ inline int mkdir(const char *path, int) { return _mkdir(path); }
 // MinGW has no realpath(); _fullpath() does the same (malloc'd result when buf is NULL).
 inline char *realpath(const char *path, char *resolved) {
 	char *r = _fullpath(resolved, path, 4096);
-	if (r) for (char *p = r; *p; ++p) if (*p == '\') *p = '/';
+	if (r) for (char *p = r; *p; ++p) if (*p == '\\') *p = '/';
 	return r;
 }
 #endif
