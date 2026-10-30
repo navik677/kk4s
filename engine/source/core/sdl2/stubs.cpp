@@ -863,7 +863,27 @@ int main(int argc, char **argv) {
 	unsigned kk4sFlags = 0;
 	kk4s::WindowConfig(kk4sW, kk4sH, kk4sFlags);
 	window = SDL_CreateWindow("kk4s", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, kk4sW, kk4sH, kk4sFlags);
+	if (!window) {
+		kk4s::Log("SDL_CreateWindow failed: %s", SDL_GetError());
+		kk4s::Shutdown();
+		return 1;
+	}
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+	if (!renderer) {
+		// kk4s: no GPU renderer (VM, CI, old PC) -> software renderer
+		kk4s::Log("accelerated renderer failed (%s), trying software", SDL_GetError());
+		renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+	}
+	if (!renderer) {
+		kk4s::Log("SDL_CreateRenderer failed: %s", SDL_GetError());
+		kk4s::Shutdown();
+		return 1;
+	}
+	{
+		SDL_RendererInfo kk4sInfo;
+		if (SDL_GetRendererInfo(renderer, &kk4sInfo) == 0)
+			kk4s::Log("renderer: %s, window %dx%d", kk4sInfo.name, kk4sW, kk4sH);
+	}
 
 	::Application = new tTVPApplication();
 	::Application->StartApplication( _argc, _wargv );

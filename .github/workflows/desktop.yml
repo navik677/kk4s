@@ -32,11 +32,13 @@ jobs:
         if: success()
         shell: bash
         run: |
-          export SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy KK4S_ROOT="$PWD/run-data"
+          sudo apt-get install -y --no-install-recommends xvfb
+          export SDL_AUDIODRIVER=dummy KK4S_ROOT="$PWD/run-data"
           export ASAN_OPTIONS=detect_leaks=0
-          timeout 10s ./out-desktop/kk4s tests/tjs/hello > smoke.log 2>&1 || code=$?
+          timeout 15s xvfb-run -a ./out-desktop/kk4s tests/tjs/hello > smoke.log 2>&1 || code=$?
+          cat run-data/logs/*.log >> smoke.log 2>/dev/null || true
           cat smoke.log
-          # 124 = still running after 10s (good: main loop alive)
+          # 124 = still running after 15s (good: main loop alive)
           if [ "${code:-0}" != "124" ] && [ "${code:-0}" != "0" ]; then
             echo "::error title=smoke test::$(tail -40 smoke.log | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')"
             exit 1

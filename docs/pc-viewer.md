@@ -6,7 +6,7 @@ Use it as the main dev/test loop: crashes here are much cheaper than on the Swit
 ## Run
 ```
 kk4s <path to game folder>     # run one game directly (drag & drop a folder onto kk4s.exe works too)
-kk4s                           # pick from <data folder>/games/
+kk4s                           # pick from <data folder>/games/ (dialog with buttons, or a list in a terminal)
 ```
 Data folder (games/, logs/, saves/, ...) = folder of the executable, or `$KK4S_ROOT`.
 Window: 1280x720, resizable.

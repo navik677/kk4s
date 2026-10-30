@@ -18,6 +18,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <io.h>
 #else
 #include <unistd.h>
 #endif
@@ -46,6 +47,15 @@ static std::string ExeDir(const char* argv0) {
         if (c == '\\') c = '/';
     size_t slash = path.find_last_of('/');
     return slash == std::string::npos ? std::string(".") : path.substr(0, slash);
+}
+
+// true when stdin is an interactive terminal (not a GUI launch / pipe)
+static bool HasTerminal() {
+#ifdef _WIN32
+    return _isatty(_fileno(stdin)) != 0;
+#else
+    return isatty(fileno(stdin)) != 0;
+#endif
 }
 
 static bool IsDir(const std::string& p) {
@@ -120,12 +130,44 @@ std::string SelectGame() {
     }
 
     size_t sel = 0;
-    if (games.size() > 1) {
-        std::string last = ReadLastPlayed();
+    std::string last = ReadLastPlayed();
+    for (size_t i = 0; i < games.size(); ++i)
+        if (games[i] == last) sel = i;
+
+    if (games.size() > 1 && !HasTerminal()) {
+        // No console (Windows GUI build, desktop launcher): pick with buttons.
+        const size_t max_buttons = 8;
+        std::vector<SDL_MessageBoxButtonData> buttons;
+        for (size_t i = 0; i < games.size() && i < max_buttons; ++i) {
+            SDL_MessageBoxButtonData b{};
+            b.buttonid = (int)i;
+            b.text = games[i].c_str();
+            if (i == sel) b.flags = SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT;
+            buttons.push_back(b);
+        }
+        SDL_MessageBoxButtonData quit{};
+        quit.buttonid = -1;
+        quit.text = "Quit";
+        quit.flags = SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT;
+        buttons.push_back(quit);
+
+        std::string msg = "Choose a game from\n" + GamesDir();
+        if (games.size() > max_buttons)
+            msg += "\n\n(only the first 8 are shown; run kk4s <folder> for others)";
+        SDL_MessageBoxData box{};
+        box.flags = SDL_MESSAGEBOX_INFORMATION;
+        box.title = "kk4s";
+        box.message = msg.c_str();
+        box.numbuttons = (int)buttons.size();
+        box.buttons = buttons.data();
+        int hit = -1;
+        if (SDL_ShowMessageBox(&box, &hit) != 0 || hit < 0) return "";
+        sel = (size_t)hit;
+    } else if (games.size() > 1) {
         printf("kk4s - games in %s:\n", GamesDir().c_str());
         for (size_t i = 0; i < games.size(); ++i)
             printf("  %zu) %s%s\n", i + 1, games[i].c_str(), games[i] == last ? "  (last)" : "");
-        printf("Number to play (Enter = 1, q = quit): ");
+        printf("Number to play (Enter = %zu, q = quit): ", sel + 1);
         fflush(stdout);
         char line[64] = {0};
         if (fgets(line, sizeof(line), stdin)) {
