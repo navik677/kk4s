@@ -36,8 +36,16 @@ jobs:
           grep -E "(error|Error|ERROR)[: ]" build.log | grep -v "^--" | head -40 | while IFS= read -r line; do
             echo "::error::${line//%/%25}"
           done
-          tail -80 build.log | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' > tail.txt
-          echo "::error title=build.log tail::$(cat tail.txt)"
+          enc() { sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}'; }
+          # which objects failed
+          echo "::error title=failed targets::$(grep -E '\] Error [0-9]' build.log | head -20 | enc)"
+          # context around the first compiler error (include chain)
+          n=$(grep -n -m1 -E 'error:' build.log | cut -d: -f1)
+          if [ -n "$n" ]; then
+            s=$(( n > 30 ? n - 30 : 1 ))
+            echo "::error title=first error context::$(sed -n "${s},$((n + 8))p" build.log | enc)"
+          fi
+          echo "::error title=build.log tail::$(tail -60 build.log | enc)"
 
       - name: Upload build
         if: always()
