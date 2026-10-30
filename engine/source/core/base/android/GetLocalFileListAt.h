@@ -3,6 +3,7 @@
 #include <functional>
 #include "tjs.h"
 #include <dirent.h>
+#include <sys/stat.h> // kk4s: before the st_*time #undefs below
 
 #ifndef S_IFMT
 #define S_IFDIR  0x4000 // Directory
@@ -38,7 +39,6 @@ void TVPGetLocalFileListAt(const ttstr &name, const std::function<void(const tts
 
 // kk4s: dirent::d_type is missing on MinGW and can be DT_UNKNOWN on some
 // file systems; fall back to stat() in those cases.
-#include <sys/stat.h>
 inline bool kk4sIsRegularFile(const std::string &dir, const struct dirent *e) {
 #if defined(DT_REG) && defined(DT_UNKNOWN)
 	if (e->d_type != DT_UNKNOWN) return e->d_type == DT_REG;
