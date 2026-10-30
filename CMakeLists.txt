@@ -119,6 +119,7 @@ set(INCLUDES
 
 set(SOURCES
     platform/common/kk4s_common.cpp
+    platform/common/kk4s_launcher.cpp
     compat/kk4s_compat.cpp
     compat/kk4s_plugins.cpp
     compat/kk4s_layerfx.cpp

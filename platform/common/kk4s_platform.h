@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+struct SDL_Renderer;
+
 namespace kk4s {
 
 // Data folder layout (see docs/sd-layout.md).
@@ -26,11 +28,11 @@ void Init(int argc, char** argv);
 // Close the log file and services. Safe to call more than once.
 void Shutdown();
 
-// Launcher: picks a game folder from GamesDir() (Switch: text console menu;
-// PC: path from the command line, or a list in the terminal). Returns the
-// chosen folder (with trailing '/'), or "" if the user quit. Must be called
-// before SDL creates its window.
-std::string SelectGame();
+// Launcher: picks a game folder from GamesDir() with the graphical picker
+// (platform/common/kk4s_launcher.cpp) drawn into the engine's renderer; on PC
+// a folder given on the command line is used directly. Returns the chosen
+// folder (with trailing '/'), or "" if the user quit.
+std::string SelectGame(SDL_Renderer* renderer);
 
 // Engine arguments to pass on (argv without kk4s' own arguments).
 // argv[0] is replaced by "<game folder>/krkr.exe" by the caller.
@@ -61,8 +63,8 @@ std::vector<std::string> SystemFontFiles();
 // case-insensitively ("xp3filter.tjs" finds "XP3Filter.tjs"). "" if missing.
 std::string FindGameFile(const char* name);
 
-// Logging. Every line goes to the log file (fflush + fsync, so the last line
-// before a crash is on disk) and to stderr (nxlink, if connected).
+// Logging. Every line goes to the log file (flushed per line, fsync at most
+// every 2 s) and to stderr (nxlink, if connected).
 void Log(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void LogRaw(const char* text);
 

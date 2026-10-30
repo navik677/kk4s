@@ -1,0 +1,32 @@
+// kk4s input test: shows every key / mouse event the engine delivers.
+// Copy this folder to <data>/games/kk4s-input-test/ and press buttons.
+class InputTest extends Window
+{
+	var lines = [];
+	function InputTest()
+	{
+		super.Window();
+		setInnerSize(1280, 720);
+		add(new Layer(this, null));
+		primaryLayer.setSize(1280, 720);
+		primaryLayer.font.height = 28;
+		visible = true;
+		log("kk4s input test - press buttons, touch the screen");
+	}
+	function log(s)
+	{
+		lines.push(s);
+		if (lines.count > 20) lines.erase(0);
+		Debug.message("input-test: " + s);
+		var l = primaryLayer;
+		l.fillRect(0, 0, 1280, 720, 0xFF101420);
+		for (var i = 0; i < lines.count; i++)
+			l.drawText(30, 20 + i * 34, lines[i], 0xFFFFFF);
+		l.drawText(30, 680, "Ctrl held: " + (System.getKeyState(0x11) ? "yes" : "no"), 0x5AC8FA);
+	}
+	function onKeyDown(key, shift) { log("keyDown " + key + " shift " + shift); }
+	function onKeyUp(key, shift) { log("keyUp " + key); }
+	function onMouseDown(x, y, button, shift) { log("mouseDown " + x + "," + y + " button " + button); }
+	function onClick(x, y) { log("click " + x + "," + y); }
+}
+var inputTest = new InputTest();

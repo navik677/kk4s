@@ -626,6 +626,8 @@ public:
 	//   ZL = Shift                    + = Esc, - = Tab
 	//   D-pad, left stick = arrows (move between buttons)
 	void kk4sPadButton(int b, bool down) {
+		static int logged = 0; // kk4s: diagnostics for the first presses
+		if (down && logged < 40) { ++logged; kk4s::Log("input: pad button %d -> game", b); }
 		switch (b) {
 			case SDL_CONTROLLER_BUTTON_A: kk4sPostKey(VK_RETURN, down); break;
 			case SDL_CONTROLLER_BUTTON_B: kk4sPostMouseButton(tTVPMouseButton::mbRight, down); break;
@@ -867,6 +869,16 @@ bool sdlProcessEvents() {
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 		kk4sOpenInputDevice(event); // kk4s
+		{ // kk4s: diagnostics for the first presses (does SDL deliver them?)
+			static int logged = 0;
+			if ((event.type == SDL_CONTROLLERBUTTONDOWN || event.type == SDL_JOYBUTTONDOWN) && logged < 40) {
+				++logged;
+				kk4s::Log("input: SDL %s button %d (window layer: %s)",
+					event.type == SDL_CONTROLLERBUTTONDOWN ? "controller" : "joystick",
+					event.type == SDL_CONTROLLERBUTTONDOWN ? event.cbutton.button : event.jbutton.button,
+					_currentWindowLayer ? "yes" : "no");
+			}
+		}
 		if (_currentWindowLayer) {
 			_currentWindowLayer->sdlRecvEvent(event);
 		}
@@ -900,34 +912,17 @@ static tjs_char* kk4sWiden(const char* s) {
 int main(int argc, char **argv) {
 	// kk4s: platform init + game launcher before the engine starts
 	kk4s::Init(argc, argv);
-	std::string kk4sGameDir = kk4s::SelectGame();
-	if (kk4sGameDir.empty()) {
-		kk4s::Shutdown();
-		return 0;
-	}
-
-	int kk4sArgc = kk4s::EngineArgc();
-	char** kk4sArgv = kk4s::EngineArgv();
-	_argc = kk4sArgc > 0 ? kk4sArgc : 1;
-	_wargv = new tjs_char*[_argc];
-	for (int i = 0; i < _argc; i += 1) {
-		_wargv[i] = kk4sWiden(i < kk4sArgc ? kk4sArgv[i] : "");
-	}
-	// kk4s: pretend the exe lives inside the game folder, like krkr.exe on
-	// Windows. System.exePath, patch.xp3 lookup and plugin paths then point
-	// at the game folder.
-	delete[] _wargv[0];
-	_wargv[0] = kk4sWiden((kk4sGameDir + "krkr.exe").c_str());
 
 	// kk4s: the old code set hints named "SDL_HINT_..." (not the real names),
 	// so SDL also turned every touch into mouse events: double clicks
 	SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
 	SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
 	SDL_Init(SDL_INIT_EVERYTHING);
-	// kk4s: gamepads are opened in sdlProcessEvents (device-added events)
-	// romfs/socket/nxlink are initialized in kk4s::Init()
+	// kk4s: gamepads are opened on their device-added events (launcher, then
+	// sdlProcessEvents); romfs/socket/nxlink are initialized in kk4s::Init()
 
-	// kk4s: window size/flags come from the platform layer
+	// kk4s: window size/flags come from the platform layer. The window exists
+	// before the game is chosen: the launcher draws into it.
 	int kk4sW = 1920, kk4sH = 1080;
 	unsigned kk4sFlags = 0;
 	kk4s::WindowConfig(kk4sW, kk4sH, kk4sFlags);
@@ -953,6 +948,29 @@ int main(int argc, char **argv) {
 		if (SDL_GetRendererInfo(renderer, &kk4sInfo) == 0)
 			kk4s::Log("renderer: %s, window %dx%d", kk4sInfo.name, kk4sW, kk4sH);
 	}
+
+	// kk4s: game launcher
+	std::string kk4sGameDir = kk4s::SelectGame(renderer);
+	if (kk4sGameDir.empty()) {
+		SDL_DestroyRenderer(renderer);
+		SDL_DestroyWindow(window);
+		SDL_Quit();
+		kk4s::Shutdown();
+		return 0;
+	}
+
+	int kk4sArgc = kk4s::EngineArgc();
+	char** kk4sArgv = kk4s::EngineArgv();
+	_argc = kk4sArgc > 0 ? kk4sArgc : 1;
+	_wargv = new tjs_char*[_argc];
+	for (int i = 0; i < _argc; i += 1) {
+		_wargv[i] = kk4sWiden(i < kk4sArgc ? kk4sArgv[i] : "");
+	}
+	// kk4s: pretend the exe lives inside the game folder, like krkr.exe on
+	// Windows. System.exePath, patch.xp3 lookup and plugin paths then point
+	// at the game folder.
+	delete[] _wargv[0];
+	_wargv[0] = kk4sWiden((kk4sGameDir + "krkr.exe").c_str());
 
 	::Application = new tTVPApplication();
 	::Application->StartApplication( _argc, _wargv );

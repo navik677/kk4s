@@ -15,7 +15,7 @@ Details: `docs/status.md`, `docs/kirikiroid-compat.md`, `docs/plugins.md`, `docs
 | Path | What |
 |---|---|
 | `engine/` | krkrs (uyjulian) sources. Our edits are marked with `kk4s:` comments (`git grep kk4s: engine/`). Commit `98ac529` is the pristine upstream import. |
-| `platform/common/` | logger, game scan, project dir, font file scan, small POSIX shims (`kk4s_fs.h`) |
+| `platform/common/` | logger, game scan, project dir, font file scan, small POSIX shims (`kk4s_fs.h`), graphical launcher (`kk4s_launcher.cpp`: covers, icons from .ico/.exe, gamepad/touch) |
 | `platform/switch/`, `platform/desktop/` | launcher, paths, memory, window config, system fonts per platform |
 | `compat/kk4s_compat.cpp` | Kirikiroid2 conventions (`xp3filter.tjs`, `Storages.setXP3ArchiveExtractionFilter`, `Override2.tjs`, `AfterInit2.tjs`), engine log → kk4s log, font registration, missing-plugin log |
 | `compat/kk4s_plugins.cpp` | table `dll name → native replacement` (util.dll, p.dll, …) |
@@ -66,7 +66,7 @@ Linux: `DEPS=1 ASAN=1 bash tools/build-desktop.sh`, then `tools/run-linux.sh <ga
 3. **Real extrans transitions** (wave, ripple, mosaic, turn, rotatezoom/vanish/swap) instead of crossfade.
 4. **Native decryptor support**: built-in x86-32 interpreter + minimal PE loader to run a game's own `.tpm`/DLL decrypt routine (decided with the user: own interpreter, not Unicorn — Switch has no JIT for homebrew). This makes encrypted games work without `xp3filter.tjs`.
 5. **Saves**: redirect `savedata/` to `<data>/saves/<game_id>/` (M2), overlay folder, game id + profiles (M3).
-6. **Switch hardware test** (`docs/hardware-test-checklist.md`): launcher, log, hello game, then FSN. Watch memory (applet vs title takeover), input mapping (pad → KAG keys, touch → mouse) is not done yet.
+6. **Switch hardware**: games run on a real Switch (Sharin no Kuni, title takeover). Touch works. Gamepad: buttons reach the engine (`input: pad button` lines in the log) but the game did not react in the first test — check with `tests/tjs/input` (copy to `games/kk4s-input-test/`, it shows every key event on screen) and the `input:` log lines. Freezes: fsync per log line was removed; check `slow frame` lines.
 7. More plugins (layerExDraw, layerExImage, kagexopt, …) as other games need them — test more games, the log lists missing plugins/transitions/fonts.
 8. Synthetic tests for the compat layer (needs an xp3 packer tool for tests).
 

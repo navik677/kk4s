@@ -105,66 +105,16 @@ void WindowConfig(int& width, int& height, unsigned& sdl_flags) {
 }
 
 // ---------------------------------------------------------------------------
-// text console launcher
+// launcher
 
-static void Draw(const std::vector<std::string>& games, size_t sel, size_t top, size_t rows) {
-    consoleClear();
-    printf("\x1b[1;1H\x1b[36mkk4s\x1b[0m - Kirikiri for Switch (%s)\n", KK4S_VERSION);
-    printf("Games: %s/\n", GamesDir().c_str());
-    printf("------------------------------------------------------------\n");
-    if (games.empty()) {
-        printf("\nNo games found.\n\n");
-        printf("Copy a Kirikiri game folder (with data.xp3 or startup.tjs)\n");
-        printf("to %s/<GameName>/\n\n", GamesDir().c_str());
-        printf("Press + to exit.\n");
-        return;
-    }
-    for (size_t i = top; i < games.size() && i < top + rows; ++i) {
-        if (i == sel) printf("\x1b[30;47m> %s\x1b[0m\n", games[i].c_str());
-        else printf("  %s\n", games[i].c_str());
-    }
-    printf("\x1b[44;1H------------------------------------------------------------\n");
-    printf("A: play   Up/Down: select   +: exit");
-}
-
-std::string SelectGame() {
+std::string SelectGame(SDL_Renderer* renderer) {
     std::vector<std::string> games = ScanGames();
     Log("launcher: %zu game(s) found in %s", games.size(), GamesDir().c_str());
-
-    consoleInit(nullptr);
-    padConfigureInput(1, HidNpadStyleSet_NpadStandard);
-    PadState pad;
-    padInitializeDefault(&pad);
-
     size_t sel = 0;
     std::string last = ReadLastPlayed();
     for (size_t i = 0; i < games.size(); ++i)
         if (games[i] == last) sel = i;
-
-    const size_t rows = 38;
-    size_t top = 0;
-    std::string chosen;
-    bool redraw = true;
-
-    while (appletMainLoop()) {
-        padUpdate(&pad);
-        u64 down = padGetButtonsDown(&pad);
-        if (down & HidNpadButton_Plus) break;
-        if (!games.empty()) {
-            if (down & HidNpadButton_AnyDown) { sel = (sel + 1) % games.size(); redraw = true; }
-            if (down & HidNpadButton_AnyUp) { sel = (sel + games.size() - 1) % games.size(); redraw = true; }
-            if (down & HidNpadButton_A) { chosen = games[sel]; break; }
-        }
-        if (redraw) {
-            if (sel < top) top = sel;
-            if (sel >= top + rows) top = sel - rows + 1;
-            Draw(games, sel, top, rows);
-            redraw = false;
-        }
-        consoleUpdate(nullptr);
-    }
-    consoleExit(nullptr);
-
+    std::string chosen = RunLauncher(renderer, games, sel);
     if (chosen.empty()) {
         Log("launcher: no game selected, exiting");
         return "";
