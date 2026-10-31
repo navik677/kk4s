@@ -10,6 +10,9 @@
 #include "kk4s_fs.h"
 
 #include <cstdio>
+#ifdef __linux__
+#include <dirent.h>
+#endif
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -95,6 +98,11 @@ int BatteryPercent(bool* charging) {
 bool EditText(const std::string&, std::string&) { return false; } // PC: typed in place
 bool EditTextAvailable() { return false; }
 
+void PlaceWorkerThread(const char*, bool) {} // the OS schedules threads across cores
+void SetGamePerformance(bool) {}
+void TrackThread() {}
+void UntrackThread() {}
+
 void ExitAfterGame(int code) {
     Settings s;
     s.Load();
@@ -111,6 +119,26 @@ void ExitAfterGame(int code) {
     if (n > 0) { buf[n] = 0; self = buf; }
 #endif
     if (relaunch && !self.empty()) Log("kk4s: game quit, back to the launcher");
+#ifdef __linux__
+    { // threads still alive (the engine should have ended its own by now)
+        int n = 0;
+        if (DIR* d = opendir("/proc/self/task")) {
+            std::string names;
+            while (dirent* e = readdir(d)) {
+                if (e->d_name[0] == '.') continue;
+                ++n;
+                char comm[64] = {0};
+                if (FILE* f = fopen((std::string("/proc/self/task/") + e->d_name + "/comm").c_str(), "r")) {
+                    if (fgets(comm, sizeof(comm), f)) comm[strcspn(comm, "\n")] = 0;
+                    fclose(f);
+                }
+                names += std::string(" ") + comm;
+            }
+            closedir(d);
+            Log("kk4s: %d thread(s) alive at exit:%s", n, names.c_str());
+        }
+    }
+#endif
     Shutdown();
     if (relaunch && !self.empty()) {
         char* argv[] = {const_cast<char*>(self.c_str()), nullptr};

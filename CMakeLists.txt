@@ -328,6 +328,14 @@ target_compile_options(${PROJECT_NAME} PUBLIC $<$<COMPILE_LANGUAGE:CXX>:${CXX_FL
 target_compile_options(${PROJECT_NAME} PUBLIC $<$<CONFIG:RELEASE>:${OPTIMIZATION_FLAGS}>)
 target_compile_options(${PROJECT_NAME} PUBLIC $<$<CONFIG:RELWITHDEBINFO>:${OPTIMIZATION_FLAGS}>)
 
+# Pixel loops (layer blending, transitions, scaling) run on the CPU for every
+# frame; -O3 lets GCC vectorize them (NEON on the Switch). Comes after -O2.
+set_source_files_properties(
+    engine/source/core/visual/tvpgl.cpp
+    engine/source/core/visual/gl/blend_function.cpp
+    engine/source/core/visual/gl/ResampleImage.cpp
+    PROPERTIES COMPILE_OPTIONS "$<$<NOT:$<CONFIG:Debug>>:-O3>")
+
 if(KK4S_PLATFORM STREQUAL "desktop")
     # PC viewer: plain executable, no packaging
     set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME kk4s)

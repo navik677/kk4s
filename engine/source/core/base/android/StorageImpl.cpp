@@ -23,6 +23,8 @@
 #include "Application.h"
 #include "kk4s_fs.h" // kk4s
 #include "kk4s_compat.h" // kk4s
+#include "kk4s_platform.h" // kk4s: frame stats
+#include <SDL.h> // kk4s: SDL_GetTicks
 #include "StringUtil.h"
 #include "FilePathUtil.h"
 #include "TickCount.h"
@@ -721,6 +723,7 @@ tTVPLocalFileStream::tTVPLocalFileStream(const ttstr &origname,
 	tjs_int trycount = 0;
 	std::string filename;
 	TVPUtf16ToUtf8( filename, localname.AsStdString() );
+	Uint32 kk4sStart = SDL_GetTicks(); // kk4s: frame stats (writes)
 
 retry:
 	Handle = fopen( filename.c_str(), mode );
@@ -737,6 +740,15 @@ retry:
 		TVPThrowExceptionMessage(TVPCannotOpenStorage, origname);
 	}
 
+	// kk4s: newlib's FILE buffer is 1 KB, so a save was written to the SD card
+	// in 1 KB requests to the file system service. Writers get 64 KB (setvbuf
+	// must come before any other operation on the stream).
+	if(access != TJS_BS_READ) {
+		setvbuf(Handle, NULL, _IOFBF, 64 * 1024);
+		kk4s::CurrentFrameStats().write += SDL_GetTicks() - kk4sStart;
+		kk4s::CurrentFrameStats().writes++;
+	}
+
 	if(access == TJS_BS_APPEND) // move the file pointer to last
 		fseek(Handle, 0, SEEK_END);
 
@@ -747,7 +759,9 @@ retry:
 //---------------------------------------------------------------------------
 tTVPLocalFileStream::~tTVPLocalFileStream()
 {
+	Uint32 kk4sStart = SDL_GetTicks(); // kk4s: frame stats (flushing writes)
 	if(Handle!=nullptr) fclose(Handle);
+	kk4s::CurrentFrameStats().write += SDL_GetTicks() - kk4sStart;
 
 	// push current tick as an environment noise
 	// (timing information from file accesses may be good noises)
@@ -781,7 +795,9 @@ tjs_uint TJS_INTF_METHOD tTVPLocalFileStream::Read(void *buffer, tjs_uint read_s
 //---------------------------------------------------------------------------
 tjs_uint TJS_INTF_METHOD tTVPLocalFileStream::Write(const void *buffer, tjs_uint write_size)
 {
+	Uint32 kk4sStart = SDL_GetTicks(); // kk4s: frame stats
 	size_t ret = fwrite( buffer, 1, write_size, Handle );
+	kk4s::CurrentFrameStats().write += SDL_GetTicks() - kk4sStart;
 	return (tjs_uint)ret;
 }
 //---------------------------------------------------------------------------

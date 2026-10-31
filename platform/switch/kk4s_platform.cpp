@@ -5,7 +5,12 @@
 
 #include <switch.h>
 
+#include <algorithm>
+#include <atomic>
 #include <cstdio>
+#include <mutex>
+#include <unistd.h>
+#include <vector>
 #include <sys/stat.h>
 #include <SDL.h>
 
@@ -13,8 +18,10 @@
 #define KK4S_VERSION "dev"
 #endif
 
-// Return to hbmenu on exit (keep from upstream krkrs).
-extern "C" { u32 __nx_applet_exit_mode = 1; }
+// No __nx_applet_exit_mode override: the default (0) returns to hbloader on
+// exit, which then starts the NRO set by envSetNextLoad (back to the launcher)
+// or hbmenu. Mode 1 (from upstream krkrs) closed the whole application in
+// title takeover, so "exit to the launcher" quit kk4s instead.
 extern int __system_argc;
 extern char** __system_argv;
 
@@ -53,13 +60,116 @@ void Init(int, char**) {
     Log("nxlink: %s", g_nxlink ? "connected" : "no");
 }
 
+// ---------------------------------------------------------------------------
+// pthread_detach. libsysbase's pthread_detach calls __syscall_thread_detach,
+// which libnx leaves undefined ("unsupported"), so a detached thread was never
+// closed: its stack stayed mapped over heap pages. SDL detaches its threads,
+// and so does the engine for every sound and timer thread it deletes. hbloader
+// starts the next NRO in the same process with the same heap, and the launcher
+// then crashed in malloc on those locked pages. Here detached threads are
+// remembered and closed once they have ended (libnx threadClose: unmaps and
+// frees the stack); Shutdown() handles the rest.
+struct LibnxPthread { Thread thr; void* rc; }; // libnx' struct __pthread_t
+static std::mutex g_detached_mutex;
+static std::vector<LibnxPthread*> g_detached;
+
+static bool ThreadEnded(const Thread& t) {
+    return R_SUCCEEDED(svcWaitSynchronizationSingle(t.handle, 0));
+}
+
+// Close detached threads that have ended. Caller holds g_detached_mutex.
+static unsigned ReapDetachedLocked() {
+    unsigned closed = 0;
+    for (size_t i = 0; i < g_detached.size();) {
+        LibnxPthread* t = g_detached[i];
+        if (ThreadEnded(t->thr) && R_SUCCEEDED(threadClose(&t->thr))) {
+            free(t); // __libnx_alloc is malloc
+            g_detached.erase(g_detached.begin() + i);
+            ++closed;
+        } else {
+            ++i;
+        }
+    }
+    return closed;
+}
+
+extern "C" int __syscall_thread_detach(struct __pthread_t* thread) {
+    if (!thread || thread == (struct __pthread_t*)~(uintptr_t)0) return 0;
+    std::lock_guard<std::mutex> lock(g_detached_mutex);
+    ReapDetachedLocked();
+    g_detached.push_back(reinterpret_cast<LibnxPthread*>(thread));
+    return 0;
+}
+
+// Tracked threads (see TrackThread in kk4s_platform.h).
+static std::mutex g_threads_mutex;
+static std::vector<Thread*> g_threads;
+
+void TrackThread() {
+    Thread* t = threadGetSelf();
+    if (!t) return;
+    std::lock_guard<std::mutex> lock(g_threads_mutex);
+    g_threads.push_back(t);
+}
+
+void UntrackThread() {
+    Thread* t = threadGetSelf();
+    std::lock_guard<std::mutex> lock(g_threads_mutex);
+    for (size_t i = 0; i < g_threads.size(); ++i)
+        if (g_threads[i] == t) { g_threads.erase(g_threads.begin() + i); break; }
+}
+
+// Last resort for tracked threads that are still alive when control goes back
+// to hbloader (the engine normally ends its threads first, TVPStopAllThreads).
+// Horizon cannot kill another thread, but it can pause one: it then never runs
+// again, and its stack can be unmapped. Kernel calls only: a paused thread may
+// hold a libc lock (malloc, a FILE), so nothing here may take one. The registry
+// lock stays held, so a thread that wants to untrack itself just waits.
+static unsigned PauseTrackedThreads() {
+    g_threads_mutex.lock();
+    Thread* self = threadGetSelf();
+    unsigned paused = 0;
+    // detached threads that are still running count as tracked here
+    g_detached_mutex.lock();
+    for (LibnxPthread* t : g_detached)
+        if (std::find(g_threads.begin(), g_threads.end(), &t->thr) == g_threads.end()) g_threads.push_back(&t->thr);
+    for (Thread* t : g_threads) {
+        if (t == self || t->handle == INVALID_HANDLE) continue;
+        // an ended thread only needs its stack unmapped
+        if (!ThreadEnded(*t) && R_FAILED(svcSetThreadActivity(t->handle, ThreadActivity_Paused))) continue;
+        // The stack is a mirror of heap pages (svcMapMemory); while mapped those
+        // pages stay locked, and the next NRO gets the same heap.
+        ::MemoryInfo mi;
+        u32 pi;
+        if (R_SUCCEEDED(svcQueryMemory(&mi, &pi, (u64)t->stack_mirror)) && mi.addr == (u64)t->stack_mirror)
+            svcUnmapMemory(t->stack_mirror, t->stack_mem, mi.size);
+        ++paused;
+    }
+    g_threads.clear();
+    return paused;
+}
+
 void Shutdown() {
     if (!g_inited) return;
-    Log("kk4s: shutdown");
+    size_t tracked, detached;
+    unsigned reaped;
+    {
+        std::lock_guard<std::mutex> lock(g_detached_mutex);
+        reaped = ReapDetachedLocked();
+        detached = g_detached.size();
+    }
+    Log("threads: %u detached thread(s) closed, %zu still running", reaped, detached);
+    {
+        std::lock_guard<std::mutex> lock(g_threads_mutex);
+        tracked = g_threads.size();
+    }
+    if (tracked) Log("kk4s: shutdown, %zu thread(s) still running: pausing them", tracked);
+    else Log("kk4s: shutdown");
     if (g_psm) psmExit();
     CloseLog();
     socketExit();
     romfsExit();
+    PauseTrackedThreads();
     g_inited = false;
 }
 
@@ -155,7 +265,10 @@ void ExitAfterGame(int code) {
         if (R_SUCCEEDED(envSetNextLoad(self.c_str(), args.c_str()))) Log("kk4s: game quit, back to the launcher");
     }
     Shutdown();
-    exit(code);
+    // _exit: skips libc's stdio cleanup and static destructors, which could wait
+    // forever on a lock held by a stopped engine thread or touch engine state.
+    // The log is closed and the game has closed its save files.
+    _exit(code);
 }
 
 bool ReadPad(unsigned& held) {
@@ -174,11 +287,36 @@ bool ReadPad(unsigned& held) {
         {HidNpadButton_Plus, kPadPlus}, {HidNpadButton_Minus, kPadMinus},
         {HidNpadButton_Left | HidNpadButton_StickLLeft, kPadLeft}, {HidNpadButton_Up | HidNpadButton_StickLUp, kPadUp},
         {HidNpadButton_Right | HidNpadButton_StickLRight, kPadRight}, {HidNpadButton_Down | HidNpadButton_StickLDown, kPadDown},
+        {HidNpadButton_StickL, kPadLStick}, {HidNpadButton_StickR, kPadRStick},
     };
     held = 0;
     for (const auto& m : kMap)
         if (b & m.nx) held |= m.pad;
     return true;
+}
+
+void PlaceWorkerThread(const char* name, bool audio) {
+    // Cores the process may use, minus core 0 (main thread) and core 3 (system).
+    u64 allowed = 0;
+    if (R_FAILED(svcGetInfo(&allowed, InfoType_CoreMask, CUR_PROCESS_HANDLE, 0))) return;
+    u32 mask = (u32)allowed & 0x6u;
+    if (!mask) return;
+    // Spread ideal cores round-robin; the mask lets the kernel move a thread to
+    // the other core when its own is busy.
+    static std::atomic<unsigned> next{0};
+    int ideal = (mask == 0x6u) ? 1 + (int)(next++ % 2) : (mask & 0x2u ? 1 : 2);
+    Result rc = svcSetThreadCoreMask(CUR_THREAD_HANDLE, ideal, mask);
+    // Main thread: 0x2C. New threads get 0x3B; the mixer should win over decoders.
+    if (audio && R_SUCCEEDED(rc)) svcSetThreadPriority(CUR_THREAD_HANDLE, 0x2B);
+    static std::atomic<int> logged{0};
+    if (logged++ < 24) Log("threads: %s -> core %d (mask 0x%x)%s", name ? name : "?", ideal, (unsigned)mask,
+                           R_SUCCEEDED(rc) ? "" : " failed");
+}
+
+void SetGamePerformance(bool boost) {
+    if (hosversionBefore(7, 0, 0)) return;
+    Result rc = appletSetCpuBoostMode(boost ? ApmCpuBoostMode_FastLoad : ApmCpuBoostMode_Normal);
+    Log("perf: CPU boost %s%s", boost ? "on" : "off", R_SUCCEEDED(rc) ? "" : " (failed)");
 }
 
 // libnx gives the real argv through __system_argv (hbloader).

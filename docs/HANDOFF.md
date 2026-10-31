@@ -49,7 +49,10 @@ KK4S_ROOT=/tmp/kk4s-run ./out-desktop/kk4s game/fsn    # one game; without an ar
 Windows (no admin): portable MSYS2 (`msys2-base-x86_64-latest.sfx.exe`), `pacman -Syu` twice, then
 `DEPS=1 bash tools/build-desktop.sh` in a UCRT64 shell. Details: `docs/pc-viewer.md`.
 
-Switch builds come from CI (`gh run download <id>`); locally via Docker (`README.md`).
+Switch builds come from CI (`gh run download <id>`); locally via Docker (`README.md`). On the
+Fedora dev box there is only podman, which needs the full image name:
+`sed 's#^FROM devkitpro/#FROM docker.io/devkitpro/#' Dockerfile > /tmp/Dockerfile && podman build -t kk4s-build -f /tmp/Dockerfile .`,
+then `podman run --rm -v "$PWD":/src:Z kk4s-build bash tools/build-switch.sh` → `out/kk4s.nro`.
 
 ## Working with the user's Switch
 
@@ -67,7 +70,7 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 ## Debugging toolbox
 
 - **Log first** (`logs/kk4s-*.log`): script exceptions with TJS stack traces, `compat:` decisions,
-  `fonts:`, `input:`, `launcher:`, `overlay:` lines, `slow frame: N ms` for frames over 200 ms.
+  `fonts:`, `input:`, `launcher:`, `overlay:` lines, `slow frame: N ms (compose …, other …)` for frames over 200 ms (fields: `docs/debugging.md`).
 - **Crash reports**: Atmosphere report + `kk4s.elf` of the same build (git hash in the log). Without
   devkitPro, `eu-addr2line -f -C -i -e kk4s.elf 0x<offset>` works on the aarch64 ELF; the report
   prints offsets as `kk4s + 0x...`. See `docs/debugging.md`.
@@ -98,6 +101,10 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 
 ## Next steps
 
+0. Hardware check of the 2026-10-31 fixes: L3 + R3 menu, exit to the launcher, performance (see
+   `docs/hardware-test-checklist.md`). If stutter remains, the log's `slow frame` and
+   `xp3: decrypted ... ms` lines show whether whole-file decryption of big files (BGM) on the main
+   thread is the cause (`XP3Archive.cpp`, filter games only).
 1. Aspect-correct scaling of the game picture (letterbox / pillarbox; currently stretched).
 2. Video playback check (`krmovie.dll` → FFmpeg), e.g. the openings in the test games.
 3. Real extrans transitions (wave, ripple, mosaic, turn, rotate*) instead of crossfade.

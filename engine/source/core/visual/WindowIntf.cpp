@@ -14,6 +14,8 @@
 #include <algorithm>
 #include "MsgIntf.h"
 #include "WindowIntf.h"
+#include "kk4s_platform.h" // kk4s: frame stats
+#include <SDL.h> // kk4s: SDL_GetTicks
 #include "LayerIntf.h"
 #include "DebugIntf.h"
 #include "EventIntf.h"
@@ -628,7 +630,9 @@ void tTJSNI_BaseWindow::UpdateContent()
 {
 	if( DrawDevice ) {
 		// is called from event dispatcher
+		Uint32 kk4sStart = SDL_GetTicks(); // kk4s: frame stats
 		DrawDevice->Update();
+		kk4s::CurrentFrameStats().compose += SDL_GetTicks() - kk4sStart;
 
 		if( !WaitVSync ) DrawDevice->Show();
 

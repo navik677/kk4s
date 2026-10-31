@@ -70,6 +70,7 @@ static void WriteLogBatch(const std::string& batch, bool sync) {
 }
 
 static void LogWriterThread() {
+    PlaceWorkerThread("log");
     time_t last_sync = time(nullptr);
     std::unique_lock<std::mutex> lock(g_log_mutex);
     while (true) {
@@ -132,8 +133,15 @@ unsigned PadFromSdlButton(int b) {
         case SDL_CONTROLLER_BUTTON_DPAD_UP: return kPadUp;
         case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: return kPadRight;
         case SDL_CONTROLLER_BUTTON_DPAD_DOWN: return kPadDown;
+        case SDL_CONTROLLER_BUTTON_LEFTSTICK: return kPadLStick;
+        case SDL_CONTROLLER_BUTTON_RIGHTSTICK: return kPadRStick;
     }
     return 0;
+}
+
+FrameStats& CurrentFrameStats() {
+    static FrameStats stats;
+    return stats;
 }
 
 namespace detail {
@@ -307,6 +315,21 @@ std::string FindGameFile(const char* name) {
     if (g_game_dir.empty()) return "";
     std::string n = FindEntry(g_game_dir, name, false);
     return n.empty() ? std::string() : g_game_dir + n;
+}
+
+std::string FindCompatFile(const char* name) {
+    std::string path = FindGameFile(name);
+    if (!path.empty() || g_game_dir.empty()) return path;
+    // <data>/profiles/<game folder>/: helper files kept outside the game folder
+    std::string folder = g_game_dir;
+    while (!folder.empty() && folder.back() == '/') folder.pop_back();
+    folder = folder.substr(folder.find_last_of('/') + 1);
+    std::string profiles = ProfilesDir() + "/";
+    std::string dir = FindEntry(profiles, folder.c_str(), true);
+    if (dir.empty()) return "";
+    dir = profiles + dir + "/";
+    std::string n = FindEntry(dir, name, false);
+    return n.empty() ? std::string() : dir + n;
 }
 
 std::string ResolveProjectDir(const std::string& game_dir) {

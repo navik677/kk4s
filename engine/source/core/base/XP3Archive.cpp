@@ -18,6 +18,8 @@
 #include "UtilStreams.h"
 #include "SysInitIntf.h"
 #include "kk4s_compat.h" // kk4s
+#include "kk4s_platform.h" // kk4s
+#include <SDL.h> // kk4s: SDL_GetTicks
 
 #ifdef TVP_COMPRESSION_ENABLE_ZLIB
 #if 1
@@ -581,6 +583,7 @@ tTJSBinaryStream * tTVPXP3Archive::CreateStreamByIndex(tjs_uint idx)
 		kk4s::compat::ScriptFilterActive() && kk4s::compat::IsMainThread())
 	{
 		tTVPMemoryStream *mem = NULL;
+		Uint32 kk4sStart = SDL_GetTicks();
 		try
 		{
 			mem = new tTVPMemoryStream(NULL, (tjs_uint)item.OrgSize);
@@ -593,6 +596,13 @@ tTJSBinaryStream * tTVPXP3Archive::CreateStreamByIndex(tjs_uint idx)
 			throw;
 		}
 		delete out;
+		Uint32 kk4sTime = SDL_GetTicks() - kk4sStart;
+		kk4s::CurrentFrameStats().read += kk4sTime;
+		kk4s::CurrentFrameStats().reads++;
+		static const bool kk4sLogAll = getenv("KK4S_LOG_READS") != NULL; // debugging aid: every file
+		if(kk4sTime >= 40 || kk4sLogAll) // a stall on the main thread: see how often and how big
+			kk4s::Log("xp3: decrypted %s (%u KB) on the main thread in %u ms", item.Name.AsNarrowStdString().c_str(),
+				(unsigned)(item.OrgSize >> 10), (unsigned)kk4sTime);
 		return mem;
 	}
 

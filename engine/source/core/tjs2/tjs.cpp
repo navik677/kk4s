@@ -66,6 +66,7 @@ bool TJSEvalOperatorIsOnGlobal = false;
 	// Post-! operator (evaluate expression) is to be executed on "this" context
 	// since TJS2 version 2.4.1
 bool TJSWarnOnNonGlobalEvalOperator = false;
+bool TJSClassVarKeepsProperty = false; // kk4s
 	// Output warning against non-local post-! operator.
 bool TJSEnableDebugMode = false;
 	// Enable TJS2 Debugging support. Enabling this may make the

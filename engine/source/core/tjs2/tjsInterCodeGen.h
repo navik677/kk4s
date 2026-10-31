@@ -528,6 +528,7 @@ private:
 	static void ContinuousClear(tTJSVariant *ra, const tjs_int32 *code);
 	void GetPropertyDirect(tTJSVariant *ra, const tjs_int32 *code,
 		tjs_uint32 flags);
+	bool kk4sClassVarOnProperty(tTJSVariant *ra, const tjs_int32 *code); // kk4s
 	void SetPropertyDirect(tTJSVariant *ra, const tjs_int32 *code,
 		tjs_uint32 flags);
 	static void GetProperty(tTJSVariant *ra, const tjs_int32 *code);

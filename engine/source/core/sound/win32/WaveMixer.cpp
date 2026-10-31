@@ -1,5 +1,6 @@
 #include "tjsCommHead.h"
 #include "WaveMixer.h"
+#include "kk4s_platform.h" // kk4s
 // #ifdef __APPLE__
 // #include <OpenAL/al.h>
 // #include <OpenAL/alc.h>
@@ -230,6 +231,8 @@ public:
 		_spec.format = AUDIO_S16;
 		_spec.channels = 2;
 		_spec.callback = [](void *p, Uint8 *s, int l) {
+			static bool placed = false; // kk4s: SDL's audio thread, off the main thread's core (Switch)
+			if (!placed) { placed = true; kk4s::PlaceWorkerThread("audio", true); }
 			memset(s, 0, l);
 			((iTVPAudioRenderer*)p)->FillBuffer(s, l);
 		};

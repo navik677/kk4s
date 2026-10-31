@@ -1894,6 +1894,9 @@ public:
 	void Continue();
 
 	bool GetRunning() const { return Running; }
+
+	// kk4s: end the thread at exit (same as the destructor, without deleting)
+	void RequestStop() override { Running = false; Terminate(); Event.Set(); }
 };
 //---------------------------------------------------------------------------
 tTVPWaveSoundBufferDecodeThread::tTVPWaveSoundBufferDecodeThread(

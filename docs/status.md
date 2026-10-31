@@ -25,7 +25,7 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
 
 - **Launcher** with covers (carousel / grid), VNDB cover search, settings, game options, save
   backups, autostart, 4 UI languages — see [launcher.md](launcher.md).
-- **In-game menu** (+ / −): quick save / load, volume, controls, exit to the launcher.
+- **In-game menu** (L3 + R3 together; F1 on PC): quick save / load, volume, controls, exit to the launcher.
 - **Input**: Switch buttons via libnx by label, configurable per button; touch = left mouse button;
   keyboard → Windows VK codes; `System.getKeyState` (skip with Ctrl held).
 - **Saves** outside the game folder (`<data>/saves/<game>/`), migrated on first start.
@@ -38,6 +38,32 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
 
 ## Engine fixes (all marked `kk4s:` in `engine/`)
 
+- Switch threads: libnx starts every new thread on core 0 next to the main thread, at a lower
+  priority, so audio decoding, the mixer, timers and image loading only ran while the main thread
+  waited (stutter, slow frames). Engine threads, the SDL audio thread and kk4s' own threads now move
+  themselves to cores 1–2 (`kk4s::PlaceWorkerThread`); the mixer gets a higher priority. The main
+  loop sleeps 1 ms when it presented nothing instead of spinning.
+- Exit (in-game menu, script errors) went straight to `exit()`, skipping the engine shutdown;
+  with libnx' default exit mode the engine threads kept running inside the next NRO and corrupted
+  its heap (crash in the launcher after a game). `TVPExitApplication` now runs `TVPSystemUninit`,
+  then `TVPStopAllThreads` (sound decoder threads and the image loader are not ended by the
+  shutdown), and the Switch pauses anything left (`PauseTrackedThreads`), then `_exit`.
+- Font files are read into memory once (`FreeType.cpp`, `kk4sFontImages`): FreeType read glyph data
+  on demand in small seek + read steps, i.e. many SD card requests per new glyph on the Switch.
+- Engine options embedded in the game exe are read; `-evalcontext=global` (or an exe older than that
+  option) makes `!` run on the global object, as Kirikiri 2.19 did (FSN PC version without
+  `AfterInit2.tjs`).
+- Old Kirikiri 2 (exe without -evalcontext): a class `var x;` keeps a native property `x`
+  (`TJSClassVarKeepsProperty`). Old KAG3 MessageLayer has `var face;` and draws with
+  `face = dfProvince`; without this FSN's message layer turned black and links were unreadable.
+- libnx has no `pthread_detach`: kk4s defines `__syscall_thread_detach` and closes ended detached
+  threads (their stacks stayed mapped over the heap: launcher crash after a game).
+- util.dll (`enabledIME`, `enumFont`, ...) and fstat.dll (`Storages.fstat`, `copyFile`, ...) added.
+- Pixel loops (`tvpgl.cpp`, `gl/blend_function.cpp`, `gl/ResampleImage.cpp`) are built with -O3:
+  GCC vectorizes 135 instead of 59 loops in `blend_function.cpp` and 77 instead of 12 in `tvpgl.cpp`
+  for aarch64 (NEON).
+- Local files are written with a 64 KB stdio buffer (newlib's default is 1 KB, i.e. one file system
+  request per KB on the SD card).
 - Relative storage names inside `data.xp3>` were never found (krkrs prefixed every name with `file:/`).
 - Case-insensitive file lookup on case-sensitive file systems; when creating folders the existing
   part keeps its real spelling (a lower-cased copy of the whole path was created before).

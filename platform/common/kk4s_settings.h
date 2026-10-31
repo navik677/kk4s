@@ -24,6 +24,7 @@ struct Settings {
     bool separate_saves = true;    // saves in <data>/saves/<game>/ instead of the game folder
     bool return_to_launcher = true;// back to the launcher when a game quits
     bool autostart = false;        // start the last game after a short countdown
+    bool cpu_boost = true;         // Switch: CPU at 1785 MHz while a game runs
     int volume = 100;              // game sound volume, 0..100 (WaveSoundBuffer.globalVolume)
 
     std::map<unsigned, PadAction> pad; // by kPad* button (A..Minus); missing = default

@@ -56,7 +56,12 @@ enum PadButton : unsigned {
     kPadL = 1u << 4, kPadR = 1u << 5, kPadZL = 1u << 6, kPadZR = 1u << 7,
     kPadPlus = 1u << 8, kPadMinus = 1u << 9,
     kPadLeft = 1u << 10, kPadUp = 1u << 11, kPadRight = 1u << 12, kPadDown = 1u << 13,
+    kPadLStick = 1u << 14, kPadRStick = 1u << 15, // stick clicks (L3 / R3)
+    kPadLast = kPadRStick,
 };
+// Both sticks pressed together open / close the in-game menu (+ and − stay
+// free for the game). The stick clicks do nothing else in games.
+const unsigned kPadMenuCombo = kPadLStick | kPadRStick;
 
 // Switch: buttons held right now, read straight from libnx (SDL's controller
 // mapping is positional, so its "A" arrives for the Nintendo B button). The
@@ -66,6 +71,28 @@ bool ReadPad(unsigned& held);
 
 // SDL_GameControllerButton -> PadButton (0 if not used). For PC pads.
 unsigned PadFromSdlButton(int sdl_button);
+
+// Call at the start of every worker thread (engine threads, audio callback,
+// log writer). Switch: libnx puts new threads on core 0 next to the main
+// thread, at a lower priority, so they only ran while the main thread waited;
+// this moves the calling thread to the other application cores. Elsewhere a
+// no-op. audio = true also raises the priority (the mixer must never starve).
+void PlaceWorkerThread(const char* name, bool audio = false);
+
+// Threads that do not end by themselves (engine threads, launcher jobs) call
+// TrackThread() when they start and UntrackThread() when they end. hbloader
+// starts the next NRO (the launcher again, or hbmenu) in the same process, and
+// engine threads left running there corrupted its memory (crash in the launcher
+// after a game). The engine ends its threads at exit (TVPExitApplication:
+// TVPSystemUninit + TVPStopAllThreads); on the Switch Shutdown() pauses any
+// tracked thread that is still alive and unmaps its stack, as a last resort.
+// Elsewhere a no-op: the OS ends them with the process.
+void TrackThread();
+void UntrackThread();
+
+// Switch: CPU boost (1785 MHz instead of 1020 MHz) while a game runs, if the
+// setting allows it. No-op elsewhere.
+void SetGamePerformance(bool boost);
 
 // System UI language as a two-letter code ("uk", "en", "ru", "ja", ...).
 std::string SystemLanguage();
@@ -102,10 +129,29 @@ std::vector<std::string> SystemFontFiles();
 // case-insensitively ("xp3filter.tjs" finds "XP3Filter.tjs"). "" if missing.
 std::string FindGameFile(const char* name);
 
+// Like FindGameFile, then <data>/profiles/<game folder>/<name>: Kirikiroid2
+// helper scripts (xp3filter.tjs, Override2.tjs, AfterInit2.tjs) can live there,
+// so a PC game folder runs as it is. Keys stay on the user's SD card.
+std::string FindCompatFile(const char* name);
+
 // Logging. Lines go to stderr (nxlink, if connected) and to the log file,
 // written by a background thread every 200 ms (fsync at most every 2 s).
 void Log(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void LogRaw(const char* text);
+
+// Main-thread time of the current frame by kind (ms), filled by engine hooks
+// and printed on "slow frame" log lines, then reset.
+struct FrameStats {
+    unsigned compose = 0; // layer tree -> frame buffer (software drawing)
+    unsigned upload = 0;  // frame buffer -> GPU texture
+    unsigned present = 0; // SDL_RenderPresent (waits for vsync)
+    unsigned read = 0;    // whole-file reads + decryption of archive files
+    unsigned reads = 0;   // how many such files
+    unsigned write = 0;   // writing local files (saves): open + write + close
+    unsigned writes = 0;  // files opened for writing
+    unsigned gc = 0;      // TJS garbage collection / rehash (idle compaction)
+};
+FrameStats& CurrentFrameStats();
 
 // Memory info from the kernel (bytes).
 struct MemoryInfo {

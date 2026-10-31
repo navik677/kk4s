@@ -66,6 +66,13 @@ extern bool TJSEvalOperatorIsOnGlobal;
 extern bool TJSWarnOnNonGlobalEvalOperator;
 	// Output warning against non-local post-! operator.
 	// (For checking where the post-! operators are used)
+extern bool TJSClassVarKeepsProperty;
+	// kk4s: old Kirikiri 2 behaviour: "var x;" in a class body does not
+	// replace a property "x" the object already has (e.g. Layer.face).
+	// Old KAG3 MessageLayer declares "var face; // font" and still sets
+	// the native draw face with "face = dfProvince".
+	// Output warning against non-local post-! operator.
+	// (For checking where the post-! operators are used)
 extern bool TJSEnableDebugMode;
 	// Enable TJS2 Debugging support. Enabling this may make the
 	// program somewhat slower and using more memory.

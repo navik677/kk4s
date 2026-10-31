@@ -26,7 +26,7 @@ const SDL_Color kText2 = Rgba(163, 171, 194);
 const SDL_Color kText3 = Rgba(110, 118, 144);
 const SDL_Color kWarn = Rgba(255, 160, 140);
 
-enum RowId { kResume, kQuickSave, kQuickLoad, kVolume, kControls, kToLauncher, kQuit, kPadFirst = 100, kReset = 200 };
+enum RowId { kResume, kQuickSave, kQuickLoad, kVolume, kControls, kToLauncher, kQuit, kPadFirst = 100, kReset = 200, kMenuCombo };
 
 const struct { unsigned bit; const char* name; } kPads[] = {
     {kPadA, "A"}, {kPadB, "B"}, {kPadX, "X"}, {kPadY, "Y"}, {kPadL, "L"},
@@ -73,6 +73,9 @@ std::vector<Row> Rows() {
             r.choice = true;
             rows.push_back(r);
         }
+        Row combo{kMenuCombo, T(i18n::kOpenMenuHint)}; // not configurable, shown for reference
+        combo.disabled = true;
+        rows.push_back(combo);
         rows.push_back(Row{kReset, T(i18n::kResetControls)});
         return rows;
     }

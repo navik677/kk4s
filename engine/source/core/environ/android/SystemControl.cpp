@@ -28,6 +28,7 @@
 #include "Application.h"
 #include "TickCount.h"
 #include "Random.h"
+#include "kk4s_platform.h" // kk4s: frame stats
 
 tTVPSystemControl *TVPSystemControl;
 bool TVPSystemControlAlive = false;
@@ -195,12 +196,16 @@ void tTVPSystemControl::SystemWatchTimerTimer() {
 		LastCompactedTick = tick;
 
 		// fire compact event
+		tjs_uint32 kk4sStart = TVPGetRoughTickCount32(); // kk4s: frame stats
 		TVPDeliverCompactEvent(TVP_COMPACT_LEVEL_IDLE);
+		kk4s::CurrentFrameStats().gc += TVPGetRoughTickCount32() - kk4sStart;
 	}
 	if( !ContinuousEventCalling && tick > LastRehashedTick + 1500 ) {
 		// TJS2 object rehash
 		LastRehashedTick = tick;
+		tjs_uint32 kk4sStart = TVPGetRoughTickCount32(); // kk4s: frame stats
 		TJSDoRehash();
+		kk4s::CurrentFrameStats().gc += TVPGetRoughTickCount32() - kk4sStart;
 	}
 	// ensure modal window visible
 	if( tick > LastShowModalWindowSentTick + 4100 ) {
