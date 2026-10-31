@@ -20,7 +20,7 @@ FreeTypeFontRasterizer::FreeTypeFontRasterizer() : RefCount(0), Face(NULL), Last
 	AddRef();
 }
 FreeTypeFontRasterizer::~FreeTypeFontRasterizer() {
-	if( Face ) delete Face;
+	ClearFaceCache(); // kk4s: Face is one of the cached faces
 	Face = NULL;
 	TVPUninitializeFreeFont();
 }
@@ -32,7 +32,7 @@ void FreeTypeFontRasterizer::Release() {
 	RefCount--;
 	LastBitmap = NULL;
 	if( RefCount == 0 ) {
-		if( Face ) delete Face;
+		ClearFaceCache(); // kk4s
 		Face = NULL;
 
 		delete this;
@@ -79,16 +79,12 @@ void FreeTypeFontRasterizer::ApplyFont( const tTVPFont& font ) {
 	opt |= (font.Flags & TVP_TF_UNDERLINE) ? TVP_TF_UNDERLINE : 0;
 	opt |= (font.Flags & TVP_TF_STRIKEOUT) ? TVP_TF_STRIKEOUT : 0;
 	opt |= (font.Flags & TVP_TF_FONTFILE) ? TVP_FACE_OPTIONS_FILE : 0;
+	// kk4s: keep recently used faces. Games switch fonts constantly (main text,
+	// ruby, other layers) and every new tFreeTypeFace reopens and parses its
+	// font files: fast on PC, tens of ms on the Switch SD card, per switch.
 	bool recreate = false;
-	if( Face ) {
-		if( Face->GetFontName() != faces[0] ) {
-			delete Face;
-			Face = new tFreeTypeFace( faces, opt );
-			recreate = true;
-		}
-	} else {
-		Face = new tFreeTypeFace( faces, opt );
-		recreate = true;
+	if( !Face || Face->GetFontName() != faces[0] ) {
+		Face = AcquireFace( faces, opt, recreate );
 	}
 	Face->SetHeight( font.Height < 0 ? -font.Height : font.Height );
 	if( recreate == false ) {
@@ -114,6 +110,37 @@ void FreeTypeFontRasterizer::ApplyFont( const tTVPFont& font ) {
 		}
 	}
 	LastBitmap = NULL;
+}
+//---------------------------------------------------------------------------
+// kk4s: small most-recently-used cache of faces, keyed by the face list and
+// the "font file" flag (other options are set on the face per ApplyFont).
+tFreeTypeFace* FreeTypeFontRasterizer::AcquireFace( const std::vector<tjs_string>& faces, tjs_uint32 opt, bool& created ) {
+	tjs_string key;
+	for( const tjs_string& f : faces ) { key += f; key += TJS_W('\n'); }
+	key += (opt & TVP_FACE_OPTIONS_FILE) ? TJS_W('F') : TJS_W('N');
+	for( auto i = FaceCache.begin(); i != FaceCache.end(); ++i ) {
+		if( i->first == key ) {
+			std::pair<tjs_string, tFreeTypeFace*> hit = *i;
+			FaceCache.erase( i );
+			FaceCache.insert( FaceCache.begin(), hit );
+			created = false;
+			return hit.second;
+		}
+	}
+	tFreeTypeFace* face = new tFreeTypeFace( faces, opt );
+	FaceCache.insert( FaceCache.begin(), std::make_pair( key, face ) );
+	const size_t kMaxFaces = 8;
+	while( FaceCache.size() > kMaxFaces ) {
+		delete FaceCache.back().second; // never the one just inserted at the front
+		FaceCache.pop_back();
+	}
+	created = true;
+	return face;
+}
+//---------------------------------------------------------------------------
+void FreeTypeFontRasterizer::ClearFaceCache() {
+	for( auto& e : FaceCache ) delete e.second;
+	FaceCache.clear();
 }
 //---------------------------------------------------------------------------
 void FreeTypeFontRasterizer::GetTextExtent(tjs_char ch, tjs_int &w, tjs_int &h) {

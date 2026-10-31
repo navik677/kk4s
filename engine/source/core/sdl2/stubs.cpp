@@ -40,6 +40,7 @@
 #endif
 #include "kk4s_platform.h"
 #include "kk4s_compat.h"
+#include "kk4s_settings.h"
 
 
 class TVPWindowLayer;
@@ -619,29 +620,34 @@ public:
 			TVPPostInputEvent(new tTVPOnMouseUpInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, btn, 0));
 		}
 	}
-	// Gamepad layout (buttons by their printed label, see kk4s::PadButton):
+	// Gamepad: D-pad / left stick = arrows; the other buttons do what the
+	// launcher's controls settings say (kk4s::Settings::pad). Defaults:
 	//   A = Enter (next / OK)         B = right click (menu / cancel / hide text)
 	//   X, ZR = Ctrl held (skip)      Y = Space
 	//   L = Page Up (backlog)         R = Page Down
 	//   ZL = Shift                    + = Esc, - = Tab
-	//   D-pad, left stick = arrows (move between buttons)
 	void kk4sPadPress(unsigned button, bool down) {
 		static int logged = 0; // diagnostics for the first presses
 		if (down && logged < 40) { ++logged; kk4s::Log("input: pad 0x%x -> game", button); }
 		switch (button) {
-			case kk4s::kPadA: kk4sPostKey(VK_RETURN, down); break;
-			case kk4s::kPadB: kk4sPostMouseButton(tTVPMouseButton::mbRight, down); break;
-			case kk4s::kPadX: case kk4s::kPadZR: kk4sPostKey(VK_CONTROL, down); break;
-			case kk4s::kPadY: kk4sPostKey(VK_SPACE, down); break;
-			case kk4s::kPadL: kk4sPostKey(VK_PRIOR, down); break;
-			case kk4s::kPadR: kk4sPostKey(VK_NEXT, down); break;
-			case kk4s::kPadZL: kk4sPostKey(VK_SHIFT, down); break;
-			case kk4s::kPadPlus: kk4sPostKey(VK_ESCAPE, down); break;
-			case kk4s::kPadMinus: kk4sPostKey(VK_TAB, down); break;
-			case kk4s::kPadLeft: kk4sPostKey(VK_LEFT, down); break;
-			case kk4s::kPadUp: kk4sPostKey(VK_UP, down); break;
-			case kk4s::kPadRight: kk4sPostKey(VK_RIGHT, down); break;
-			case kk4s::kPadDown: kk4sPostKey(VK_DOWN, down); break;
+			case kk4s::kPadLeft: kk4sPostKey(VK_LEFT, down); return;
+			case kk4s::kPadUp: kk4sPostKey(VK_UP, down); return;
+			case kk4s::kPadRight: kk4sPostKey(VK_RIGHT, down); return;
+			case kk4s::kPadDown: kk4sPostKey(VK_DOWN, down); return;
+		}
+		static kk4s::Settings* settings = nullptr;
+		if (!settings) { settings = new kk4s::Settings(); settings->Load(); }
+		switch (settings->PadFor(button)) {
+			case kk4s::PadAction::Enter: kk4sPostKey(VK_RETURN, down); break;
+			case kk4s::PadAction::RightClick: kk4sPostMouseButton(tTVPMouseButton::mbRight, down); break;
+			case kk4s::PadAction::Ctrl: kk4sPostKey(VK_CONTROL, down); break;
+			case kk4s::PadAction::Space: kk4sPostKey(VK_SPACE, down); break;
+			case kk4s::PadAction::PageUp: kk4sPostKey(VK_PRIOR, down); break;
+			case kk4s::PadAction::PageDown: kk4sPostKey(VK_NEXT, down); break;
+			case kk4s::PadAction::Shift: kk4sPostKey(VK_SHIFT, down); break;
+			case kk4s::PadAction::Esc: kk4sPostKey(VK_ESCAPE, down); break;
+			case kk4s::PadAction::Tab: kk4sPostKey(VK_TAB, down); break;
+			default: break;
 		}
 	}
 	// Switch: poll libnx once per frame and turn button changes into presses.
@@ -1053,8 +1059,7 @@ void TVPExitApplication(int code) {
 	window = NULL;
 	SDL_Quit();
 	kk4s::Log("TVPExitApplication(%d)", code); // kk4s
-	kk4s::Shutdown(); // kk4s
-	exit(code);
+	kk4s::ExitAfterGame(code); // kk4s: back to the launcher (or exit), calls Shutdown()
 }
 
 void TVPRelinquishCPU() {

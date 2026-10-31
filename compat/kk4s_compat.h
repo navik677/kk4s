@@ -6,6 +6,8 @@
 
 #include "tjsCommHead.h"
 
+#include <string>
+
 namespace kk4s {
 namespace compat {
 
@@ -36,6 +38,18 @@ void ReportFontFallback(const ttstr& requested, const ttstr& chosen);
 // 'font' draws Cyrillic full-width; its Cyrillic comes from 'chosen'
 // (empty: no suitable font found). Logged once per font.
 void ReportCyrillicSubstitute(const ttstr& font, const ttstr& chosen);
+
+// Folder for the game's saves (native path, ends with '/') when separate
+// saves are on: <data>/saves/<game>/. Existing saves in `original` are copied
+// there the first time. "" = keep the engine's own data path.
+std::string RedirectDataPath(const std::string& original);
+
+// True on the thread that runs the engine and TJS.
+bool IsMainThread();
+
+// True while Storages.setXP3ArchiveExtractionFilter() has a TJS function set.
+// Such a filter must only run on the main thread (TJS is not thread-safe).
+bool ScriptFilterActive();
 
 // Write an engine log line (TVPAddLog) to the kk4s log file as UTF-8.
 void LogTJS(const ttstr& line);

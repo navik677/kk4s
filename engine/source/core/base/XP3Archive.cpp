@@ -17,6 +17,7 @@
 #include "EventIntf.h"
 #include "UtilStreams.h"
 #include "SysInitIntf.h"
+#include "kk4s_compat.h" // kk4s
 
 #ifdef TVP_COMPRESSION_ENABLE_ZLIB
 #if 1
@@ -570,6 +571,29 @@ tTJSBinaryStream * tTVPXP3Archive::CreateStreamByIndex(tjs_uint idx)
 	{
 		TVPReleaseCachedArchiveHandle(this, stream);
 		throw;
+	}
+
+	// kk4s: with a TJS extraction filter (xp3filter.tjs), decrypt the whole
+	// file now while on the main thread. Audio decoders read their stream
+	// later from their own thread, and running TJS there corrupted the
+	// script engine (random crashes). Very large files keep streaming.
+	if(TVPXP3ArchiveExtractionFilter && item.OrgSize > 0 && item.OrgSize <= (64u << 20) &&
+		kk4s::compat::ScriptFilterActive() && kk4s::compat::IsMainThread())
+	{
+		tTVPMemoryStream *mem = NULL;
+		try
+		{
+			mem = new tTVPMemoryStream(NULL, (tjs_uint)item.OrgSize);
+			out->ReadBuffer(mem->GetInternalBuffer(), (tjs_uint)item.OrgSize);
+		}
+		catch(...)
+		{
+			delete mem;
+			delete out;
+			throw;
+		}
+		delete out;
+		return mem;
 	}
 
 	return out;

@@ -1,6 +1,7 @@
 // kk4s platform layer: Nintendo Switch (libnx).
 #include "kk4s_platform.h"
 #include "kk4s_internal.h"
+#include "kk4s_settings.h"
 
 #include <switch.h>
 
@@ -142,6 +143,19 @@ bool EditText(const std::string& guide, std::string& text) {
 }
 
 bool EditTextAvailable() { return true; }
+
+void ExitAfterGame(int code) {
+    Settings s;
+    s.Load();
+    // appletMainLoop() is false when the system asked us to close (HOME > close).
+    if (s.return_to_launcher && appletMainLoop() && envHasNextLoad() && __system_argc > 0 && __system_argv[0]) {
+        std::string self = __system_argv[0];
+        std::string args = "\"" + self + "\"";
+        if (R_SUCCEEDED(envSetNextLoad(self.c_str(), args.c_str()))) Log("kk4s: game quit, back to the launcher");
+    }
+    Shutdown();
+    exit(code);
+}
 
 bool ReadPad(unsigned& held) {
     static PadState pad;

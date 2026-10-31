@@ -5,12 +5,17 @@
 #include "tjsCommHead.h"
 #include "CharacterData.h"
 #include "FontRasterizer.h"
+#include <utility> // kk4s
+#include <vector> // kk4s
 
 class FreeTypeFontRasterizer : public FontRasterizer {
 	tjs_int RefCount;
 	class tFreeTypeFace* Face; //!< Faceオブジェクト
 	class tTVPNativeBaseBitmap * LastBitmap;
 	tTVPFont CurrentFont;
+	std::vector<std::pair<tjs_string, class tFreeTypeFace*> > FaceCache; // kk4s: most recent first
+	class tFreeTypeFace* AcquireFace( const std::vector<tjs_string>& faces, tjs_uint32 opt, bool& created );
+	void ClearFaceCache();
 
 public:
 	FreeTypeFontRasterizer();

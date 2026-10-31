@@ -64,8 +64,10 @@ std::string FirstCharacter(const std::string& s);
 
 enum Align { kLeft, kCenter, kRight };
 // Draws text with its top at y; returns its width in layout units.
+// scale: draw the texture rendered for `size` scaled (no new texture while
+// an animation changes the size every frame).
 float DrawText(const View& v, Fonts& f, const std::string& s, float x, float y, float size, SDL_Color c,
-               Align align = kLeft, float max_w = 0, bool bold = false);
+               Align align = kLeft, float max_w = 0, bool bold = false, float scale = 1);
 float TextWidth(const View& v, Fonts& f, const std::string& s, float size, bool bold = false);
 
 // ---------------------------------------------------------------------------

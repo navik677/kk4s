@@ -11,6 +11,7 @@
 //   <game>/cover.* | folder.* | poster.*         (png, jpg, jpeg, webp)
 //   otherwise a generated card with the game's icon (*.ico or the .exe icon).
 // Title: <game>/title.txt, <data>/covers/<folder>.txt (UTF-8, first line), else the folder name.
+#include "kk4s_files.h"
 #include "kk4s_i18n.h"
 #include "kk4s_image.h"
 #include "kk4s_internal.h"
@@ -318,7 +319,7 @@ bool SaveCover(const std::string& folder, const std::string& data, const std::st
 // UI pieces
 
 enum class Action {
-    None, Left, Right, Up, Down, PageLeft, PageRight, Ok, Back, Quit, Search, Settings, EditQuery
+    None, Left, Right, Up, Down, PageLeft, PageRight, Ok, Back, Quit, Search, Settings, EditQuery, GameOptions
 };
 
 struct HitBox {
@@ -352,8 +353,12 @@ void DrawHints(const View& v, Fonts& f, const std::vector<Hint>& hints, float ri
     }
 }
 
-// Generated card for a game without cover art.
-void DrawGeneratedCard(const View& v, Fonts& f, const Game& g, float x, float y, float w, float h, float rad) {
+// Generated card for a game without cover art. Text is rendered for the
+// card's base width bw and scaled to w, so animating the size creates no
+// new text textures.
+void DrawGeneratedCard(const View& v, Fonts& f, const Game& g, float x, float y, float w, float h, float rad,
+                       float bw) {
+    const float k = w / bw;
     SDL_Color top = g.tint;
     SDL_Color bottom = Rgba(g.tint.r / 4, g.tint.g / 4, g.tint.b / 4);
     RoundRect(v, x, y, w, h, rad, bottom);
@@ -365,23 +370,23 @@ void DrawGeneratedCard(const View& v, Fonts& f, const Game& g, float x, float y,
         SDL_SetTextureAlphaMod(g.icon, 255);
         SDL_RenderCopyF(v.r, g.icon, nullptr, &rc);
     } else {
-        DrawText(v, f, FirstCharacter(g.title), x + w / 2, y + h * 0.16f, w * 0.40f, WithAlpha(kText, 0.9f), kCenter, 0,
-                 true);
+        DrawText(v, f, FirstCharacter(g.title), x + w / 2, y + h * 0.16f, bw * 0.40f, WithAlpha(kText, 0.9f), kCenter, 0,
+                 true, k);
     }
     // title, wrapped onto two lines at a space
     std::string t1 = g.title, t2;
-    float size = w * 0.082f;
-    if (TextWidth(v, f, t1, size, true) > w - 24) {
+    float size = bw * 0.082f;
+    if (TextWidth(v, f, t1, size, true) > bw - 24) {
         size_t sp = t1.rfind(' ', t1.size() / 2 + 6);
         if (sp != std::string::npos && sp > 0) { t2 = t1.substr(sp + 1); t1 = t1.substr(0, sp); }
     }
     float ty = y + h * 0.70f;
-    DrawText(v, f, t1, x + w / 2, ty, size, kText, kCenter, w - 24, true);
-    if (!t2.empty()) DrawText(v, f, t2, x + w / 2, ty + size * 1.3f, size, kText, kCenter, w - 24, true);
+    DrawText(v, f, t1, x + w / 2, ty, size, kText, kCenter, bw - 24, true, k);
+    if (!t2.empty()) DrawText(v, f, t2, x + w / 2, ty + size * 1.3f * k, size, kText, kCenter, bw - 24, true, k);
 }
 
 void DrawCard(const View& v, Fonts& f, const Shadow& shadow, const Game& g, float cx, float cy, float w, float h,
-              float focus, float glow) {
+              float focus, float glow, float base_w) {
     float x = cx - w / 2, y = cy - h / 2, rad = 16;
     shadow.Draw(v, x, y + 10, w, h, 26, Rgba(0, 0, 0, 150));
     if (focus > 0.01f) shadow.Draw(v, x, y, w, h, 34, WithAlpha(kAccent, 0.35f * focus * (0.7f + 0.3f * glow)));
@@ -389,7 +394,7 @@ void DrawCard(const View& v, Fonts& f, const Shadow& shadow, const Game& g, floa
         SDL_Rect src = CoverCrop(g.cover_w, g.cover_h, w, h);
         RoundImage(v, g.cover, &src, x, y, w, h, rad, Rgba(255, 255, 255));
     } else {
-        DrawGeneratedCard(v, f, g, x, y, w, h, rad);
+        DrawGeneratedCard(v, f, g, x, y, w, h, rad, base_w);
     }
     if (focus < 0.99f) RoundRect(v, x, y, w, h, rad, Rgba(8, 10, 16, (Uint8)(110 * (1 - focus))));
     if (focus > 0.01f) RoundFrame(v, x - 5, y - 5, w + 10, h + 10, rad + 5, 3, WithAlpha(kAccent, focus));
@@ -420,9 +425,57 @@ std::string FormatDate(long long t) {
     return buf;
 }
 
-// settings rows
-enum Row { kRowLanguage, kRowLayout, kRowSort, kRowBackground, kRowExplicit, kRowCovers, kRowCount };
+
+std::string FormatSize(unsigned long long bytes) {
+    char buf[32];
+    if (bytes < 1024 * 1024) snprintf(buf, sizeof(buf), "%.0f KB", bytes / 1024.0);
+    else snprintf(buf, sizeof(buf), "%.1f MB", bytes / (1024.0 * 1024.0));
+    return buf;
+}
+
+// "20261031-021500" -> "31.10.2026 02:15"
+std::string FormatStamp(const std::string& s) {
+    if (s.size() < 15) return s;
+    return s.substr(6, 2) + "." + s.substr(4, 2) + "." + s.substr(0, 4) + " " + s.substr(9, 2) + ":" + s.substr(11, 2);
+}
+
+// ---------------------------------------------------------------------------
+// side sheets: settings, controls, game options
+
+enum class Sheet { None, Settings, Controls, Game };
+
+enum RowId {
+    kRowLanguage, kRowLayout, kRowSort, kRowBackground, kRowExplicit, kRowSeparateSaves, kRowReturn,
+    kRowAutostart, kRowControls, kRowCovers,
+    kRowResetControls = 50,
+    kRowPadFirst = 100, // + index into kPadRows
+    kRowGameCover = 200, kRowGameCoverDelete, kRowGameBackup, kRowGameRestore, kRowGameDelete,
+};
+
+struct SheetRow {
+    int id;
+    std::string label, hint, value;
+    int toggle = -1;       // -1: none, 0/1: switch
+    bool choice = false;   // value can be cycled with < >
+    bool danger = false;   // needs a second press
+    bool disabled = false;
+    bool submenu = false;
+};
+
+const struct { unsigned bit; const char* name; } kPadRows[] = {
+    {kPadA, "A"}, {kPadB, "B"}, {kPadX, "X"}, {kPadY, "Y"}, {kPadL, "L"},
+    {kPadR, "R"}, {kPadZL, "ZL"}, {kPadZR, "ZR"}, {kPadPlus, "+"}, {kPadMinus, "−"},
+};
+
 const char* const kLangCodes[] = {"auto", "uk", "en", "ru", "ja"};
+
+const char* ActionName(PadAction a) {
+    static const i18n::Str names[] = {i18n::kActNone, i18n::kActEnter, i18n::kActRightClick, i18n::kActCtrl,
+                                      i18n::kActSpace, i18n::kActPageUp, i18n::kActPageDown, i18n::kActShift,
+                                      i18n::kActEsc, i18n::kActTab};
+    int i = (int)a;
+    return i >= 0 && i < (int)PadAction::Count ? T(names[i]) : "";
+}
 
 struct Input {
     float drag_x0 = 0, drag_y0 = 0, drag_x = 0, drag_y = 0, drag_pos = 0;
@@ -495,11 +548,39 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
     bool charging = false;
     Uint32 battery_at = 0;
 
-    // settings panel
-    bool settings_open = false;
-    float settings_anim = 0;
+    // autostart: only on a fresh start, not when coming back from a game
+    std::string from_game_marker = RootDir() + "/.from_game";
+    bool from_game = false;
+    if (FILE* f = fopen(from_game_marker.c_str(), "rb")) {
+        fclose(f);
+        from_game = true;
+        remove(from_game_marker.c_str());
+    }
+    int autostart_game = -1;
+    if (settings.autostart && !from_game)
+        for (size_t i = 0; i < games.size(); ++i)
+            if (games[i].folder == last) autostart_game = (int)i;
+    const Uint32 autostart_ms = 3000;
+
+    // side sheet (settings / controls / game options)
+    Sheet sheet = Sheet::None, sheet_shown = Sheet::None;
+    float sheet_anim = 0, sheet_scroll = 0;
     int row = 0;
+    int confirm_id = -1;
+    Uint32 confirm_until = 0;
     std::shared_ptr<BatchJob> batch;
+    files::DirStats save_stats;
+    std::vector<std::string> backups;
+    auto backup_root = [&](const Game& g) { return SavesDir() + "/.backup/" + g.folder + "/"; };
+    auto refresh_save_info = [&] {
+        if (games.empty()) return;
+        save_stats = files::Stats(SaveFolderFor(settings, games[sel].folder));
+        backups = files::SubDirs(backup_root(games[sel]));
+        // keep only real backups, not the "deleted-..." ones, for restore
+        backups.erase(std::remove_if(backups.begin(), backups.end(),
+                                     [](const std::string& n) { return n.compare(0, 8, "deleted-") == 0; }),
+                      backups.end());
+    };
 
     // cover search panel
     bool searching = false;
@@ -530,6 +611,12 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
         Log("launcher: cover search '%s'%s", text.c_str(), exact ? " (as typed)" : "");
         search = StartSearch(text, exact, settings.hide_explicit);
     };
+    auto open_search = [&] {
+        if (games.empty()) return;
+        sheet = Sheet::None;
+        searching = true;
+        run_search(games[sel].title, false);
+    };
     auto close_search = [&] {
         searching = false;
         editing = false;
@@ -538,13 +625,102 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
         download.reset();
         clear_results();
     };
-    auto change_setting = [&](int which, int dir) {
-        switch (which) {
+
+    auto build_rows = [&](Sheet which) {
+        std::vector<SheetRow> rows;
+        auto toggle = [&](int id, i18n::Str label, bool on, i18n::Str hint = i18n::kCount) {
+            SheetRow r{id, T(label)};
+            r.toggle = on;
+            if (hint != i18n::kCount) r.hint = T(hint);
+            rows.push_back(r);
+        };
+        if (which == Sheet::Settings) {
+            SheetRow lang{kRowLanguage, T(i18n::kLanguage)};
+            lang.value = settings.language == "auto"
+                             ? std::string(T(i18n::kLanguageAuto)) + " · " + i18n::LanguageName(i18n::Language())
+                             : i18n::LanguageName(settings.language);
+            lang.choice = true;
+            rows.push_back(lang);
+            SheetRow layout{kRowLayout, T(i18n::kView)};
+            layout.value = T(settings.grid ? i18n::kViewGrid : i18n::kViewCarousel);
+            layout.choice = true;
+            rows.push_back(layout);
+            SheetRow sort{kRowSort, T(i18n::kSort)};
+            sort.value = T(settings.sort_recent ? i18n::kSortRecent : i18n::kSortName);
+            sort.choice = true;
+            rows.push_back(sort);
+            toggle(kRowBackground, i18n::kCoverBackground, settings.cover_background);
+            toggle(kRowExplicit, i18n::kHideExplicit, settings.hide_explicit);
+            toggle(kRowSeparateSaves, i18n::kSeparateSaves, settings.separate_saves, i18n::kSeparateSavesHint);
+            toggle(kRowReturn, i18n::kReturnToLauncher, settings.return_to_launcher);
+            toggle(kRowAutostart, i18n::kAutostart, settings.autostart);
+            SheetRow controls{kRowControls, T(i18n::kControls), T(i18n::kControlsHint)};
+            controls.submenu = true;
+            rows.push_back(controls);
+            SheetRow covers{kRowCovers, T(i18n::kDownloadAllCovers), T(i18n::kDownloadAllHint)};
+            covers.disabled = (bool)batch;
+            rows.push_back(covers);
+        } else if (which == Sheet::Controls) {
+            for (size_t i = 0; i < sizeof(kPadRows) / sizeof(kPadRows[0]); ++i) {
+                SheetRow r{kRowPadFirst + (int)i, kPadRows[i].name};
+                r.value = ActionName(settings.PadFor(kPadRows[i].bit));
+                r.choice = true;
+                rows.push_back(r);
+            }
+            rows.push_back(SheetRow{kRowResetControls, T(i18n::kResetControls)});
+        } else if (which == Sheet::Game && !games.empty()) {
+            rows.push_back(SheetRow{kRowGameCover, T(i18n::kCoverFromInternet)});
+            SheetRow del_cover{kRowGameCoverDelete, T(i18n::kDeleteCover)};
+            del_cover.disabled = FindCover(GamesDir() + "/" + games[sel].folder, games[sel].folder).find(RootDir() + "/covers/") != 0;
+            del_cover.danger = true;
+            rows.push_back(del_cover);
+            SheetRow backup{kRowGameBackup, T(i18n::kBackupSaves)};
+            backup.disabled = save_stats.files == 0;
+            rows.push_back(backup);
+            SheetRow restore{kRowGameRestore, T(i18n::kRestoreSaves)};
+            restore.hint = backups.empty() ? T(i18n::kNoBackups) : i18n::F(i18n::kLatestBackup, FormatStamp(backups.back()));
+            restore.disabled = backups.empty();
+            restore.danger = true;
+            rows.push_back(restore);
+            SheetRow del{kRowGameDelete, T(i18n::kDeleteSaves), T(i18n::kDeleteSavesHint)};
+            del.disabled = save_stats.files == 0;
+            del.danger = true;
+            rows.push_back(del);
+        }
+        return rows;
+    };
+
+    auto open_sheet = [&](Sheet s) {
+        if (s == Sheet::Game && games.empty()) return;
+        if (s == Sheet::Game) refresh_save_info();
+        sheet = s;
+        sheet_shown = s;
+        row = 0;
+        sheet_scroll = 0;
+        confirm_id = -1;
+    };
+
+    // Apply a sheet row. dir: +1 / -1 for choices, 0 for "activate".
+    auto apply_row = [&](const SheetRow& rw, int dir) {
+        if (rw.disabled) return;
+        if (rw.danger) {
+            if (confirm_id != rw.id || SDL_GetTicks() > confirm_until) {
+                confirm_id = rw.id;
+                confirm_until = SDL_GetTicks() + 3000;
+                show_toast(T(i18n::kPressAgain), 3000);
+                return;
+            }
+            confirm_id = -1;
+            toast_until = 0;
+        }
+        int d = dir == 0 ? 1 : dir;
+        bool save = true;
+        switch (rw.id) {
             case kRowLanguage: {
                 int n = (int)(sizeof(kLangCodes) / sizeof(kLangCodes[0])), cur = 0;
                 for (int i = 0; i < n; ++i)
                     if (settings.language == kLangCodes[i]) cur = i;
-                settings.language = kLangCodes[(cur + dir + n) % n];
+                settings.language = kLangCodes[(cur + d + n) % n];
                 i18n::SetLanguage(settings.language);
                 break;
             }
@@ -552,19 +728,78 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             case kRowSort: settings.sort_recent = !settings.sort_recent; resort(); pos = (float)sel; break;
             case kRowBackground: settings.cover_background = !settings.cover_background; break;
             case kRowExplicit: settings.hide_explicit = !settings.hide_explicit; break;
+            case kRowSeparateSaves: settings.separate_saves = !settings.separate_saves; break;
+            case kRowReturn: settings.return_to_launcher = !settings.return_to_launcher; break;
+            case kRowAutostart: settings.autostart = !settings.autostart; break;
+            case kRowControls: open_sheet(Sheet::Controls); save = false; break;
             case kRowCovers: {
+                save = false;
                 if (batch) break;
                 std::vector<std::pair<std::string, std::string>> todo;
                 for (const Game& g : games)
                     if (!g.cover) todo.push_back({g.folder, g.title});
-                if (todo.empty()) { show_toast(i18n::F(i18n::kCoversDone, "0")); return; }
+                if (todo.empty()) { show_toast(i18n::F(i18n::kCoversDone, "0")); break; }
                 Log("launcher: downloading covers for %zu game(s)", todo.size());
                 batch = StartBatch(todo, settings.hide_explicit);
                 show_toast(i18n::F(i18n::kCoversProgress, "0/" + std::to_string(todo.size())), 60000);
-                return;
+                break;
             }
+            case kRowResetControls: settings.pad.clear(); break;
+            case kRowGameCover: save = false; open_search(); break;
+            case kRowGameCoverDelete: {
+                save = false;
+                Game& g = games[sel];
+                std::string dir = RootDir() + "/covers/";
+                for (const char* ext : {"png", "jpg", "jpeg", "webp", "txt"}) remove((dir + g.folder + "." + ext).c_str());
+                LoadGame(r, g);
+                refresh_bg();
+                show_toast(T(i18n::kCoverRemoved));
+                Log("launcher: %s: cover removed", g.folder.c_str());
+                break;
+            }
+            case kRowGameBackup: {
+                save = false;
+                const Game& g = games[sel];
+                std::string to = backup_root(g) + files::Timestamp();
+                bool ok = files::CopyDir(SaveFolderFor(settings, g.folder), to);
+                show_toast(ok ? T(i18n::kBackupDone) : T(i18n::kFailed));
+                Log("launcher: %s: saves backed up to %s%s", g.folder.c_str(), to.c_str(), ok ? "" : " (failed)");
+                refresh_save_info();
+                break;
+            }
+            case kRowGameRestore: {
+                save = false;
+                const Game& g = games[sel];
+                std::string saves = SaveFolderFor(settings, g.folder);
+                std::string from = backup_root(g) + backups.back();
+                // keep the current saves too, as a backup of their own
+                if (save_stats.files > 0) files::CopyDir(saves, backup_root(g) + files::Timestamp() + "-before-restore");
+                bool ok = files::CopyDir(from, saves);
+                show_toast(ok ? T(i18n::kRestoreDone) : T(i18n::kFailed));
+                Log("launcher: %s: saves restored from %s%s", g.folder.c_str(), from.c_str(), ok ? "" : " (failed)");
+                refresh_save_info();
+                break;
+            }
+            case kRowGameDelete: {
+                save = false;
+                const Game& g = games[sel];
+                std::string to = backup_root(g) + "deleted-" + files::Timestamp();
+                bool ok = files::MoveDir(SaveFolderFor(settings, g.folder), to);
+                show_toast(ok ? T(i18n::kDeleteDone) : T(i18n::kFailed));
+                Log("launcher: %s: saves moved to %s%s", g.folder.c_str(), to.c_str(), ok ? "" : " (failed)");
+                refresh_save_info();
+                break;
+            }
+            default:
+                if (rw.id >= kRowPadFirst && rw.id < kRowPadFirst + (int)(sizeof(kPadRows) / sizeof(kPadRows[0]))) {
+                    unsigned bit = kPadRows[rw.id - kRowPadFirst].bit;
+                    int n = (int)PadAction::Count;
+                    settings.pad[bit] = (PadAction)(((int)settings.PadFor(bit) + d + n) % n);
+                } else {
+                    save = false;
+                }
         }
-        settings.Save();
+        if (save) settings.Save();
     };
 
     auto move = [&](int d) {
@@ -588,13 +823,25 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
     };
     auto act = [&](Action a) {
         if (leaving) return;
-        if (settings_open) {
+        if (autostart_game >= 0) { // any input cancels the countdown
+            autostart_game = -1;
+            return;
+        }
+        if (sheet != Sheet::None) {
+            std::vector<SheetRow> rows = build_rows(sheet);
+            int n = (int)rows.size();
             switch (a) {
-                case Action::Up: row = (row + kRowCount - 1) % kRowCount; break;
-                case Action::Down: row = (row + 1) % kRowCount; break;
-                case Action::Left: change_setting(row, -1); break;
-                case Action::Right: case Action::Ok: change_setting(row, 1); break;
-                case Action::Back: case Action::Settings: case Action::Quit: settings_open = false; break;
+                case Action::Up: if (n) row = (row + n - 1) % n; break;
+                case Action::Down: if (n) row = (row + 1) % n; break;
+                case Action::Left: if (row < n && rows[row].choice) apply_row(rows[row], -1); break;
+                case Action::Right: if (row < n && rows[row].choice) apply_row(rows[row], 1); break;
+                case Action::Ok: if (row < n) apply_row(rows[row], 0); break;
+                case Action::Back: case Action::Quit:
+                    if (sheet == Sheet::Controls) { open_sheet(Sheet::Settings); row = kRowControls; }
+                    else sheet = Sheet::None;
+                    break;
+                case Action::Settings: if (sheet == Sheet::Settings) sheet = Sheet::None; break;
+                case Action::GameOptions: if (sheet == Sheet::Game) sheet = Sheet::None; break;
                 default: break;
             }
             return;
@@ -630,13 +877,9 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
                     leave_at = SDL_GetTicks();
                 }
                 break;
-            case Action::Search:
-                if (!games.empty()) {
-                    searching = true;
-                    run_search(games[sel].title, false);
-                }
-                break;
-            case Action::Settings: settings_open = true; break;
+            case Action::Search: open_search(); break;
+            case Action::Settings: open_sheet(Sheet::Settings); break;
+            case Action::GameOptions: open_sheet(Sheet::Game); break;
             case Action::Quit: running = false; break;
             default: break;
         }
@@ -656,6 +899,7 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             case kPadB: a = Action::Back; break;
             case kPadX: a = searching ? Action::EditQuery : Action::Settings; break;
             case kPadY: a = Action::Search; break;
+            case kPadMinus: a = Action::GameOptions; break;
             case kPadPlus: a = Action::Quit; break;
         }
         bool dir = a == Action::Left || a == Action::Right || a == Action::Up || a == Action::Down;
@@ -666,6 +910,12 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
         act(a);
         if (dir) { in.held = a; in.next_repeat = SDL_GetTicks() + 380; }
     };
+
+    // sheet geometry (also used by touch)
+    const float sheet_w = 560, sheet_rows_bottom = 630;
+    auto sheet_rows_top = [&](Sheet s) { return s == Sheet::Game ? 214.f : s == Sheet::Settings ? 116.f : 116.f; };
+    auto sheet_rows_end = [&](Sheet s) { return s == Sheet::Settings ? 540.f : sheet_rows_bottom; };
+    auto row_height = [](const SheetRow& rw) { return rw.hint.empty() ? 62.f : 76.f; };
 
     while (running) {
         int ow = 1280, oh = 720;
@@ -727,15 +977,16 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
                         case SDLK_PAGEDOWN: act(Action::PageRight); break;
                         case SDLK_RETURN: case SDLK_KP_ENTER: case SDLK_SPACE: act(Action::Ok); break;
                         case SDLK_BACKSPACE: act(Action::Back); break;
-                        case SDLK_ESCAPE: act(settings_open || searching ? Action::Back : Action::Quit); break;
+                        case SDLK_ESCAPE: act(sheet != Sheet::None || searching ? Action::Back : Action::Quit); break;
                         case SDLK_y: case SDLK_F3: act(Action::Search); break;
                         case SDLK_x: case SDLK_F2: act(searching ? Action::EditQuery : Action::Settings); break;
+                        case SDLK_o: case SDLK_F4: case SDLK_MENU: act(Action::GameOptions); break;
                     }
                     break;
                 case SDL_MOUSEWHEEL: {
-                    bool vertical = settings.grid && !searching && !settings_open;
-                    if (e.wheel.y > 0) act(vertical || settings_open ? Action::Up : Action::Left);
-                    else if (e.wheel.y < 0) act(vertical || settings_open ? Action::Down : Action::Right);
+                    bool vertical = (settings.grid && !searching) || sheet != Sheet::None;
+                    if (e.wheel.y > 0) act(vertical ? Action::Up : Action::Left);
+                    else if (e.wheel.y < 0) act(vertical ? Action::Down : Action::Right);
                     break;
                 }
                 case SDL_FINGERDOWN: case SDL_MOUSEBUTTONDOWN: {
@@ -746,7 +997,10 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
                     in.moved = false;
                     in.drag_x0 = in.drag_x = x;
                     in.drag_y0 = in.drag_y = y;
-                    in.drag_pos = searching ? pick_pos : settings.grid ? grid_scroll : pos;
+                    in.drag_pos = sheet != Sheet::None ? sheet_scroll
+                                  : searching            ? pick_pos
+                                  : settings.grid        ? grid_scroll
+                                                         : pos;
                     break;
                 }
                 case SDL_FINGERMOTION: case SDL_MOUSEMOTION: {
@@ -762,25 +1016,30 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
                     if (e.type == SDL_MOUSEBUTTONUP && e.button.which == SDL_TOUCH_MOUSEID) break;
                     in.dragging = false;
                     float x = in.drag_x, y = in.drag_y;
+                    if (autostart_game >= 0) { autostart_game = -1; break; }
                     if (!in.moved) {
-                        // buttons first (hints, gear, settings rows); last drawn is on top
+                        // buttons first (hints, gear, sheet rows); last drawn is on top
                         bool hit = false;
                         for (auto it = boxes.rbegin(); it != boxes.rend() && !hit; ++it) {
                             if (x < it->x || x >= it->x + it->w || y < it->y || y >= it->y + it->h) continue;
                             hit = true;
                             if (it->row >= 0) {
-                                if (row == it->row || it->row == kRowCovers || it->row == kRowBackground ||
-                                    it->row == kRowExplicit)
-                                    change_setting(it->row, 1);
-                                row = it->row;
+                                std::vector<SheetRow> rows = build_rows(sheet);
+                                if (it->row < (int)rows.size()) {
+                                    bool again = row == it->row;
+                                    row = it->row;
+                                    const SheetRow& rw = rows[row];
+                                    // tap: switches and actions at once, choices on the second tap
+                                    if (rw.toggle >= 0 || !rw.choice || again) apply_row(rw, 0);
+                                }
                             } else {
                                 act(it->action);
                             }
                         }
                         if (hit) break;
                     }
-                    if (settings_open) {
-                        if (!in.moved && x < 1280 - 560) settings_open = false;
+                    if (sheet != Sheet::None) {
+                        if (!in.moved && x < 1280 - sheet_w) sheet = Sheet::None;
                         break;
                     }
                     if (searching) {
@@ -832,18 +1091,23 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
         prev = now;
         if (in.held != Action::None && now >= in.next_repeat) { act(in.held); in.next_repeat = now + 110; }
         if (leaving && now - leave_at > 260) running = false;
+        if (autostart_game >= 0 && now - start >= autostart_ms && !leaving) {
+            sel = (size_t)autostart_game;
+            autostart_game = -1;
+            act(Action::Ok);
+        }
 
         // animation state
-        settings_anim = Approach(settings_anim, settings_open ? 1.f : 0.f, dt, 14);
+        sheet_anim = Approach(sheet_anim, sheet != Sheet::None ? 1.f : 0.f, dt, 14);
         search_anim = Approach(search_anim, searching ? 1.f : 0.f, dt, 14);
-        bool drag_home = in.dragging && in.moved && !searching && !settings_open;
+        bool drag_home = in.dragging && in.moved && !searching && sheet == Sheet::None;
         if (drag_home && !settings.grid)
             pos = std::max(-0.4f, std::min((float)games.size() - 0.6f, in.drag_pos - (in.drag_x - in.drag_x0) / step));
         else
             pos = Approach(pos, (float)sel, dt);
-        int sel_row = (int)sel / cols, rows = ((int)games.size() + cols - 1) / cols;
+        int sel_row = (int)sel / cols, rows_n = ((int)games.size() + cols - 1) / cols;
         const float grid_view = 640 - grid_top;
-        float max_scroll = std::max(0.f, rows * gstep_y - grid_view);
+        float max_scroll = std::max(0.f, rows_n * gstep_y - grid_view);
         if (drag_home && settings.grid) {
             grid_scroll = std::max(0.f, std::min(max_scroll, in.drag_pos - (in.drag_y - in.drag_y0)));
         } else if (settings.grid) {
@@ -861,6 +1125,7 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
         if (bg.back().alpha >= 1) bg.erase(bg.begin(), bg.end() - 1); // fully covered
         const float glow = 1; // steady glow (a pulsing one read as flicker)
         if (now >= battery_at) { battery = BatteryPercent(&charging); battery_at = now + 30000; }
+        if (confirm_id >= 0 && now > confirm_until) confirm_id = -1;
 
         // background jobs
         if (searching && search && found.empty() && search_msg.empty()) {
@@ -962,7 +1227,7 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
         float lx = 94 + DrawText(v, fonts, "kk4s", 94, 32, 24, kText, kLeft, 0, true);
         DrawText(v, fonts, T(i18n::kAppSubtitle), lx + 12, 38, 17, kText2);
         float rx = 1232;
-        RoundRect(v, rx - 40, 27, 40, 40, 20, settings_open ? kSurfaceHi : kSurface);
+        RoundRect(v, rx - 40, 27, 40, 40, 20, sheet == Sheet::Settings ? kSurfaceHi : kSurface);
         IconGear(v, rx - 20, 47, 24, kText);
         boxes.push_back({rx - 44, 22, 48, 50, Action::Settings, -1});
         rx -= 56;
@@ -997,7 +1262,8 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             for (int i : order) {
                 float focus = std::max(0.f, 1 - std::fabs(i - pos));
                 float k = 1 + 0.2f * focus;
-                DrawCard(v, fonts, shadow, games[i], 640 + (i - pos) * step, center_y, card_w * k, card_h * k, focus, glow);
+                DrawCard(v, fonts, shadow, games[i], 640 + (i - pos) * step, center_y, card_w * k, card_h * k, focus, glow,
+                         card_w);
             }
             const Game& g = games[sel];
             DrawText(v, fonts, g.title, 640, 486, 34, kText, kCenter, 1080, true);
@@ -1022,7 +1288,7 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
                 if (y > 660 || y + gh + 40 < 80) continue;
                 bool focused = (size_t)i == sel;
                 float k = focused ? 1.06f : 1;
-                DrawCard(v, fonts, shadow, games[i], x + gw / 2, y + gh / 2, gw * k, gh * k, focused ? 1.f : 0.25f, glow);
+                DrawCard(v, fonts, shadow, games[i], x + gw / 2, y + gh / 2, gw * k, gh * k, focused ? 1.f : 0.25f, glow, gw);
                 DrawText(v, fonts, games[i].title, x + gw / 2, y + gh + 14, 16, focused ? kText : kText2, kCenter, gw + 20,
                          focused);
             }
@@ -1033,6 +1299,7 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
         if (!searching) {
             std::vector<Hint> hints;
             if (!games.empty()) {
+                hints.push_back({"−", T(i18n::kOptions), Action::GameOptions});
                 hints.push_back({"Y", T(i18n::kCover), Action::Search});
                 hints.push_back({"A", T(i18n::kPlay), Action::Ok});
             }
@@ -1042,76 +1309,113 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             if (!games.empty()) DrawText(v, fonts, i18n::Games((int)games.size()), 48, 658, 18, kText3);
         }
 
-        // ---- settings sheet (slides in from the right)
-        if (settings_anim > 0.005f) {
-            float a = Ease(settings_anim);
+        // ---- side sheet (slides in from the right)
+        if (sheet != Sheet::None) sheet_shown = sheet;
+        if (sheet_anim > 0.005f && sheet_shown != Sheet::None) {
+            float a = Ease(sheet_anim);
             FillRect(v, 0, 0, 1280, 720, Rgba(4, 6, 10, (Uint8)(150 * a)));
             boxes.clear(); // the home screen behind is not clickable
-            const float pw = 560, px = 1280 - pw * a;
+            const float pw = sheet_w, px = 1280 - pw * a;
             shadow.Draw(v, px, 0, pw + 40, 720, 40, Rgba(0, 0, 0, (Uint8)(160 * a)));
             FillRect(v, px, 0, pw, 720, kPanel);
-            IconGear(v, px + 56, 62, 28, kAccent);
-            DrawText(v, fonts, T(i18n::kSettings), px + 84, 44, 30, kText, kLeft, 0, true);
-            float ry = 116;
-            for (int i = 0; i < kRowCount; ++i) {
+            std::string title = sheet_shown == Sheet::Settings ? T(i18n::kSettings)
+                                : sheet_shown == Sheet::Controls ? T(i18n::kControls)
+                                                                 : T(i18n::kGameOptions);
+            if (sheet_shown == Sheet::Game) IconSearch(v, px + 56, 62, 26, kAccent);
+            else IconGear(v, px + 56, 62, 28, kAccent);
+            DrawText(v, fonts, title, px + 84, 44, 30, kText, kLeft, pw - 120, true);
+            if (sheet_shown == Sheet::Game && !games.empty()) {
+                // game title + save summary
+                DrawText(v, fonts, games[sel].title, px + 48, 100, 20, kText, kLeft, pw - 96, true);
+                std::string info = save_stats.files == 0
+                                       ? std::string(T(i18n::kNoSaves))
+                                       : std::string(T(i18n::kSaves)) + ": " + i18n::Files(save_stats.files) + " · " +
+                                             FormatSize(save_stats.bytes);
+                DrawText(v, fonts, info, px + 48, 130, 16, kText2, kLeft, pw - 96);
+                if (save_stats.newest > 0)
+                    DrawText(v, fonts, i18n::F(i18n::kSavedAt, FormatDate(save_stats.newest)), px + 48, 154, 16, kText3,
+                             kLeft, pw - 96);
+                DrawText(v, fonts, SaveFolderFor(settings, games[sel].folder), px + 48, 178, 13, kText3, kLeft, pw - 96);
+            }
+            std::vector<SheetRow> rows = build_rows(sheet_shown);
+            if (row >= (int)rows.size()) row = std::max(0, (int)rows.size() - 1);
+            const float top = sheet_rows_top(sheet_shown), bottom = sheet_rows_end(sheet_shown);
+            // scroll so the focused row is visible
+            float y_focus = 0, total_h = 0;
+            for (int i = 0; i < (int)rows.size(); ++i) {
+                if (i == row) y_focus = total_h;
+                total_h += row_height(rows[i]) + 8;
+            }
+            float max_sheet_scroll = std::max(0.f, total_h - (bottom - top));
+            if (in.dragging && in.moved && sheet != Sheet::None) {
+                sheet_scroll = std::max(0.f, std::min(max_sheet_scroll, in.drag_pos - (in.drag_y - in.drag_y0)));
+            } else {
+                float target = sheet_scroll;
+                if (y_focus < target) target = y_focus;
+                if (y_focus + row_height(rows.empty() ? SheetRow{} : rows[row]) > target + (bottom - top))
+                    target = y_focus + row_height(rows[row]) - (bottom - top);
+                sheet_scroll = Approach(sheet_scroll, std::max(0.f, std::min(max_sheet_scroll, target)), dt, 16);
+            }
+            SDL_FRect clipf = v.Map(px, top - 4, pw, bottom - top + 8);
+            SDL_Rect clip{(int)clipf.x, (int)clipf.y, (int)clipf.w, (int)clipf.h};
+            SDL_RenderSetClipRect(r, &clip);
+            float ry = top - sheet_scroll;
+            for (int i = 0; i < (int)rows.size(); ++i) {
+                const SheetRow& rw = rows[i];
                 bool focused = i == row;
-                float rh = i == kRowCovers ? 76 : 62;
-                if (focused) {
-                    RoundRect(v, px + 24, ry, pw - 48, rh, 14, kSurfaceHi);
-                    RoundRect(v, px + 24, ry + 14, 4, rh - 28, 2, kAccent);
-                }
-                std::string label, value;
-                int toggle = -1; // -1 = text value, 0/1 = switch
-                switch (i) {
-                    case kRowLanguage:
-                        label = T(i18n::kLanguage);
-                        value = settings.language == "auto"
-                                    ? std::string(T(i18n::kLanguageAuto)) + " · " + i18n::LanguageName(i18n::Language())
-                                    : i18n::LanguageName(settings.language);
-                        break;
-                    case kRowLayout: label = T(i18n::kView); value = T(settings.grid ? i18n::kViewGrid : i18n::kViewCarousel); break;
-                    case kRowSort: label = T(i18n::kSort); value = T(settings.sort_recent ? i18n::kSortRecent : i18n::kSortName); break;
-                    case kRowBackground: label = T(i18n::kCoverBackground); toggle = settings.cover_background; break;
-                    case kRowExplicit: label = T(i18n::kHideExplicit); toggle = settings.hide_explicit; break;
-                    case kRowCovers: label = T(i18n::kDownloadAllCovers); break;
-                }
-                float ty = ry + (rh - 24) / 2 - (i == kRowCovers ? 9 : 0);
-                DrawText(v, fonts, label, px + 48, ty, 20, kText, kLeft, 300);
-                if (i == kRowCovers) {
-                    DrawText(v, fonts, T(i18n::kDownloadAllHint), px + 48, ty + 28, 15, kText3, kLeft, 380);
-                    if (batch) {
+                float rh = row_height(rw);
+                if (ry + rh >= top - 4 && ry <= bottom + 4) {
+                    bool confirming = confirm_id == rw.id;
+                    if (focused) {
+                        RoundRect(v, px + 24, ry, pw - 48, rh, 14, confirming ? Rgba(255, 120, 100, 40) : kSurfaceHi);
+                        RoundRect(v, px + 24, ry + 14, 4, rh - 28, 2, confirming ? kWarn : kAccent);
+                    }
+                    SDL_Color lc = rw.disabled ? kText3 : rw.danger && focused ? kWarn : kText;
+                    float ty = ry + (rh - 24) / 2 - (rw.hint.empty() ? 0 : 9);
+                    DrawText(v, fonts, rw.label, px + 48, ty, 20, lc, kLeft, rw.choice ? 220 : 360);
+                    if (!rw.hint.empty()) DrawText(v, fonts, rw.hint, px + 48, ty + 28, 15, kText3, kLeft, 400);
+                    if (rw.toggle >= 0) {
+                        float sx = px + pw - 48 - 54, sy = ry + rh / 2 - 15;
+                        RoundRect(v, sx, sy, 54, 30, 15, rw.toggle ? kAccent : kSurfaceHi);
+                        Circle(v, rw.toggle ? sx + 54 - 15 : sx + 15, sy + 15, 11, kText);
+                    } else if (rw.choice) {
+                        float vx = px + pw - 48;
+                        float vw = TextWidth(v, fonts, rw.value, 18);
+                        DrawText(v, fonts, rw.value, vx - (focused ? 22 : 0), ty + 1, 18, focused ? kText : kText2, kRight,
+                                 250);
+                        if (focused) {
+                            DrawText(v, fonts, "<", vx - std::min(vw, 250.f) - 44, ty + 1, 18, kAccent, kRight);
+                            DrawText(v, fonts, ">", vx, ty + 1, 18, kAccent, kRight);
+                        }
+                    } else if (rw.submenu) {
+                        DrawText(v, fonts, ">", px + pw - 48, ry + rh / 2 - 12, 20, kText2, kRight);
+                    } else if (rw.id == kRowCovers && batch) {
                         std::string dots(1 + (now / 400) % 3, '.');
                         DrawText(v, fonts, dots, px + pw - 52, ty + 6, 22, kAccent, kRight);
-                    } else {
-                        IconSearch(v, px + pw - 64, ry + rh / 2, 26, kText2);
                     }
-                } else if (toggle >= 0) {
-                    float sx = px + pw - 48 - 54, sy = ry + rh / 2 - 15;
-                    RoundRect(v, sx, sy, 54, 30, 15, toggle ? kAccent : kSurfaceHi);
-                    Circle(v, toggle ? sx + 54 - 15 : sx + 15, sy + 15, 11, kText);
-                } else {
-                    float vw = TextWidth(v, fonts, value, 18);
-                    float vx = px + pw - 48;
-                    DrawText(v, fonts, value, vx - (focused ? 22 : 0), ty + 1, 18, focused ? kText : kText2, kRight);
-                    if (focused) {
-                        DrawText(v, fonts, "<", vx - vw - 44, ty + 1, 18, kAccent, kRight);
-                        DrawText(v, fonts, ">", vx, ty + 1, 18, kAccent, kRight);
-                    }
+                    if (sheet != Sheet::None && ry >= top - rh / 2 && ry + rh <= bottom + rh / 2)
+                        boxes.push_back({px + 24, std::max(ry, top), pw - 48, std::min(rh, bottom - ry), Action::None, i});
                 }
-                if (settings_open) boxes.push_back({px + 24, ry, pw - 48, rh, Action::None, i});
                 ry += rh + 8;
             }
-            // about
-            float ay = 560;
-            FillRect(v, px + 40, ay - 16, pw - 80, 1, kSurfaceHi);
-            DrawText(v, fonts, T(i18n::kAboutText), px + 48, ay, 15, kText2, kLeft, pw - 96);
-            DrawText(v, fonts, std::string(T(i18n::kVersion)) + ": " KK4S_VERSION " (" KK4S_GIT_HASH ")", px + 48, ay + 24,
-                     15, kText3, kLeft, pw - 96);
-            DrawText(v, fonts, std::string(T(i18n::kSource)) + ": vndb.org", px + 48, ay + 46, 15, kText3, kLeft, pw - 96);
+            SDL_RenderSetClipRect(r, nullptr);
+            if (max_sheet_scroll > 0) { // scroll bar
+                float bar_h = (bottom - top) * (bottom - top) / total_h;
+                float bar_y = top + (bottom - top - bar_h) * (sheet_scroll / max_sheet_scroll);
+                RoundRect(v, px + pw - 14, bar_y, 4, bar_h, 2, kSurfaceHi);
+            }
+            if (sheet_shown == Sheet::Settings) {
+                float ay = 562;
+                FillRect(v, px + 40, ay - 14, pw - 80, 1, kSurfaceHi);
+                DrawText(v, fonts, T(i18n::kAboutText), px + 48, ay, 15, kText2, kLeft, pw - 96);
+                DrawText(v, fonts, std::string(T(i18n::kVersion)) + ": " KK4S_VERSION " (" KK4S_GIT_HASH ")  ·  " +
+                                       T(i18n::kSource) + ": vndb.org",
+                         px + 48, ay + 24, 15, kText3, kLeft, pw - 96);
+            }
             std::vector<Hint> hints = {{"A", T(i18n::kChange), Action::Ok}, {"B", T(i18n::kBack), Action::Back}};
             std::vector<HitBox> panel_boxes;
             DrawHints(v, fonts, hints, px + pw - 32, 650, a, panel_boxes);
-            if (settings_open) boxes.insert(boxes.end(), panel_boxes.begin(), panel_boxes.end());
+            if (sheet != Sheet::None) boxes.insert(boxes.end(), panel_boxes.begin(), panel_boxes.end());
         }
 
         // ---- cover search (centered modal)
@@ -1189,6 +1493,18 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             if (searching) boxes.insert(boxes.end(), pb.begin(), pb.end());
         }
 
+        // ---- autostart countdown
+        if (autostart_game >= 0) {
+            float left = 1 - std::min(1.f, (now - start) / (float)autostart_ms);
+            FillRect(v, 0, 0, 1280, 720, Rgba(4, 6, 10, 170));
+            RoundRect(v, 360, 270, 560, 180, 24, kPanel);
+            DrawText(v, fonts, i18n::F(i18n::kAutostartIn, games[autostart_game].title), 640, 300, 24, kText, kCenter, 500,
+                     true);
+            RoundRect(v, 400, 352, 480, 8, 4, kSurfaceHi);
+            RoundRect(v, 400, 352, 480 * (1 - left), 8, 4, kAccent);
+            DrawText(v, fonts, std::string("B / ") + T(i18n::kCancel), 640, 384, 18, kText2, kCenter);
+        }
+
         // ---- toast
         if (!toast.empty() && now < toast_until + 300) {
             float ta = now < toast_until ? 1 : 1 - (now - toast_until) / 300.f;
@@ -1206,16 +1522,34 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
         if (fade > 0) FillRect(v, 0, 0, 1280, 720, Rgba(0, 0, 0, (Uint8)(255 * fade)));
 
         // Debugging aids (PC; screen capture does not work everywhere, e.g. KDE Wayland):
-        //   KK4S_LAUNCHER_SHOT=<file.bmp>  save a frame and quit
+        //   KK4S_LAUNCHER_SHOT=<file.bmp>  save a frame and quit (a %d in the name: frames 30..45 while scrolling)
         //   KK4S_LAUNCHER_SEARCH=1 | pick  open the cover search first (pick: take the first result)
-        //   KK4S_LAUNCHER_SETTINGS=1       open the settings first
+        //   KK4S_LAUNCHER_SHEET=settings | controls | game  open that sheet first
         static int frames = 0;
         ++frames;
         const char* dbg_search = getenv("KK4S_LAUNCHER_SEARCH");
-        if (frames == 2 && dbg_search) act(Action::Search);
-        if (frames == 2 && getenv("KK4S_LAUNCHER_SETTINGS")) act(Action::Settings);
+        if (frames == 2) {
+            if (dbg_search) act(Action::Search);
+            if (const char* sh = getenv("KK4S_LAUNCHER_SHEET")) {
+                autostart_game = -1;
+                if (!strcmp(sh, "settings")) open_sheet(Sheet::Settings);
+                if (!strcmp(sh, "controls")) open_sheet(Sheet::Controls);
+                if (!strcmp(sh, "game")) open_sheet(Sheet::Game);
+            }
+        }
         if (frames == 600 && dbg_search && strcmp(dbg_search, "pick") == 0) act(Action::Ok);
-        if (const char* shot = getenv("KK4S_LAUNCHER_SHOT")) {
+        if (const char* shot = getenv("KK4S_LAUNCHER_SHOT"); shot && strstr(shot, "%d")) {
+            if (frames == 30) act(Action::Right);
+            if (frames >= 30 && frames <= 45) {
+                char path[512];
+                snprintf(path, sizeof(path), shot, frames);
+                SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(0, ow, oh, 32, SDL_PIXELFORMAT_ARGB8888);
+                if (surf && SDL_RenderReadPixels(r, nullptr, SDL_PIXELFORMAT_ARGB8888, surf->pixels, surf->pitch) == 0)
+                    SDL_SaveBMP(surf, path);
+                if (surf) SDL_FreeSurface(surf);
+            }
+            if (frames == 46) { running = false; chosen.clear(); }
+        } else if (shot) {
             if (frames == (dbg_search ? 900 : 60)) {
                 SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(0, ow, oh, 32, SDL_PIXELFORMAT_ARGB8888);
                 if (surf && SDL_RenderReadPixels(r, nullptr, SDL_PIXELFORMAT_ARGB8888, surf->pixels, surf->pitch) == 0)
@@ -1234,6 +1568,8 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
     if (!chosen.empty()) {
         settings.RecordLaunch(chosen);
         settings.Save();
+        // tells the next launcher start (after this game quits) to skip autostart
+        if (FILE* f = fopen(from_game_marker.c_str(), "wb")) fclose(f);
     }
     // leave the renderer clean for the engine
     SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);

@@ -168,11 +168,11 @@ void Fonts::Render(SDL_Renderer* r, std::vector<uint32_t> cps, int px, int max_w
 }
 
 float DrawText(const View& v, Fonts& f, const std::string& s, float x, float y, float size, SDL_Color c, Align align,
-               float max_w, bool bold) {
+               float max_w, bool bold, float scale) {
     if (s.empty()) return 0;
     const Text& t = f.Get(v.r, s, (int)std::lround(size * v.s), (int)(max_w * v.s), bold);
     if (!t.tex) return 0;
-    float w = t.w / v.s, h = t.h / v.s;
+    float w = t.w / v.s * scale, h = t.h / v.s * scale;
     if (align == kCenter) x -= w / 2;
     if (align == kRight) x -= w;
     SDL_SetTextureColorMod(t.tex, c.r, c.g, c.b);

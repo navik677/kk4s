@@ -28,6 +28,11 @@ void Init(int argc, char** argv);
 // Close the log file and services. Safe to call more than once.
 void Shutdown();
 
+// End the process after a game quit: back to the launcher when the setting
+// says so (Switch: hbloader starts kk4s.nro again; PC: re-exec when the game
+// was picked in the launcher), otherwise a normal exit. Calls Shutdown().
+[[noreturn]] void ExitAfterGame(int code);
+
 // Launcher: picks a game folder from GamesDir() with the graphical picker
 // (platform/common/kk4s_launcher.cpp) drawn into the engine's renderer; on PC
 // a folder given on the command line is used directly. Returns the chosen

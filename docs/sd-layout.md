@@ -10,7 +10,10 @@ sdmc:/switch/kk4s/
 ├── covers/<GameName>.jpg    optional cover art for the launcher (png / jpg / webp)
 ├── fonts/                   extra fonts; fonts/.cache/ = Nintendo system font copy
 ├── logs/                    kk4s-YYYYMMDD-HHMMSS.log, one per run
-├── saves/<game_id>/         (M2) redirected save data
+├── saves/<GameName>/        save data (setting "separate saves", on by default); existing
+│                            game-folder saves are copied here on the first start
+├── saves/.backup/<GameName>/<date>/   backups made in the game options ("deleted-<date>" = deleted saves)
+├── .from_game               marker: the launcher was restarted after a game (no autostart)
 ├── overlay/<game_id>/       (M2) replacement files, override xp3 contents
 └── profiles/<game_id>.json  (M3) per-game profiles supplied by the user
 ```
@@ -38,9 +41,15 @@ The search cleans the title first ("Tsukihime Plus+Disc Russian" -> "Tsukihime P
 retries with fewer words when VNDB finds nothing.
 
 Settings (X): language (auto / Українська / English / Русский / 日本語), layout (carousel / grid),
-sort (title / recently played), cover background, hide explicit covers, download all missing
-covers (takes a VNDB match only when the title matches as whole words).
+sort (title / recently played), cover background, hide explicit covers, separate saves, return to
+the launcher after a game, autostart the last game (3 s countdown, any button cancels), controls
+(what A, B, X, Y, L, R, ZL, ZR, +, − do in games), download all missing covers.
+
+Game options (−): cover from the internet, remove the downloaded cover, back up saves, restore the
+latest backup, delete saves (moved to `saves/.backup/<GameName>/deleted-<date>/`). Restore and delete
+ask for a second press; restore first backs up the current saves.
 
 Debugging aids (PC): `KK4S_LAUNCHER_SHOT=<file.bmp>` saves one launcher frame and quits;
 `KK4S_LAUNCHER_SEARCH=1` opens the cover search first (`=pick` also takes the first result);
-`KK4S_LAUNCHER_SETTINGS=1` opens the settings first.
+`KK4S_LAUNCHER_SHEET=settings|controls|game` opens that sheet first;
+a `%d` in `KK4S_LAUNCHER_SHOT` saves frames 30..45 while scrolling.

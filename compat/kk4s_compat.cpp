@@ -21,6 +21,8 @@
 #include "tjsObject.h"
 #include "kk4s_platform.h"
 #include "kk4s_internal.h"
+#include "kk4s_files.h"
+#include "kk4s_settings.h"
 
 #include <atomic>
 #include <cctype>
@@ -28,6 +30,7 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <thread>
 
 // engine/source/core/visual/FreeType.cpp
 extern void TVPAddSystemFontToFreeType(const std::string& storage, std::vector<tjs_string>* faces);
@@ -175,8 +178,16 @@ static tTJSVariant* g_filter_func = nullptr;
 static std::atomic<unsigned> g_filter_calls{0};
 static std::atomic<bool> g_filter_error_logged{false};
 
+static std::thread::id g_main_thread = std::this_thread::get_id(); // set again in BeforeStartup
+static std::atomic<bool> g_off_thread_logged{false};
+
 static void TJS_INTF_METHOD ScriptExtractionFilter(tTVPXP3ExtractionFilterInfo* info) {
     if (!info || !info->Buffer || info->BufferSize == 0) return;
+    // TJS is not thread-safe. Archive streams opened on the main thread are
+    // decrypted completely there (XP3Archive.cpp), so this should only run on
+    // the main thread; log once if a stream was opened elsewhere.
+    if (std::this_thread::get_id() != g_main_thread && !g_off_thread_logged.exchange(true))
+        kk4s::Log("compat: xp3 filter script called on a background thread (unsafe)");
     std::lock_guard<std::recursive_mutex> lock(g_filter_mutex);
     if (!g_filter_func) return;
 
@@ -269,7 +280,36 @@ static void RunAfterInit2() {
     RunGameScript("AfterInit2.tjs");
 }
 
+std::string RedirectDataPath(const std::string& original) {
+    Settings s;
+    s.Load();
+    if (!s.separate_saves || kk4s::GameDir().empty()) return "";
+    std::string game = kk4s::GameDir();
+    while (!game.empty() && game.back() == '/') game.pop_back();
+    game = game.substr(game.find_last_of('/') + 1);
+    std::string target = SaveFolderFor(s, game);
+    if (!files::IsDirectory(target)) {
+        files::MakeDirs(target);
+        files::DirStats old = files::Stats(original);
+        if (old.files > 0) {
+            bool ok = files::CopyDir(original, target);
+            kk4s::Log("compat: saves: copied %d file(s) from %s to %s%s", old.files, original.c_str(), target.c_str(),
+                      ok ? "" : " (some failed)");
+        }
+    }
+    kk4s::Log("compat: saves in %s", target.c_str());
+    return target;
+}
+
+bool IsMainThread() { return std::this_thread::get_id() == g_main_thread; }
+
+bool ScriptFilterActive() {
+    std::lock_guard<std::recursive_mutex> lock(g_filter_mutex);
+    return g_filter_func != nullptr;
+}
+
 void BeforeStartup() {
+    g_main_thread = std::this_thread::get_id();
     RegisterFonts();
     RegisterStoragesExtensions();
     RunGameScript("xp3filter.tjs");

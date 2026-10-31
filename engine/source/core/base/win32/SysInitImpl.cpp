@@ -58,6 +58,8 @@
 #endif
 #include "Platform.h"
 #include "kk4s_platform.h" // kk4s
+#include "kk4s_compat.h" // kk4s
+#include "CharacterSet.h" // kk4s
 
 //---------------------------------------------------------------------------
 // global data
@@ -1701,6 +1703,14 @@ static void TVPInitProgramArgumentsAndDataPath(bool stop_after_datapath_got)
 			if(TVPGetCommandLine(TJS_W("-datapath"), &val))
 				config_datapath = ((ttstr)val).AsStdString();
 			TVPNativeDataPath = ApplicationSpecialPath::GetDataPathDirectory(config_datapath, ExePath());
+			{ // kk4s: saves in <data>/saves/<game>/ instead of the game folder (setting)
+				std::string native;
+				if (TVPUtf16ToUtf8(native, TVPNativeDataPath)) {
+					std::string redirected = kk4s::compat::RedirectDataPath(native);
+					tjs_string wide;
+					if (!redirected.empty() && TVPUtf8ToUtf16(wide, redirected)) TVPNativeDataPath = wide;
+				}
+			}
 
 			if(stop_after_datapath_got) return;
 

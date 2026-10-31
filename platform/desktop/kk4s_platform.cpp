@@ -6,6 +6,7 @@
 // Data folder = $KK4S_ROOT, or the folder of the executable.
 #include "kk4s_platform.h"
 #include "kk4s_internal.h"
+#include "kk4s_settings.h"
 #include "kk4s_fs.h"
 
 #include <cstdio>
@@ -20,6 +21,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <io.h>
+#include <process.h>
 #else
 #include <unistd.h>
 #endif
@@ -92,6 +94,33 @@ int BatteryPercent(bool* charging) {
 
 bool EditText(const std::string&, std::string&) { return false; } // PC: typed in place
 bool EditTextAvailable() { return false; }
+
+void ExitAfterGame(int code) {
+    Settings s;
+    s.Load();
+    bool relaunch = s.return_to_launcher && g_cli_game.empty();
+    std::string self = g_engine_argv.empty() || !g_engine_argv[0] ? "" : g_engine_argv[0];
+#ifdef _WIN32
+    char buf[4096];
+    DWORD n = GetModuleFileNameA(nullptr, buf, sizeof(buf));
+    if (n > 0 && n < sizeof(buf)) self = buf;
+#else
+    char buf[4096];
+    ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (n > 0) { buf[n] = 0; self = buf; }
+#endif
+    if (relaunch && !self.empty()) Log("kk4s: game quit, back to the launcher");
+    Shutdown();
+    if (relaunch && !self.empty()) {
+        char* argv[] = {const_cast<char*>(self.c_str()), nullptr};
+#ifdef _WIN32
+        _execv(self.c_str(), argv);
+#else
+        execv(self.c_str(), argv);
+#endif
+    }
+    exit(code);
+}
 
 MemoryInfo QueryMemory() { return MemoryInfo{0, 0, false}; }
 
