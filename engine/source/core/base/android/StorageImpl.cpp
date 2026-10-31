@@ -745,8 +745,11 @@ retry:
 	// must come before any other operation on the stream).
 	if(access != TJS_BS_READ) {
 		setvbuf(Handle, NULL, _IOFBF, 64 * 1024);
-		kk4s::CurrentFrameStats().write += SDL_GetTicks() - kk4sStart;
-		kk4s::CurrentFrameStats().writes++;
+		kk4sWriting = true;
+		if(kk4s::compat::IsMainThread()) { // the stats are the main thread's frame
+			kk4s::CurrentFrameStats().write += SDL_GetTicks() - kk4sStart;
+			kk4s::CurrentFrameStats().writes++;
+		}
 	}
 
 	if(access == TJS_BS_APPEND) // move the file pointer to last
@@ -761,7 +764,8 @@ tTVPLocalFileStream::~tTVPLocalFileStream()
 {
 	Uint32 kk4sStart = SDL_GetTicks(); // kk4s: frame stats (flushing writes)
 	if(Handle!=nullptr) fclose(Handle);
-	kk4s::CurrentFrameStats().write += SDL_GetTicks() - kk4sStart;
+	if(kk4sWriting && kk4s::compat::IsMainThread())
+		kk4s::CurrentFrameStats().write += SDL_GetTicks() - kk4sStart;
 
 	// push current tick as an environment noise
 	// (timing information from file accesses may be good noises)
@@ -797,7 +801,7 @@ tjs_uint TJS_INTF_METHOD tTVPLocalFileStream::Write(const void *buffer, tjs_uint
 {
 	Uint32 kk4sStart = SDL_GetTicks(); // kk4s: frame stats
 	size_t ret = fwrite( buffer, 1, write_size, Handle );
-	kk4s::CurrentFrameStats().write += SDL_GetTicks() - kk4sStart;
+	if(kk4s::compat::IsMainThread()) kk4s::CurrentFrameStats().write += SDL_GetTicks() - kk4sStart;
 	return (tjs_uint)ret;
 }
 //---------------------------------------------------------------------------

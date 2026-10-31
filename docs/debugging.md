@@ -48,4 +48,6 @@
 
 `KK4S_INPUT_SCRIPT=<file>` plays gamepad presses, touches and screenshots through the same code as
 the Switch pad (`sdl2/stubs.cpp`, `kk4sScriptTick`): lines `<ms> pad A [hold_ms]`, `<ms> tap x y`
-(0..1), `<ms> shot name.bmp` (to `$KK4S_ROOT/shots/`), `<ms> quit`; `+<ms>` is relative.
+(0..1), `<ms> shot name.bmp` (to `$KK4S_ROOT/shots/`), `<ms> eval <TJS expression>` (result in the
+log, e.g. `kag.mainConductor.curStorage + ":" + kag.mainConductor.curLine`), `<ms> quit`; `+<ms>` is
+relative.

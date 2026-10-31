@@ -156,6 +156,7 @@ set(SOURCES
     engine/source/core/extension/Extension.cpp
     engine/source/core/movie/ffmpeg/krffmpeg.cpp
     engine/source/core/movie/krmovie.cpp
+    engine/source/core/movie/kk4s_videoplayer.cpp
     engine/source/core/msg/MsgIntf.cpp
     engine/source/core/msg/win32/MsgImpl.cpp
     engine/source/core/sdl2/stubs.cpp

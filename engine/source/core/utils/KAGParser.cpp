@@ -688,6 +688,7 @@ void tTJSNI_KAGParser::StoreIntStackToDic(iTJSDispatch2 *dic, std::vector<tjs_in
 	dic->PropSet(TJS_MEMBERENSURE, membername, NULL, &val, dic);
 }
 
+static inline tjs_int HexDigit(tjs_char c) { return c <= '9' ? c - '0' : c - 'a' + 10; } // kk4s
 void tTJSNI_KAGParser::RestoreIntStackFromStr(std::vector<tjs_int> &stack, const ttstr &str)
 {
 	stack.clear();
@@ -695,15 +696,11 @@ void tTJSNI_KAGParser::RestoreIntStackFromStr(std::vector<tjs_int> &stack, const
 	for(tjs_int i = 0; i < len; ++i)
 	{
 		stack.push_back(
-			(((str[i+0] <= '9') ? (str[i+0] - '0') : (str[i+0] - 'a' + 10)) << 28) |
-			(((str[i+1] <= '9') ? (str[i+1] - '0') : (str[i+1] - 'a' + 10)) << 24) |
-			(((str[i+2] <= '9') ? (str[i+2] - '0') : (str[i+2] - 'a' + 10)) << 20) |
-			(((str[i+3] <= '9') ? (str[i+3] - '0') : (str[i+3] - 'a' + 10)) << 16) |
-			(((str[i+4] <= '9') ? (str[i+4] - '0') : (str[i+4] - 'a' + 10)) << 12) |
-			(((str[i+5] <= '9') ? (str[i+5] - '0') : (str[i+5] - 'a' + 10)) <<  8) |
-			(((str[i+6] <= '9') ? (str[i+6] - '0') : (str[i+6] - 'a' + 10)) <<  4) |
-			(((str[i+7] <= '9') ? (str[i+7] - '0') : (str[i+7] - 'a' + 10)) <<  0)
-		);
+			HexDigit(str[i*8+0]) << 28 | HexDigit(str[i*8+1]) << 24 |
+			HexDigit(str[i*8+2]) << 20 | HexDigit(str[i*8+3]) << 16 |
+			HexDigit(str[i*8+4]) << 12 | HexDigit(str[i*8+5]) <<  8 |
+			HexDigit(str[i*8+6]) <<  4 | HexDigit(str[i*8+7]) <<  0
+		); // kk4s: was str[i+n], wrong for more than one entry
 	}
 }
 //---------------------------------------------------------------------------
@@ -843,18 +840,26 @@ void tTJSNI_KAGParser::Restore(iTJSDispatch2 *dic)
 				MacroArgStackBase = (tjs_int)val;
 				dic.PropGet(0, TJS_W("macroArgStackDepth"), NULL, &val, NULL);
 				MacroArgStackDepth = (tjs_int)val;
+				// kk4s: saves from Kirikiri versions without these members (e.g. a
+				// Windows 2.19 save) gave void -> 0, i.e. "excluding at level 0":
+				// after [return] every tag up to the end of the file was skipped.
+				val.Clear();
 				dic.PropGet(0, TJS_W("ExcludeLevel"), NULL, &val, NULL);
-				ExcludeLevel = val;
+				ExcludeLevel = val.Type() == tvtVoid ? -1 : (tjs_int)val;
+				val.Clear();
 				dic.PropGet(0, TJS_W("IfLevel"), NULL, &val, NULL);
-				IfLevel = val;
+				IfLevel = val.Type() == tvtVoid ? 0 : (tjs_int)val;
 
 				ttstr stack_str;
+				val.Clear();
 				dic.PropGet(0, TJS_W("ExcludeLevelStack"), NULL, &val, NULL);
-				stack_str = val;
+				if(val.Type() != tvtVoid) stack_str = val;
 				RestoreIntStackFromStr(ExcludeLevelStack, stack_str);
 
+				val.Clear();
+				stack_str.Clear();
 				dic.PropGet(0, TJS_W("IfLevelExecutedStack"), NULL, &val, NULL);
-				stack_str = val;
+				if(val.Type() != tvtVoid) stack_str = val;
 				RestoreBoolStackFromStr(IfLevelExecutedStack, stack_str);
 
 				CallStack.push_back(tCallStackData(

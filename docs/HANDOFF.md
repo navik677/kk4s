@@ -4,23 +4,49 @@ Last update: 2026-10-31 (end of session). Goal: **any Kirikiri (KAG/TJS2) game f
 Switch (and on PC via the viewer). Game files are never changed; fixes live in the engine,
 `compat/` or kk4s' own files. Full requirements: `docs/original-prompt.md`; milestones: `docs/roadmap.md`.
 
-## Where we are
+## Where we are (2026-11-01)
 
-Branch `switch-fixes-2026-10-31` (commit `b4eadd8`, on top of `main`) holds the 2026-10-31 work;
-not merged to `main` yet. The Switch build of that state is on the SD card (`kk4s.nro`).
+`main` has all work up to now (PR #1 "Switch fixes" merged). The SD card holds the latest build.
 
-- Works on the Switch: launcher with covers, exit to the launcher (threads stopped, detached
-  thread stacks closed), in-game menu on L3 + R3, saves outside the game folder, gamepad + touch.
-- Tested games: The Makings of a Lady (plays, but occasional 1–2.5 s stalls after long pages);
-  Sharin, Tsukihime (earlier). FSN (Fate/stay night, PC version with `profiles/FSN/xp3filter.tjs`):
-  reaches the title, load menu, saves load, the skip-scene prompt (Да/Нет) renders and responds.
-- Known broken: choice branch in FSN's flow after a loaded save ("День 7 … Выбор": choice links do
-  not appear, scene stops). Video (`krmovie`) is not played, so openings are black.
-- `.tpm` encrypted archives (cxdec) are not decrypted: such games need a Kirikiroid
-  `xp3filter.tjs`, as in `profiles/<game>/`.
+Works on the Switch (user-tested): launcher, exit to the launcher (engine threads stopped,
+detached thread stacks closed), in-game menu on L3 + R3, saves outside the game folder, FSN PC
+version (only `profiles/FSN/xp3filter.tjs` needed), loading saves, choices after a loaded save,
+video playback (FFmpeg player). PC viewer is the test loop; `KK4S_INPUT_SCRIPT` drives games like
+a Switch user (pad, touch, screenshots, `eval`) - see `docs/debugging.md`.
 
-Old Kirikiri 2 (exe without `-evalcontext`) gets two compat switches from `compat/kk4s_compat.cpp`:
-`!` on the global object and class `var x;` keeping native properties (`TJSClassVarKeepsProperty`).
+### Open problem the user is waiting on: audio clicks on the Switch
+Clicking A while a voice line plays (skipping it) gives an audible "tap" on the Switch only.
+- Fixed already (verified on PC with SDL's `disk` audio driver + sine analysis): per-chunk
+  `SDL_AudioCVT` resampling (now one `SDL_AudioStream` per buffer), hard stop of a playing sound
+  (now ~8 ms fade tail, also kept when the buffer is deleted: `AdoptTail`). The click remains.
+- PC mixer output for "stop voice -> open next -> play" is clean, so the cause is on the device
+  side: SDL's Switch driver (`SDL_switchaudio.c`) queues only ONE 4096-sample buffer (~85 ms)
+  ahead; any late callback or empty stream = gap.
+- The current build logs `audio: late callback ...` and `audio: stream ... ran dry ...`
+  (`WaveMixer.cpp`). NEXT STEP: get a Switch log with clicks (user skips voices, exits to the
+  launcher, fetch `logs/` over FTP) and fix what it shows. Ideas: if callbacks are late -> raise the
+  audio thread priority / use more device buffers (own audren path or SDL hint); if streams run dry
+  -> bigger L1 lead (`TVPAL_BUFFER_COUNT` 4 x 125 ms) or find the lock the feeder thread
+  (`tTVPWaveSoundBufferThread`) waits on during the slow frames (300-900 ms) that follow a click.
+
+### Other known issues
+- Slow frames on page changes (Switch): 300-900 ms, almost all "other" (game scripts / layer ops
+  in TJS). Not yet profiled further.
+- "Text appears at once" in FSN = the game's own setting (already-read text speed = instant);
+  unread text types normally. Not a bug.
+- `.tpm` decryption not implemented: encrypted games need a Kirikiroid2 `xp3filter.tjs`
+  (game folder or `<data>/profiles/<game>/`).
+- Video: wall-clock sync (not audio clock); mixer mode drawn like overlay; not speed-checked for
+  WMV/H.264 on the Switch.
+- Quick-load hook trimming (`data900.kdt.kk4s`) is count-based (approximate).
+
+### What was done in the 2026-10-31/11-01 sessions (details in `docs/status.md`)
+Exit to launcher (libnx exit mode, engine shutdown, `TVPStopAllThreads`, `__syscall_thread_detach`
+reaping, pausing leftovers), L3 + R3 menu, worker threads on cores 1-2, CPU boost setting, -O3
+pixel loops, fonts in memory, 64 KB write buffer, slow-frame breakdown, old Kirikiri 2 compat
+(exe options, `-evalcontext=global`, class vars keeping native properties), util.dll / fstat.dll,
+profiles folder for helper scripts, quick-load hook trimming, KAG call-stack restore fix (choices
+after loading), video player + anti-hang, audio resampling and fade-out, input scripts with `eval`.
 
 ## Repo map
 
@@ -110,17 +136,14 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 
 ## Next steps
 
-1. Fix the FSN choice branch (flow tracker `next()` → `SELECTER`, `handlers.link`); compare the
-   KAG link/choice path against the original engine behaviour, not against FSN-specific patches.
-2. Hardware check of the current build: stalls after long pages (`slow frame` fields),
-   exit to the launcher, L3 + R3 menu, quick load after a save made at the logo.
-3. Merge the branch into `main` once the hardware check passes (CI nightly builds `main`).
-4. Video playback (`krmovie.dll` → FFmpeg), e.g. openings in FSN and The Makings of a Lady.
-5. Real extrans transitions (wave, ripple, mosaic, turn, rotate*) instead of crossfade.
-6. Built-in x86-32 interpreter + minimal PE loader for `.tpm` decryptors, so games without
-   `xp3filter.tjs` run.
-7. Stalls on the Switch: whole-file decryption of big archive files on the main thread
-   (`XP3Archive.cpp`) and autosave / `[tp]` pages were the suspects; decide from the next log.
-8. Overlay folder (replacement files over xp3 contents) and per-game profiles (`profiles/`).
-9. Input scripts on PC (`KK4S_INPUT_SCRIPT`, see `docs/debugging.md`) as the regression test for
-   each game before a Switch test.
+1. Audio clicks on the Switch: read the diagnostics above from a fresh Switch log and fix.
+2. Profile the 300-900 ms slow frames on the Switch (which TJS / layer operations).
+3. Go through more games with input scripts on PC (any KAG game must work unmodified); fix
+   engine differences generically (like `TJSClassVarKeepsProperty`, KAG restore), never per game.
+4. `.tpm` decryptor support (own x86 interpreter + PE loader), so no `xp3filter.tjs` is needed.
+5. Real extrans transitions; more plugins as games need them (layerExDraw, layerExImage, ...).
+6. Video: sync to the audio clock; check decode speed on the Switch.
+7. Overlay folder and per-game profiles (M2/M3).
+
+Rules from the user: test on the Switch before merging; everything must work for any Kirikiri
+game, not just FSN; never commit game files or keys; game folders are never modified.

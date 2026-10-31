@@ -41,6 +41,7 @@ class tTVPLocalFileStream : public tTJSBinaryStream
 {
 private:
 	FILE* Handle;
+	bool kk4sWriting = false; // kk4s: opened for writing (frame stats)
 
 public:
 	tTVPLocalFileStream(const ttstr &origname, const ttstr & localname,

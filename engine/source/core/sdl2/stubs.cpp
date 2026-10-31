@@ -45,6 +45,10 @@
 #include "kk4s_i18n.h"
 #include "SysInitIntf.h" // kk4s: TVPSystemUninit
 #include "kk4s_internal.h" // kk4s: MakeDir
+#include "kk4s_video.h" // kk4s: video overlay
+#include <mutex> // kk4s
+#include <vector> // kk4s
+#include <unistd.h> // kk4s: _exit
 #include "ThreadIntf.h" // kk4s: TVPStopAllThreads
 
 
@@ -71,6 +75,72 @@ bool sdlProcessEventsForFrames(int frames);
 // its own keycodes (they only match for Enter/Esc/Space). kk4sKeyState backs
 // System.getKeyState(), which KAG polls for "skip while Ctrl is held".
 static tjs_uint8 kk4sKeyState[256]; // bit 0: down now, bit 4: went down since last query
+
+// kk4s: video over the game picture (kk4s_video.h). The player thread fills
+// these; the main thread uploads and draws them.
+static std::mutex kk4sVideoMutex;
+static void* kk4sVideoOwner = nullptr;
+static std::vector<uint8_t> kk4sVideoPixels;
+static int kk4sVideoW = 0, kk4sVideoH = 0;
+static bool kk4sVideoNewFrame = false, kk4sVideoVisible = false, kk4sVideoChanged = false;
+static SDL_Rect kk4sVideoRect = {0, 0, 0, 0};
+static SDL_Texture* kk4sVideoTexture = nullptr;
+static int kk4sVideoTexW = 0, kk4sVideoTexH = 0;
+namespace kk4s {
+void VideoScreenFrame(void* who, const uint8_t* rgba, int w, int h) {
+	std::lock_guard<std::mutex> lock(kk4sVideoMutex);
+	if (kk4sVideoOwner && kk4sVideoOwner != who) return;
+	kk4sVideoOwner = who;
+	kk4sVideoPixels.assign(rgba, rgba + (size_t)w * h * 4);
+	kk4sVideoW = w;
+	kk4sVideoH = h;
+	kk4sVideoNewFrame = kk4sVideoChanged = true;
+}
+void VideoScreenRect(void* who, int l, int t, int r, int b, bool visible) {
+	std::lock_guard<std::mutex> lock(kk4sVideoMutex);
+	kk4sVideoOwner = who;
+	kk4sVideoRect = {l, t, r - l, b - t};
+	kk4sVideoVisible = visible;
+	kk4sVideoChanged = true;
+}
+void VideoScreenRemove(void* who) {
+	std::lock_guard<std::mutex> lock(kk4sVideoMutex);
+	if (kk4sVideoOwner != who) return;
+	kk4sVideoOwner = nullptr;
+	kk4sVideoVisible = false;
+	kk4sVideoPixels.clear();
+	kk4sVideoChanged = true;
+}
+} // namespace kk4s
+// Upload the newest video frame and draw it over the game picture, which is
+// stretched from game_w x game_h to the whole output.
+static void kk4sDrawVideo(SDL_Renderer* r, int game_w, int game_h) {
+	std::lock_guard<std::mutex> lock(kk4sVideoMutex);
+	kk4sVideoChanged = false;
+	if (!kk4sVideoOwner || !kk4sVideoVisible || kk4sVideoPixels.empty() || game_w <= 0 || game_h <= 0) return;
+	if (!kk4sVideoTexture || kk4sVideoTexW != kk4sVideoW || kk4sVideoTexH != kk4sVideoH) {
+		if (kk4sVideoTexture) SDL_DestroyTexture(kk4sVideoTexture);
+		kk4sVideoTexture = SDL_CreateTexture(r, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, kk4sVideoW, kk4sVideoH);
+		kk4sVideoTexW = kk4sVideoW;
+		kk4sVideoTexH = kk4sVideoH;
+		kk4sVideoNewFrame = true;
+	}
+	if (!kk4sVideoTexture) return;
+	if (kk4sVideoNewFrame) {
+		SDL_UpdateTexture(kk4sVideoTexture, nullptr, kk4sVideoPixels.data(), kk4sVideoW * 4);
+		kk4sVideoNewFrame = false;
+	}
+	int ow = 0, oh = 0;
+	SDL_GetRendererOutputSize(r, &ow, &oh);
+	SDL_Rect rc = kk4sVideoRect;
+	if (rc.w <= 0 || rc.h <= 0) rc = {0, 0, game_w, game_h};
+	SDL_Rect dst = {rc.x * ow / game_w, rc.y * oh / game_h, rc.w * ow / game_w, rc.h * oh / game_h};
+	SDL_RenderCopy(r, kk4sVideoTexture, nullptr, &dst);
+}
+static bool kk4sVideoNeedsPresent() {
+	std::lock_guard<std::mutex> lock(kk4sVideoMutex);
+	return kk4sVideoChanged && (kk4sVideoVisible || !kk4sVideoOwner);
+}
 static unsigned kk4sPadHeld = 0;     // kk4s::kPad* bits held right now
 static unsigned kk4sFramesShown = 0; // presents so far (main loop idles when nothing changed)
 static void kk4sSetKeyState(tjs_uint vk, bool down) {
@@ -394,6 +464,7 @@ public:
 		}
 		SDL_RenderClear(renderer);
 		SDL_RenderCopy(renderer, framebuffer, NULL, NULL);
+		kk4sDrawVideo(renderer, curWindowW, curWindowH); // kk4s: video overlay
 		kk4sStart = SDL_GetTicks();
 		SDL_RenderPresent(renderer);
 		kk4s::CurrentFrameStats().present += SDL_GetTicks() - kk4sStart;
@@ -707,6 +778,7 @@ public:
 		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 		SDL_RenderClear(renderer);
 		SDL_RenderCopy(renderer, framebuffer, NULL, NULL);
+		kk4sDrawVideo(renderer, curWindowW, curWindowH); // kk4s: video overlay
 		if (with_overlay) kk4s::overlay::Draw(renderer);
 		if (shot_bmp) { // the back buffer holds the full frame now
 			int ow = 0, oh = 0;
@@ -1041,6 +1113,7 @@ static void kk4sOverlayFrame() {
 //   <ms> tap <x> <y>         x, y in 0..1 of the screen
 //   <ms> shot <file.bmp>     relative names go to $KK4S_ROOT/shots/
 //   <ms> quit
+//   <ms> eval <tjs expression>   logs the result ("script: eval -> ...")
 // <ms> counts from the game start; "+<ms>" is relative to the previous line.
 struct kk4sScriptCmd { Uint32 at; std::string op, a1, a2; };
 static std::vector<kk4sScriptCmd> kk4sScript;
@@ -1064,6 +1137,14 @@ static void kk4sScriptLoad() {
 		if (line[0] == '#' || sscanf(line, "%31s %31s %255s %63s", t, op, a1, a2) < 2) continue;
 		Uint32 at = t[0] == '+' ? last + (Uint32)atoi(t + 1) : (Uint32)atoi(t);
 		last = at;
+		if (!strcmp(op, "eval")) { // the rest of the line is the expression
+			const char* e = strstr(line, "eval") + 4;
+			while (*e == ' ' || *e == '\t') ++e;
+			std::string expr = e;
+			while (!expr.empty() && (expr.back() == '\n' || expr.back() == '\r')) expr.pop_back();
+			kk4sScript.push_back({at, op, expr, ""});
+			continue;
+		}
 		kk4sScript.push_back({at, op, a1, a2});
 	}
 	fclose(f);
@@ -1124,6 +1205,16 @@ static void kk4sScriptTick() {
 				file = kk4s::RootDir() + "/shots/" + file;
 			}
 			_currentWindowLayer->kk4sPresent(kk4s::overlay::Visible(), file.c_str());
+		} else if (c.op == "eval") {
+			try {
+				tTJSVariant v;
+				TVPExecuteExpression(ttstr(c.a1.c_str()), &v);
+				kk4s::Log("script: eval -> %s", ttstr(v).AsNarrowStdString().c_str());
+			} catch (const eTJS& e) {
+				kk4s::Log("script: eval failed: %s", e.GetMessage().AsNarrowStdString().c_str());
+			} catch (...) {
+				kk4s::Log("script: eval failed");
+			}
 		} else if (c.op == "quit") {
 			kk4s::SetExitMode(kk4s::ExitMode::Quit);
 			TVPExitApplication(0);
@@ -1172,6 +1263,9 @@ bool sdlProcessEvents() {
 	}
 	kk4sStats = kk4s::FrameStats();
 	kk4sOverlayFrame();
+	// kk4s: a video frame (or its rectangle) changed while the game picture did not
+	if (_currentWindowLayer && kk4sFramesShown == kk4sShownBefore && kk4sVideoNeedsPresent())
+		_currentWindowLayer->kk4sPresent(kk4s::overlay::Visible());
 	// kk4s: nothing new on screen -> a short sleep instead of spinning. A present
 	// waits for vsync by itself; without one this loop ran flat out.
 	if (kk4sFramesShown == kk4sShownBefore) SDL_Delay(1);
@@ -1242,6 +1336,11 @@ int main(int argc, char **argv) {
 		SDL_DestroyWindow(window);
 		SDL_Quit();
 		kk4s::Shutdown();
+#ifdef __SWITCH__
+		// like ExitAfterGame: no libc teardown after Shutdown() paused leftover
+		// threads (a paused launcher job may hold a malloc / FILE lock)
+		_exit(0);
+#endif
 		return 0;
 	}
 

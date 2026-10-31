@@ -1561,6 +1561,8 @@ public:
 	void CheckBufferSleep();
 
 
+public:
+	void RequestStop() override { Terminate(); Event.Set(); } // kk4s: TVPStopAllThreads
 } static *TVPWaveSoundBufferThread = NULL;
 //---------------------------------------------------------------------------
 void TVPLockSoundMixer() {

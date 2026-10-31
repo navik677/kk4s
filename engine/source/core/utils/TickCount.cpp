@@ -103,6 +103,8 @@ public:
 protected:
 	void Execute();
 
+public:
+	void RequestStop() override { Terminate(); Event.Set(); } // kk4s: TVPStopAllThreads
 } static * TVPWatchThread = NULL;
 //---------------------------------------------------------------------------
 tTVPWatchThread::tTVPWatchThread()

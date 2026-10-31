@@ -19,6 +19,9 @@
 #include "kk4s_fs.h"
 
 #include <cctype>
+#include <climits>
+#include <cstdlib>
+#include <cstring>
 #include <cstdio>
 #include <functional>
 #include <set>
@@ -190,17 +193,35 @@ static bool CopyStorage(const ttstr& from, const ttstr& to, bool fail_if_exists)
     if (dest.empty()) return false;
     struct stat st;
     if (fail_if_exists && stat(dest.c_str(), &st) == 0) return false;
-    tTJSBinaryStream* in = TVPCreateStream(TVPNormalizeStorageName(from), TJS_BS_READ); // archives too
-    FILE* out = fopen(dest.c_str(), "wb");
-    bool ok = out != nullptr;
-    char buf[65536];
-    while (ok) {
-        tjs_uint got = in->Read(buf, sizeof(buf));
-        if (got == 0) break;
-        ok = fwrite(buf, 1, got, out) == got;
+    std::string src_native = NativePath(from);
+    if (!src_native.empty()) { // same file: nothing to do, and "wb" would truncate it
+        char a[PATH_MAX], b[PATH_MAX];
+        if (realpath(src_native.c_str(), a) && realpath(dest.c_str(), b) && strcmp(a, b) == 0) return true;
     }
-    delete in;
-    if (out && fclose(out) != 0) ok = false;
+    // read the source first (it may be inside an archive), then write the copy
+    std::string data;
+    {
+        tTJSBinaryStream* in = TVPCreateStream(TVPNormalizeStorageName(from), TJS_BS_READ);
+        try {
+            char buf[65536];
+            tjs_uint got;
+            while ((got = in->Read(buf, sizeof(buf))) > 0) data.append(buf, got);
+        } catch (...) {
+            delete in;
+            throw;
+        }
+        delete in;
+    }
+    std::string tmp = dest + ".kk4s-tmp";
+    FILE* out = fopen(tmp.c_str(), "wb");
+    if (!out) return false;
+    bool ok = fwrite(data.data(), 1, data.size(), out) == data.size();
+    if (fclose(out) != 0) ok = false;
+    if (ok) {
+        remove(dest.c_str()); // rename over an existing file fails on some file systems
+        ok = rename(tmp.c_str(), dest.c_str()) == 0;
+    }
+    if (!ok) remove(tmp.c_str());
     TVPClearStorageCaches();
     return ok;
 }

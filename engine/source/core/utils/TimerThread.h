@@ -108,6 +108,8 @@ public:
 
 	static void RemoveFromPending(tTVPTimerBase *item);
 	static void RegisterToPending(tTVPTimerBase *item);
+public:
+	void RequestStop() override { Terminate(); Event.Set(); } // kk4s: TVPStopAllThreads
 };
 //---------------------------------------------------------------------------
 #endif

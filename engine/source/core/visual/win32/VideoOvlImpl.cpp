@@ -21,6 +21,7 @@
 #include "SysInitIntf.h"
 #include "StorageImpl.h"
 #include "krmovie.h"
+iTVPVideoOverlay* TVPCreateKK4SVideoPlayer(class tTJSNI_VideoOverlay* owner, const ttstr& name, bool layer_mode); // kk4s
 #include "PluginImpl.h"
 #include "WaveImpl.h"  // for DirectSound attenuate <-> TVP volume
 //#include <evcode.h>
@@ -153,32 +154,7 @@ void tTJSNI_VideoOverlay::Open(const ttstr &_name)
 		param = param_pos;
 		name = ttstr(name, param_pos_ind);
 	}
-#if 0
-	IStream *istream = NULL;
-	long size;
-	ttstr ext = TVPExtractStorageExt(name).c_str();
-	ext.ToLowerCase();
-
-	{
-		// prepate IStream
-		tTJSBinaryStream *stream0 = NULL;
-		try
-		{
-			stream0 = TVPCreateStream(name);
-			size = (long)stream0->GetSize();
-		}
-		catch(...)
-		{
-			if(stream0) delete stream0;
-			throw;
-		}
-
-		istream = TVPCreateIStream(stream0);
-	}
-
-	// 'istream' is an IStream instance at this point
-
-	// create video overlay object
+	// kk4s: FFmpeg player (engine/source/core/movie/kk4s_videoplayer.cpp)
 	try
 	{
 		if (CachedOverlay && CachedOverlayMode == Mode && CachedPlayingFile == _name) {
@@ -190,58 +166,49 @@ void tTJSNI_VideoOverlay::Open(const ttstr &_name)
 				CachedOverlay->Release();
 				CachedOverlay = nullptr;
 			}
-			if (Mode == vomLayer)
-				GetVideoLayerObject(EventQueue.GetOwner(), istream, name.c_str(), ext.c_str(), size, &VideoOverlay);
-			else if(Mode == vomMixer)
-				GetMixingVideoOverlayObject(EventQueue.GetOwner(), istream, name.c_str(), ext.c_str(), size, &VideoOverlay);
-			else if(Mode == vomMFEVR)
-				GetMFVideoOverlayObject(EventQueue.GetOwner(), istream, name.c_str(), ext.c_str(), size, &VideoOverlay);
-			else
-				GetVideoOverlayObject(EventQueue.GetOwner(), istream, name.c_str(), ext.c_str(), size, &VideoOverlay);
+			VideoOverlay = TVPCreateKK4SVideoPlayer(this, name, Mode == vomLayer);
 		}
-		if( (Mode == vomOverlay) || (Mode == vomMixer) || (Mode == vomMFEVR) )
+		if (VideoOverlay)
 		{
-			ResetOverlayParams();
-		}
-		else
-		{	// set font and back buffer to layerVideo
-			long	width, height;
-			long			size;
-			VideoOverlay->GetVideoSize( &width, &height );
-			
-			if( width <= 0 || height <= 0 )
-				TVPThrowExceptionMessage(TVPErrorInKrMovieDLL, (const tjs_char*)TVPInvalidVideoSize);
-
-			size = width * height * 4;
-			if( Bitmap[0] != NULL )
-				delete Bitmap[0];
-			if( Bitmap[1] != NULL )
-				delete Bitmap[1];
-			Bitmap[0] = new tTVPBaseTexture(width, height, 32);
-			Bitmap[1] = new tTVPBaseTexture(width, height, 32);
-#if 0
-			BmpBits[0] = static_cast<BYTE*>(Bitmap[0]->GetBitmap()->GetScanLine( Bitmap[0]->GetBitmap()->GetHeight()-1 ));
-			BmpBits[1] = static_cast<BYTE*>(Bitmap[1]->GetBitmap()->GetScanLine( Bitmap[1]->GetBitmap()->GetHeight()-1 ));
-#endif
-			VideoOverlay->SetVideoBuffer(Bitmap[0], Bitmap[1], size);
+			if( (Mode == vomOverlay) || (Mode == vomMixer) || (Mode == vomMFEVR) )
+			{
+				ResetOverlayParams();
+			}
+			else
+			{	// layer mode: frames are copied into these textures
+				long width, height;
+				VideoOverlay->GetVideoSize( &width, &height );
+				if( width <= 0 || height <= 0 )
+					TVPThrowExceptionMessage(TVPErrorInKrMovieDLL, (const tjs_char*)TVPInvalidVideoSize);
+				if( Bitmap[0] != NULL ) delete Bitmap[0];
+				if( Bitmap[1] != NULL ) delete Bitmap[1];
+				Bitmap[0] = new tTVPBaseTexture(width, height, 32);
+				Bitmap[1] = new tTVPBaseTexture(width, height, 32);
+				VideoOverlay->SetVideoBuffer(Bitmap[0], Bitmap[1], width * height * 4);
+			}
+			ClearWndProcMessages();
+			SetStatus(ssStop);
+			CachedPlayingFile = _name;
+			CachedOverlayMode = Mode;
+			if (Loop) VideoOverlay->SetLoopSegement(0, -1);
 		}
 	}
 	catch(...)
 	{
-		if(istream) istream->Release();
 		Close();
 		throw;
 	}
-	if(istream) istream->Release();
-
-
-	// set Status
-	ClearWndProcMessages();
-	SetStatus(ssStop);
-	CachedPlayingFile = _name;
-	CachedOverlayMode = Mode;
-	if (Loop) VideoOverlay->SetLoopSegement(0, -1);
-#endif
+	// kk4s: the file cannot be played (format, decoder). Act like a video that
+	// is loaded and ends at once, so scripts waiting for the end ([wv],
+	// onStatusChanged "stop") go on instead of hanging.
+	if(!VideoOverlay)
+	{
+		static int logged = 0;
+		if(logged++ < 20)
+			TVPAddLog(TJS_W("kk4s: video cannot be played, skipped: ") + _name);
+		ClearWndProcMessages();
+		SetStatus(ssStop);
+	}
 }
 //---------------------------------------------------------------------------
 void tTJSNI_VideoOverlay::Close()
@@ -319,6 +286,13 @@ void tTJSNI_VideoOverlay::Play()
 		ClearWndProcMessages();
 		if( Mode != vomMFEVR ) SetStatus(ssPlay);
 	}
+	else if(Status != ssUnload)
+	{
+		// kk4s: no player (see Open): starts and ends right away
+		ClearWndProcMessages();
+		SetStatus(ssPlay);
+		SetStatusAsync(ssStop);
+	}
 }
 //---------------------------------------------------------------------------
 void tTJSNI_VideoOverlay::Stop()
@@ -329,6 +303,11 @@ void tTJSNI_VideoOverlay::Stop()
 		VideoOverlay->Stop();
 		ClearWndProcMessages();
 		if( Mode != vomMFEVR ) SetStatus(ssStop);
+	}
+	else if(Status != ssUnload)
+	{
+		ClearWndProcMessages(); // kk4s: no player (see Open)
+		SetStatus(ssStop);
 	}
 }
 //---------------------------------------------------------------------------

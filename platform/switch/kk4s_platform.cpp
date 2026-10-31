@@ -146,6 +146,10 @@ static unsigned PauseTrackedThreads() {
         ++paused;
     }
     g_threads.clear();
+    // Paused threads never run again, so the registry locks can be released:
+    // a pthread_detach during the rest of the teardown must not block forever.
+    g_detached_mutex.unlock();
+    g_threads_mutex.unlock();
     return paused;
 }
 
@@ -264,6 +268,7 @@ void ExitAfterGame(int code) {
         std::string args = "\"" + self + "\"";
         if (R_SUCCEEDED(envSetNextLoad(self.c_str(), args.c_str()))) Log("kk4s: game quit, back to the launcher");
     }
+    SetGamePerformance(false); // the next NRO (launcher, hbmenu) runs in the same applet
     Shutdown();
     // _exit: skips libc's stdio cleanup and static destructors, which could wait
     // forever on a lock held by a stopped engine thread or touch engine state.
