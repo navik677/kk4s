@@ -1,17 +1,26 @@
 # Handoff — read this first in a new session
 
-Last update: 2026-10-31. Goal: **any Kirikiri (KAG/TJS2) game folder runs unmodified** on the
+Last update: 2026-10-31 (end of session). Goal: **any Kirikiri (KAG/TJS2) game folder runs unmodified** on the
 Switch (and on PC via the viewer). Game files are never changed; fixes live in the engine,
 `compat/` or kk4s' own files. Full requirements: `docs/original-prompt.md`; milestones: `docs/roadmap.md`.
 
 ## Where we are
 
-- kk4s runs on a real Switch (title takeover): launcher with covers, four tested games (see
-  `docs/status.md`), in-game menu, saves outside the game folder, gamepad + touch.
-- The PC viewer (same engine, `platform/desktop/`) is the main test loop: Linux (Fedora) locally,
-  Linux + Windows in CI.
-- Test games are not in the repo (`game/` is git-ignored); the user keeps copies under `game/` and
-  `~/Documents/` on the dev PC and on the Switch SD card.
+Branch `switch-fixes-2026-10-31` (commit `b4eadd8`, on top of `main`) holds the 2026-10-31 work;
+not merged to `main` yet. The Switch build of that state is on the SD card (`kk4s.nro`).
+
+- Works on the Switch: launcher with covers, exit to the launcher (threads stopped, detached
+  thread stacks closed), in-game menu on L3 + R3, saves outside the game folder, gamepad + touch.
+- Tested games: The Makings of a Lady (plays, but occasional 1–2.5 s stalls after long pages);
+  Sharin, Tsukihime (earlier). FSN (Fate/stay night, PC version with `profiles/FSN/xp3filter.tjs`):
+  reaches the title, load menu, saves load, the skip-scene prompt (Да/Нет) renders and responds.
+- Known broken: choice branch in FSN's flow after a loaded save ("День 7 … Выбор": choice links do
+  not appear, scene stops). Video (`krmovie`) is not played, so openings are black.
+- `.tpm` encrypted archives (cxdec) are not decrypted: such games need a Kirikiroid
+  `xp3filter.tjs`, as in `profiles/<game>/`.
+
+Old Kirikiri 2 (exe without `-evalcontext`) gets two compat switches from `compat/kk4s_compat.cpp`:
+`!` on the global object and class `var x;` keeping native properties (`TJSClassVarKeepsProperty`).
 
 ## Repo map
 
@@ -101,16 +110,17 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 
 ## Next steps
 
-0. Hardware check of the 2026-10-31 fixes: L3 + R3 menu, exit to the launcher, performance (see
-   `docs/hardware-test-checklist.md`). If stutter remains, the log's `slow frame` and
-   `xp3: decrypted ... ms` lines show whether whole-file decryption of big files (BGM) on the main
-   thread is the cause (`XP3Archive.cpp`, filter games only).
-1. Aspect-correct scaling of the game picture (letterbox / pillarbox; currently stretched).
-2. Video playback check (`krmovie.dll` → FFmpeg), e.g. the openings in the test games.
-3. Real extrans transitions (wave, ripple, mosaic, turn, rotate*) instead of crossfade.
-4. Built-in x86-32 interpreter + minimal PE loader for `.tpm` decryptors (decided: own
-   interpreter, not Unicorn — no JIT for homebrew), so games without `xp3filter.tjs` work.
-5. More plugins as games need them (layerExDraw, layerExImage, kagexopt, …).
-6. Overlay folder (replacement files over xp3 contents) and per-game profiles.
-7. Hardware checks: album mode memory, docked ↔ handheld, sleep / resume.
-8. Synthetic compat tests (needs an xp3 packer for tests).
+1. Fix the FSN choice branch (flow tracker `next()` → `SELECTER`, `handlers.link`); compare the
+   KAG link/choice path against the original engine behaviour, not against FSN-specific patches.
+2. Hardware check of the current build: stalls after long pages (`slow frame` fields),
+   exit to the launcher, L3 + R3 menu, quick load after a save made at the logo.
+3. Merge the branch into `main` once the hardware check passes (CI nightly builds `main`).
+4. Video playback (`krmovie.dll` → FFmpeg), e.g. openings in FSN and The Makings of a Lady.
+5. Real extrans transitions (wave, ripple, mosaic, turn, rotate*) instead of crossfade.
+6. Built-in x86-32 interpreter + minimal PE loader for `.tpm` decryptors, so games without
+   `xp3filter.tjs` run.
+7. Stalls on the Switch: whole-file decryption of big archive files on the main thread
+   (`XP3Archive.cpp`) and autosave / `[tp]` pages were the suspects; decide from the next log.
+8. Overlay folder (replacement files over xp3 contents) and per-game profiles (`profiles/`).
+9. Input scripts on PC (`KK4S_INPUT_SCRIPT`, see `docs/debugging.md`) as the regression test for
+   each game before a Switch test.
