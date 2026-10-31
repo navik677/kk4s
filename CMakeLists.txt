@@ -124,6 +124,7 @@ set(SOURCES
     platform/common/kk4s_image.cpp
     platform/common/kk4s_launcher.cpp
     platform/common/kk4s_net.cpp
+    platform/common/kk4s_overlay.cpp
     platform/common/kk4s_settings.cpp
     platform/common/kk4s_ui.cpp
     compat/kk4s_compat.cpp

@@ -98,7 +98,8 @@ bool EditTextAvailable() { return false; }
 void ExitAfterGame(int code) {
     Settings s;
     s.Load();
-    bool relaunch = s.return_to_launcher && g_cli_game.empty();
+    bool relaunch = g_cli_game.empty() && (GetExitMode() == ExitMode::Launcher ||
+                                           (GetExitMode() == ExitMode::Setting && s.return_to_launcher));
     std::string self = g_engine_argv.empty() || !g_engine_argv[0] ? "" : g_engine_argv[0];
 #ifdef _WIN32
     char buf[4096];

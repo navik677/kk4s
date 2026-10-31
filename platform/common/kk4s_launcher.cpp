@@ -76,6 +76,7 @@ struct Game {
     SDL_Texture* cover = nullptr; // full cover art
     SDL_Texture* blur = nullptr;  // tiny blurred cover for the background
     SDL_Texture* icon = nullptr;  // icon for generated cards
+    SDL_Texture* card = nullptr;  // pre-rendered card (cover or generated), see BakeCard
     int cover_w = 0, cover_h = 0;
     SDL_Color tint{60, 70, 110, 255};
 };
@@ -153,7 +154,7 @@ SDL_Color TintFor(const std::string& name) {
 }
 
 void FreeGame(Game& g) {
-    for (SDL_Texture** t : {&g.cover, &g.blur, &g.icon})
+    for (SDL_Texture** t : {&g.cover, &g.blur, &g.icon, &g.card})
         if (*t) { SDL_DestroyTexture(*t); *t = nullptr; }
 }
 
@@ -390,6 +391,16 @@ void DrawCard(const View& v, Fonts& f, const Shadow& shadow, const Game& g, floa
     float x = cx - w / 2, y = cy - h / 2, rad = 16;
     shadow.Draw(v, x, y + 10, w, h, 26, Rgba(0, 0, 0, 150));
     if (focus > 0.01f) shadow.Draw(v, x, y, w, h, 34, WithAlpha(kAccent, 0.35f * focus * (0.7f + 0.3f * glow)));
+    if (g.card) {
+        // pre-rendered: one copy, dimmed with the color mod instead of an overlay
+        Uint8 m = (Uint8)(255 - 110 * (1 - std::min(1.f, std::max(0.f, focus))) * 0.75f);
+        SDL_SetTextureColorMod(g.card, m, m, m);
+        SDL_SetTextureAlphaMod(g.card, 255);
+        SDL_FRect rc = v.Map(x, y, w, h);
+        SDL_RenderCopyF(v.r, g.card, nullptr, &rc);
+        if (focus > 0.01f) RoundFrame(v, x - 5, y - 5, w + 10, h + 10, rad + 5, 3, WithAlpha(kAccent, focus));
+        return;
+    }
     if (g.cover) {
         SDL_Rect src = CoverCrop(g.cover_w, g.cover_h, w, h);
         RoundImage(v, g.cover, &src, x, y, w, h, rad, Rgba(255, 255, 255));
@@ -398,6 +409,43 @@ void DrawCard(const View& v, Fonts& f, const Shadow& shadow, const Game& g, floa
     }
     if (focus < 0.99f) RoundRect(v, x, y, w, h, rad, Rgba(8, 10, 16, (Uint8)(110 * (1 - focus))));
     if (focus > 0.01f) RoundFrame(v, x - 5, y - 5, w + 10, h + 10, rad + 5, 3, WithAlpha(kAccent, focus));
+}
+
+// Card art rendered once into a texture (rounded cover, or the generated card
+// with its text), so each frame only copies it: no textured geometry and no
+// new text textures while the carousel animates. kBakeW x kBakeH layout units
+// at scale s; nullptr if render targets are not available.
+const float kBakeW = 196 * 1.2f, kBakeH = 276 * 1.2f;
+
+SDL_Texture* BakeCard(SDL_Renderer* r, Fonts& f, const Game& g, float s) {
+    if (!SDL_RenderTargetSupported(r)) return nullptr;
+    int tw = (int)std::ceil(kBakeW * s), th = (int)std::ceil(kBakeH * s);
+    SDL_Texture* t = SDL_CreateTexture(r, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, tw, th);
+    if (!t) return nullptr;
+    SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
+    SDL_SetTextureScaleMode(t, SDL_ScaleModeLinear);
+    SDL_Texture* old = SDL_GetRenderTarget(r);
+    if (SDL_SetRenderTarget(r, t) != 0) {
+        SDL_DestroyTexture(t);
+        return nullptr;
+    }
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
+    SDL_SetRenderDrawColor(r, 0, 0, 0, 0);
+    SDL_RenderClear(r);
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
+    View bv;
+    bv.r = r;
+    bv.s = s;
+    const float rad = 16 * 1.2f;
+    if (g.cover) {
+        SDL_Rect src = CoverCrop(g.cover_w, g.cover_h, kBakeW, kBakeH);
+        RoundImage(bv, g.cover, &src, 0, 0, kBakeW, kBakeH, rad, Rgba(255, 255, 255));
+    } else {
+        DrawGeneratedCard(bv, f, g, 0, 0, kBakeW, kBakeH, rad, kBakeW);
+    }
+    SDL_SetRenderTarget(r, old);
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
+    return t;
 }
 
 float ChipWidth(const View& v, Fonts& f, const std::string& text, bool dot) {
@@ -472,7 +520,7 @@ const char* const kLangCodes[] = {"auto", "uk", "en", "ru", "ja"};
 const char* ActionName(PadAction a) {
     static const i18n::Str names[] = {i18n::kActNone, i18n::kActEnter, i18n::kActRightClick, i18n::kActCtrl,
                                       i18n::kActSpace, i18n::kActPageUp, i18n::kActPageDown, i18n::kActShift,
-                                      i18n::kActEsc, i18n::kActTab};
+                                      i18n::kActEsc, i18n::kActTab, i18n::kActOverlay};
     int i = (int)a;
     return i >= 0 && i < (int)PadAction::Count ? T(names[i]) : "";
 }
@@ -529,6 +577,8 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
     const float grid_x0 = 640 - (cols * gstep_x - (gstep_x - gw)) / 2;
 
     float pos = (float)sel, grid_scroll = 0;
+    float bake_scale = 0;
+    bool bake_failed = false;
     // background layers: {game index, opacity}; the newest fades in on top and
     // older ones stay as they were (switching mid-fade must not jump)
     struct BgLayer { int game; float alpha; };
@@ -926,6 +976,20 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
         v.ox = (ow - 1280 * v.s) / 2;
         v.oy = (oh - 720 * v.s) / 2;
 
+        // (re)bake card art for this output scale
+        if (std::fabs(bake_scale - v.s) > 0.001f) {
+            for (Game& g : games)
+                if (g.card) { SDL_DestroyTexture(g.card); g.card = nullptr; }
+            bake_scale = v.s;
+            bake_failed = false;
+        }
+        if (!bake_failed)
+            for (Game& g : games)
+                if (!g.card) {
+                    g.card = BakeCard(r, fonts, g, v.s);
+                    if (!g.card) { bake_failed = true; Log("launcher: render targets unavailable, drawing cards directly"); break; }
+                }
+
         // Switch buttons straight from libnx (by label); PC uses SDL events below.
         unsigned held;
         if (ReadPad(held)) {
@@ -1255,6 +1319,10 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             DrawText(v, fonts, T(i18n::kNoGamesHint), 640, 372, 18, kText2, kCenter, 560);
             DrawText(v, fonts, GamesDir() + "/<Game>/", 640, 402, 18, kAccent, kCenter, 560);
         } else if (!settings.grid) {
+            // a clip rect like the grid uses (the grid never flickered on Switch)
+            SDL_FRect cclipf = v.Map(0, 80, 1280, 440);
+            SDL_Rect cclip{(int)cclipf.x, (int)cclipf.y, (int)cclipf.w, (int)cclipf.h};
+            SDL_RenderSetClipRect(r, &cclip);
             std::vector<int> order;
             for (int i = 0; i < (int)games.size(); ++i)
                 if (std::fabs(i - pos) < 6) order.push_back(i);
@@ -1265,6 +1333,7 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
                 DrawCard(v, fonts, shadow, games[i], 640 + (i - pos) * step, center_y, card_w * k, card_h * k, focus, glow,
                          card_w);
             }
+            SDL_RenderSetClipRect(r, nullptr);
             const Game& g = games[sel];
             DrawText(v, fonts, g.title, 640, 486, 34, kText, kCenter, 1080, true);
             // chips: last played, launches, folder

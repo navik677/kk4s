@@ -114,6 +114,10 @@ void Log(const char* fmt, ...) {
 
 const std::string& GameDir() { return g_game_dir; }
 
+static ExitMode g_exit_mode = ExitMode::Setting;
+void SetExitMode(ExitMode mode) { g_exit_mode = mode; }
+ExitMode GetExitMode() { return g_exit_mode; }
+
 unsigned PadFromSdlButton(int b) {
     switch (b) {
         case SDL_CONTROLLER_BUTTON_A: return kPadA;

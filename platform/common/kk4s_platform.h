@@ -33,6 +33,12 @@ void Shutdown();
 // was picked in the launcher), otherwise a normal exit. Calls Shutdown().
 [[noreturn]] void ExitAfterGame(int code);
 
+// Overrides the "return to launcher" setting for the next ExitAfterGame
+// (in-game menu: "exit to launcher" / "quit kk4s").
+enum class ExitMode { Setting, Launcher, Quit };
+void SetExitMode(ExitMode mode);
+ExitMode GetExitMode();
+
 // Launcher: picks a game folder from GamesDir() with the graphical picker
 // (platform/common/kk4s_launcher.cpp) drawn into the engine's renderer; on PC
 // a folder given on the command line is used directly. Returns the chosen

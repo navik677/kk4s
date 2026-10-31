@@ -10,8 +10,8 @@ sdmc:/switch/kk4s/
 ├── covers/<GameName>.jpg    optional cover art for the launcher (png / jpg / webp)
 ├── fonts/                   extra fonts; fonts/.cache/ = Nintendo system font copy
 ├── logs/                    kk4s-YYYYMMDD-HHMMSS.log, one per run
-├── saves/<GameName>/        save data (setting "separate saves", on by default); existing
-│                            game-folder saves are copied here on the first start
+├── saves/<GameName>/        save data (setting "separate saves", on by default): every file access
+│                            to <game>/savedata/ goes here; existing saves are copied on the first start
 ├── saves/.backup/<GameName>/<date>/   backups made in the game options ("deleted-<date>" = deleted saves)
 ├── .from_game               marker: the launcher was restarted after a game (no autostart)
 ├── overlay/<game_id>/       (M2) replacement files, override xp3 contents
@@ -48,6 +48,11 @@ the launcher after a game, autostart the last game (3 s countdown, any button ca
 Game options (−): cover from the internet, remove the downloaded cover, back up saves, restore the
 latest backup, delete saves (moved to `saves/.backup/<GameName>/deleted-<date>/`). Restore and delete
 ask for a second press; restore first backs up the current saves.
+
+In-game menu: + or − (or F1 on PC) opens the kk4s menu over the game: resume, quick save / quick
+load (KAG bookmark 900, a slot the game's own save screens do not use), volume, controls, exit to
+the launcher, quit kk4s (both ask for a second press). Which buttons open it is set in Controls
+("kk4s menu"). `KK4S_OVERLAY_SHOT=<file.bmp>` saves the menu once shown (PC).
 
 Debugging aids (PC): `KK4S_LAUNCHER_SHOT=<file.bmp>` saves one launcher frame and quits;
 `KK4S_LAUNCHER_SEARCH=1` opens the cover search first (`=pick` also takes the first result);

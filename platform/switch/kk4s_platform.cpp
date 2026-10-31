@@ -148,7 +148,8 @@ void ExitAfterGame(int code) {
     Settings s;
     s.Load();
     // appletMainLoop() is false when the system asked us to close (HOME > close).
-    if (s.return_to_launcher && appletMainLoop() && envHasNextLoad() && __system_argc > 0 && __system_argv[0]) {
+    bool back = GetExitMode() == ExitMode::Launcher || (GetExitMode() == ExitMode::Setting && s.return_to_launcher);
+    if (back && appletMainLoop() && envHasNextLoad() && __system_argc > 0 && __system_argv[0]) {
         std::string self = __system_argv[0];
         std::string args = "\"" + self + "\"";
         if (R_SUCCEEDED(envSetNextLoad(self.c_str(), args.c_str()))) Log("kk4s: game quit, back to the launcher");

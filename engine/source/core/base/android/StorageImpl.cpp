@@ -22,6 +22,7 @@
 
 #include "Application.h"
 #include "kk4s_fs.h" // kk4s
+#include "kk4s_compat.h" // kk4s
 #include "StringUtil.h"
 #include "FilePathUtil.h"
 #include "TickCount.h"
@@ -319,7 +320,7 @@ void TJS_INTF_METHOD tTVPFileMedia::GetLocallyAccessibleName(ttstr &name)
 	if (!newname.IsEmpty()) {
 		std::string utf8;
 		if (TVPUtf16ToUtf8(utf8, newname.AsStdString())) {
-			std::string real = kk4sResolveCase(utf8);
+			std::string real = kk4sResolveCase(kk4s::compat::RedirectSavePath(utf8)); // kk4s: saves outside the game folder
 			tjs_string wide;
 			if (real != utf8 && TVPUtf8ToUtf16(wide, real)) newname = ttstr(wide);
 		}

@@ -44,6 +44,12 @@ void ReportCyrillicSubstitute(const ttstr& font, const ttstr& chosen);
 // there the first time. "" = keep the engine's own data path.
 std::string RedirectDataPath(const std::string& original);
 
+// Native path of a local file access: paths in the game's own save folders
+// (<game>/savedata/ and the engine's original data path) are mapped into the
+// RedirectDataPath() folder, so KAG games that build "<exe>/savedata/..."
+// themselves never write into the game folder. Other paths are returned as-is.
+std::string RedirectSavePath(const std::string& native);
+
 // True on the thread that runs the engine and TJS.
 bool IsMainThread();
 

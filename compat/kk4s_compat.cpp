@@ -24,6 +24,7 @@
 #include "kk4s_files.h"
 #include "kk4s_settings.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <cstdlib>
@@ -31,6 +32,7 @@
 #include <set>
 #include <string>
 #include <thread>
+#include <vector>
 
 // engine/source/core/visual/FreeType.cpp
 extern void TVPAddSystemFontToFreeType(const std::string& storage, std::vector<tjs_string>* faces);
@@ -280,6 +282,33 @@ static void RunAfterInit2() {
     RunGameScript("AfterInit2.tjs");
 }
 
+// Save folder mapping (set by RedirectDataPath): lower-cased source prefixes -> target.
+static std::vector<std::string> g_save_prefixes;
+static std::string g_save_target;
+
+static std::string LowerAscii(std::string s) {
+    for (char& c : s) c = (char)tolower((unsigned char)c);
+    return s;
+}
+
+static std::string Slashed(std::string p) {
+    while (p.size() > 1 && p[0] == '/' && p[1] == '/') p.erase(0, 1); // engine paths can start with "//"
+    if (!p.empty() && p.back() != '/') p += '/';
+    return p;
+}
+
+std::string RedirectSavePath(const std::string& native) {
+    if (g_save_target.empty()) return native;
+    std::string p = native;
+    while (p.size() > 1 && p[0] == '/' && p[1] == '/') p.erase(0, 1);
+    std::string low = LowerAscii(p);
+    for (const std::string& prefix : g_save_prefixes) {
+        if (low.compare(0, prefix.size(), prefix) == 0) return g_save_target + p.substr(prefix.size());
+        if (low + "/" == prefix) return g_save_target; // the folder itself
+    }
+    return native;
+}
+
 std::string RedirectDataPath(const std::string& original) {
     Settings s;
     s.Load();
@@ -298,6 +327,14 @@ std::string RedirectDataPath(const std::string& original) {
         }
     }
     kk4s::Log("compat: saves in %s", target.c_str());
+    g_save_target = Slashed(target);
+    g_save_prefixes.clear();
+    for (const std::string& src : {original, kk4s::GameDir() + "savedata"}) {
+        std::string pre = LowerAscii(Slashed(src));
+        if (pre != LowerAscii(g_save_target) &&
+            std::find(g_save_prefixes.begin(), g_save_prefixes.end(), pre) == g_save_prefixes.end())
+            g_save_prefixes.push_back(pre);
+    }
     return target;
 }
 
@@ -330,6 +367,15 @@ void AfterExecuteStorage(const ttstr& shortname) {
 
 void AfterStartup() {
     RunAfterInit2();
+    // game volume from the in-game menu (kk4s settings)
+    int volume = LiveSettings().volume;
+    if (volume < 100) {
+        try {
+            TVPExecuteExpression(TJS_W("WaveSoundBuffer.globalVolume = ") + ttstr((tjs_int)(volume * 1000)));
+            kk4s::Log("compat: volume %d%%", volume);
+        } catch (...) {
+        }
+    }
     if (g_filter_calls)
         kk4s::Log("compat: xp3 filter called %u times so far", g_filter_calls.load());
 }
