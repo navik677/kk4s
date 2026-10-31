@@ -2,6 +2,9 @@
 
 Synthetic scripts only — no game content.
 
-- `tjs/hello/` — smallest possible "game": copy the folder to `sdmc:/switch/kk4s/games/hello/` to check that the engine boots, opens a window and logs.
+- `tjs/hello/` — smallest possible "game": checks that the engine boots, opens a window and logs.
+  CI runs it for 15 s under xvfb (Linux, ASan + UBSan) as a smoke test.
+- `tjs/input/` — shows every key / mouse event the game receives, plus `System.getKeyState(VK_CONTROL)`.
+  Copy to `games/kk4s-input-test/` to check the gamepad / touch mapping on a device.
 
-Later (M1/M6): run these on the `linux-sdl2` target under ASan/UBSan in CI, plus a TJS2/KAG conformance suite.
+Later: a TJS2/KAG conformance suite and synthetic xp3 archives for the compat layer.

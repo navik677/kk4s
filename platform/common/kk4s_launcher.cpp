@@ -6,7 +6,7 @@
 // Works with gamepad (libnx on Switch, SDL game controllers on PC), touch,
 // keyboard and mouse. Text is translated (kk4s_i18n).
 //
-// Covers, first found wins (see docs/sd-layout.md):
+// Covers, first found wins (see docs/launcher.md):
 //   <data>/covers/<game folder name>.*            (the cover search saves here)
 //   <game>/cover.* | folder.* | poster.*         (png, jpg, jpeg, webp)
 //   otherwise a generated card with the game's icon (*.ico or the .exe icon).

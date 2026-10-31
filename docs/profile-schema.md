@@ -1,4 +1,7 @@
-# Game profile schema (draft, implemented in M3)
+# Game profile schema (draft, not implemented yet — M3)
+
+Gamepad mapping and save location already exist as global settings (`settings.ini`, see
+[launcher.md](launcher.md)); profiles would make them per game.
 
 Profiles live in `sdmc:/switch/kk4s/profiles/<game_id>.json` (user) or the app romfs (shipped, no keys). `game_id` = hash of key files (xp3 headers, startup.tjs), computed by kk4s and printed in the log.
 

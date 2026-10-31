@@ -1,77 +1,109 @@
 # Handoff — read this first in a new session
 
-Last update: 2026-10-30 (second session, Fedora Linux). Goal of the project: **any Kirikiri (KAG/TJS2) game folder runs unmodified** on Switch (and on PC via the viewer). No patching of game files; fixes live in the engine, `compat/`, profiles or the overlay folder. See `docs/original-prompt.md` for the full requirements and `docs/roadmap.md` for milestones.
+Last update: 2026-10-31. Goal: **any Kirikiri (KAG/TJS2) game folder runs unmodified** on the
+Switch (and on PC via the viewer). Game files are never changed; fixes live in the engine,
+`compat/` or kk4s' own files. Full requirements: `docs/original-prompt.md`; milestones: `docs/roadmap.md`.
 
 ## Where we are
 
-- **Switch**: `kk4s.nro` builds in CI (GitHub Actions, `devkitpro/devkita64`), published to the `nightly` release. **Never run on real hardware yet.**
-- **PC viewer** (same engine, `platform/desktop/`): builds on Linux (CI, ASan+UBSan, smoke test) and Windows (CI + locally with MSYS2).
-- **Real game test: Fate/stay night** (Realta Nua + Russian fan patch, a folder prepared for Kirikiroid2, encrypted xp3) **plays on the Windows PC viewer**: intro, prologue, Russian text, dialogs, no script errors in the log. The game is NOT in the repo (`game/` is git-ignored) — copy your own game folder to `game/<name>/` on the new PC.
-
-Details: `docs/status.md`, `docs/kirikiroid-compat.md`, `docs/plugins.md`, `docs/pc-viewer.md`.
+- kk4s runs on a real Switch (title takeover): launcher with covers, four tested games (see
+  `docs/status.md`), in-game menu, saves outside the game folder, gamepad + touch.
+- The PC viewer (same engine, `platform/desktop/`) is the main test loop: Linux (Fedora) locally,
+  Linux + Windows in CI.
+- Test games are not in the repo (`game/` is git-ignored); the user keeps copies under `game/` and
+  `~/Documents/` on the dev PC and on the Switch SD card.
 
 ## Repo map
 
 | Path | What |
 |---|---|
-| `engine/` | krkrs (uyjulian) sources. Our edits are marked with `kk4s:` comments (`git grep kk4s: engine/`). Commit `98ac529` is the pristine upstream import. |
-| `platform/common/` | logger, game scan, project dir, font file scan, small POSIX shims (`kk4s_fs.h`), graphical launcher (`kk4s_launcher.cpp`; drawing `kk4s_ui`, images `kk4s_image`, texts `kk4s_i18n`, `settings.ini` `kk4s_settings`, VNDB/curl `kk4s_net`) |
-| `platform/switch/`, `platform/desktop/` | launcher, paths, memory, window config, system fonts per platform |
-| `compat/kk4s_compat.cpp` | Kirikiroid2 conventions (`xp3filter.tjs`, `Storages.setXP3ArchiveExtractionFilter`, `Override2.tjs`, `AfterInit2.tjs`), engine log → kk4s log, font registration, missing-plugin log |
-| `compat/kk4s_plugins.cpp` | table `dll name → native replacement` (util.dll, p.dll, …) |
-| `compat/kk4s_layerfx.cpp` | filter.dll / drawer.dll / slideopen.dll / firespark.dll replacements (TJS shims + native pixel helpers) |
+| `engine/` | krkrs (uyjulian). Our edits are marked `kk4s:` (`git grep kk4s: engine/`). Commit `98ac529` is the pristine import. |
+| `compat/kk4s_compat.cpp` | Kirikiroid2 conventions (`xp3filter.tjs`, filter API, `Override2.tjs`, `AfterInit2.tjs`), font registration, engine log, save path redirect, volume at start |
+| `compat/kk4s_plugins.cpp`, `compat/kk4s_layerfx.cpp` | native replacements for Windows plugin DLLs |
+| `platform/common/kk4s_launcher.cpp` | launcher screens; helpers: `kk4s_ui` (drawing, fonts), `kk4s_image` (PNG/JPEG/WebP/ICO/exe icon), `kk4s_i18n` (uk/en/ru/ja), `kk4s_settings` (`settings.ini`), `kk4s_net` (curl + VNDB + JSON), `kk4s_files` (backups) |
+| `platform/common/kk4s_overlay.cpp` | in-game menu |
+| `platform/common/kk4s_common.cpp` | logger (background writer), game scan, project dir, pad mapping |
+| `platform/switch/`, `platform/desktop/` | platform layer: paths, fonts, pad (libnx on Switch), battery, keyboard, exit to launcher |
+| `tests/tjs/` | `hello` (smoke test), `input` (shows key/mouse events) |
 | `tools/` | `build-switch.sh`, `build-desktop.sh`, `run-linux.sh`, `ci-report.sh`, `resolve-crash.py`, `xp3ls.cpp` |
 
-Engine hook points (all marked `kk4s:`): `sdl2/stubs.cpp` (main, window, logs, default font), `base/win32/SysInitImpl.cpp` (project dir from the launcher), `base/ScriptMgnIntf.cpp` (before/after startup.tjs, after every executed script), `base/win32/PluginImpl.cpp` (Plugins.link), `utils/DebugIntf.cpp` (TVPAddLog), `visual/FreeType.cpp` (font lookup + fallback), `tjs2/tjsInterCodeExec.cpp` (per-thread register stack), `base/android/StorageImpl.cpp` (relative storage names).
+Engine hook points (all `kk4s:`): `sdl2/stubs.cpp` (main, window, launcher call, input, in-game
+menu, exit), `base/win32/SysInitImpl.cpp` (project dir, data path redirect),
+`base/android/StorageImpl.cpp` (storage names, case, save redirect), `base/XP3Archive.cpp` (eager
+decryption with script filters), `base/ScriptMgnIntf.cpp` (before/after startup scripts),
+`base/win32/PluginImpl.cpp` (Plugins.link), `utils/DebugIntf.cpp` (TVPAddLog), `visual/FreeType.cpp`
+(font fallback, Cyrillic substitute), `visual/FreeTypeFontRasterizer.cpp` (face cache),
+`tjs2/tjsInterCodeExec.cpp` (per-thread register stack).
 
-## Set up on a new PC (Windows, no admin needed)
+## Dev setup (Linux, Fedora)
 
-1. `git clone https://github.com/navik677/kk4s` (push needs the navik677 account; if Git Credential Manager has another account cached, use the remote URL `https://navik677@github.com/navik677/kk4s.git`).
-2. Portable MSYS2: download `msys2-base-x86_64-latest.sfx.exe` from github.com/msys2/msys2-installer (release `nightly-x86_64`), run it with `-y -o"C:\Users\<you>\"`.
-3. In a shell with `MSYSTEM=UCRT64`: `C:\Users\<you>\msys64\usr\bin\bash.exe -lc "pacman -Syu --noconfirm"` (twice), then from the repo: `DEPS=1 bash tools/build-desktop.sh` (installs gcc, cmake, ninja, SDL2, FFmpeg, … and builds).
-4. Incremental rebuild (~10–30 s): `cmake --build build-desktop -j8 && cp build-desktop/kk4s.exe out-desktop/`
-5. Run (DLLs come from MSYS2):
-   ```bash
-   PATH=/c/Users/<you>/msys64/ucrt64/bin:$PATH KK4S_ROOT=C:/tmp/kk4s-run ./out-desktop/kk4s.exe "C:/path/to/game/fsn"
-   ```
-   Log: `$KK4S_ROOT/logs/kk4s-*.log` (engine log, script errors, compat decisions, fonts). Without `KK4S_ROOT` the data folder is next to the exe.
+```bash
+sudo dnf install SDL2-devel freetype-devel ffmpeg-free-devel libpng-devel libjpeg-turbo-devel \
+  turbojpeg-devel libwebp-devel libogg-devel libvorbis-devel opus-devel opusfile-devel zlib-devel \
+  oniguruma-devel libcurl-devel
+bash tools/build-desktop.sh            # or ASAN=1; DEPS=1 installs deps with apt / pacman only
+cmake --build build-desktop -j$(nproc) && cp build-desktop/kk4s out-desktop/   # incremental
+KK4S_ROOT=/tmp/kk4s-run ./out-desktop/kk4s game/fsn    # one game; without an argument: launcher
+```
 
-Linux: `DEPS=1 ASAN=1 bash tools/build-desktop.sh`, then `tools/run-linux.sh <game_dir>`. Fedora packages (DEPS only knows apt/pacman): `sudo dnf install SDL2-devel freetype-devel ffmpeg-free-devel libpng-devel libjpeg-turbo-devel turbojpeg-devel libwebp-devel libogg-devel libvorbis-devel opus-devel opusfile-devel zlib-devel oniguruma-devel`.
+Windows (no admin): portable MSYS2 (`msys2-base-x86_64-latest.sfx.exe`), `pacman -Syu` twice, then
+`DEPS=1 bash tools/build-desktop.sh` in a UCRT64 shell. Details: `docs/pc-viewer.md`.
+
+Switch builds come from CI (`gh run download <id>`); locally via Docker (`README.md`).
+
+## Working with the user's Switch
+
+The user runs an FTP server on the Switch (ftpd, port 5000, anonymous; ask for the IP):
+
+```bash
+curl -T out/kk4s.nro ftp://<switch-ip>:5000/switch/kk4s/kk4s.nro        # deploy
+curl -s ftp://<switch-ip>:5000/switch/kk4s/logs/                         # list logs
+curl -s ftp://<switch-ip>:5000/atmosphere/crash_reports/                 # crash reports
+```
+
+A log of a running game cannot be downloaded (the file is open) — ask the user to quit first. FTP
+stops when the console sleeps. Big uploads: one file per `curl`, check sizes afterwards.
 
 ## Debugging toolbox
 
-- **Log first.** Every script exception is in the log with a VM dump and a TJS stack trace. `compat:` lines show what kk4s did (filters, helper scripts, plugins), `fonts:` lines show fonts and fallbacks.
-- **`KK4S_SKIP=AfterInit2.tjs,Override2.tjs`** disables Kirikiroid helper scripts (A/B test).
-- **`tools/xp3ls`**: `g++ -O2 -o xp3ls tools/xp3ls.cpp -lz`, then `xp3ls archive.xp3 [filter]` lists files (works on encrypted archives, the index is plain).
-- **Probe technique** (read decrypted game scripts without touching the game): make a scratch folder with only a `startup.tjs` (save it as **UTF-16LE with BOM**, otherwise it is read as Shift_JIS) that does
-  `Scripts.execStorage("file://./c:/.../fsn/xp3filter.tjs"); var a = [].load("file://./c:/.../fsn/rupatch.xp3>Scripts/Override.tjs"); a.save("file://./c:/tmp/out.tjs"); System.exit();`
-  and run kk4s on that folder. Never commit dumped game files.
-- **Render probe** (Linux, no screen capture needed): a scratch `startup.tjs` that makes `new Window()`, a `new Layer(w, null)`, sets `font.face`, `drawText(...)`, then `saveLayerImage("/abs/path/out.bmp", "bmp")` and `System.exit()`. Used to check the Cyrillic font fix. Screen capture of the OpenGL window does not work on KDE Wayland (`import` gives black, `spectacle -b` saves nothing).
-- **Screenshots for checking a run**: PowerShell `System.Drawing` `CopyFromScreen` on the game window, `SendKeys "{ENTER}"` to advance text (used in this session).
-- **CI results without the `gh` CLI**: the public run page `https://github.com/navik677/kk4s/actions/runs/<id>` shows the annotations; `tools/ci-report.sh` puts the first compiler error context there. The REST API has a 60 req/h limit without login.
-- Switch crashes: `docs/debugging.md` (`tools/resolve-crash.py` + the `.elf` from the same build).
+- **Log first** (`logs/kk4s-*.log`): script exceptions with TJS stack traces, `compat:` decisions,
+  `fonts:`, `input:`, `launcher:`, `overlay:` lines, `slow frame: N ms` for frames over 200 ms.
+- **Crash reports**: Atmosphere report + `kk4s.elf` of the same build (git hash in the log). Without
+  devkitPro, `eu-addr2line -f -C -i -e kk4s.elf 0x<offset>` works on the aarch64 ELF; the report
+  prints offsets as `kk4s + 0x...`. See `docs/debugging.md`.
+- **Screenshots without screen capture** (KDE Wayland): `KK4S_LAUNCHER_SHOT`, `KK4S_OVERLAY_SHOT`,
+  render probes with `Layer.saveLayerImage` — see `docs/launcher.md`. Keys can be sent with
+  python-xlib to the XWayland window (`SDL_VIDEODRIVER=x11`; find the window by WM_CLASS `kk4s`).
+- **`SDL_RENDER_DRIVER=opengles2`** = the Switch's renderer.
+- **`KK4S_SKIP=AfterInit2.tjs,Override2.tjs`** disables Kirikiroid helper scripts.
+- **`tools/xp3ls`** lists XP3 contents (works on encrypted archives).
+- **Probe technique** for reading decrypted game scripts: a scratch `startup.tjs` (UTF-16LE with BOM)
+  that runs the game's `xp3filter.tjs`, loads a file from an archive and saves it elsewhere. Never
+  commit game files.
+- Profiling on PC: `eu-stack -p <pid>` in a loop (no perf on the dev box). The PC is much faster than
+  the Switch; count expensive operations (file opens, texture creation) instead of timing them.
 
 ## Gotchas learned the hard way
 
-- Many engine files use **CRLF**. `sed -i` on them can silently convert the whole file to LF (huge diff). Use Edit, or perl that converts to LF, edits, and converts back. Check with `file <path>` and `git diff --stat`.
-- Perl replacement strings eat backslashes (`'\\'` → `'\'`) and `\x..` escapes — re-check literals after a perl edit.
-- TJS runs on non-main threads only through the xp3 filter; keep native code that calls TJS on the main thread whenever possible.
-- `rm -rf $VAR/...` is blocked by a safety check; use literal paths or `"${VAR:?}"/...`.
-- The user wants **code reviewed before running CI checks**, not trial-and-error pushes.
+- Many engine files use **CRLF**; edit them with Python preserving `\r\n` (or Edit), check with
+  `file` and `git diff --stat`.
+- TJS is not thread-safe: never run TJS off the main thread.
+- KAG builds `<exe>/savedata/...` itself — engine-level path settings alone do not move saves.
+- Test runs through symlinks still write into the real game folder (saves, `title.txt`): use copies
+  or `KK4S_ROOT` + separate saves, and never write into the user's game folders.
+- The Switch SD card is slow for many small writes / opens: log in batches, cache font faces.
+- SDL's Switch controller mapping is positional (A/B swapped) — read libnx instead.
+- `rm -rf` on variables is blocked by a safety check; use `"${VAR:?}"/...`.
+- The user wants code reviewed before CI, not trial-and-error pushes.
 
-## Next steps (in priority order)
+## Next steps
 
-1. **Check sound** by ear (BGM/SE/voice from encrypted xp3) and **video** (`video.xp3`, krmovie path).
-2. **Commit the CI state**: check that the last pushes are green for switch + desktop (Linux ASan may find real bugs — fix them).
-3. **Real extrans transitions** (wave, ripple, mosaic, turn, rotatezoom/vanish/swap) instead of crossfade.
-4. **Native decryptor support**: built-in x86-32 interpreter + minimal PE loader to run a game's own `.tpm`/DLL decrypt routine (decided with the user: own interpreter, not Unicorn — Switch has no JIT for homebrew). This makes encrypted games work without `xp3filter.tjs`.
-5. **Saves**: redirect `savedata/` to `<data>/saves/<game_id>/` (M2), overlay folder, game id + profiles (M3).
-6. **Switch hardware**: games run on a real Switch (Sharin no Kuni, title takeover). Touch works. Gamepad: SDL's Switch controller mapping is positional (Nintendo A arrived as SDL B), so the Switch now reads buttons straight from libnx (`kk4s::ReadPad`, engine `kk4sPadFrame`, launcher). Not yet confirmed on hardware: check `input: pad 0x...` / `launcher: pad 0x...` log lines and `tests/tjs/input`. Cover search works on hardware. Fixed on hardware reports: TJS xp3 filters ran on the audio thread (TJS is not thread-safe: random crashes) — archive files are now decrypted completely on the main thread when a script filter is set (XP3Archive.cpp); font faces were recreated on every font switch (slow on SD) — cached in FreeTypeFontRasterizer; the log is written by a background thread. Game quit returns to the launcher (envSetNextLoad / re-exec, `ExitAfterGame`).
-7. More plugins (layerExDraw, layerExImage, kagexopt, …) as other games need them — test more games, the log lists missing plugins/transitions/fonts.
-8. Synthetic tests for the compat layer (needs an xp3 packer tool for tests).
-
-## Local-only things on the old PC (not in git)
-
-- `game/fsn/` — the test game (copy your own).
-- `krkrs-master/`, `kirikiri-switch-prompt.md` — originals, already in the repo as `engine/` and `docs/original-prompt.md`.
-- MSYS2 in `C:\Users\asir214\msys64`.
+1. Aspect-correct scaling of the game picture (letterbox / pillarbox; currently stretched).
+2. Video playback check (`krmovie.dll` → FFmpeg), e.g. the openings in the test games.
+3. Real extrans transitions (wave, ripple, mosaic, turn, rotate*) instead of crossfade.
+4. Built-in x86-32 interpreter + minimal PE loader for `.tpm` decryptors (decided: own
+   interpreter, not Unicorn — no JIT for homebrew), so games without `xp3filter.tjs` work.
+5. More plugins as games need them (layerExDraw, layerExImage, kagexopt, …).
+6. Overlay folder (replacement files over xp3 contents) and per-game profiles.
+7. Hardware checks: album mode memory, docked ↔ handheld, sleep / resume.
+8. Synthetic compat tests (needs an xp3 packer for tests).
