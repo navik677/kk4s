@@ -12,6 +12,10 @@
 #include "tjsCommHead.h"
 
 #include "ThreadIntf.h"
+#include "kk4s_platform.h" // kk4s
+#include <algorithm> // kk4s
+#include <mutex> // kk4s
+#include <vector> // kk4s
 #include "MsgIntf.h"
 
 #include <SDL.h>
@@ -21,14 +25,22 @@
 // tTVPThread : a wrapper class for thread
 //---------------------------------------------------------------------------
 tTVPThread::tTVPThread()
- : Thread(nullptr), Terminated(false), ThreadStarting(false)
+ : Thread(nullptr), Terminated(false), ThreadStarting(false), kk4sFinished(false)
 {
 	Mtx = SDL_CreateMutex();
 	Cond = SDL_CreateCond();
 }
 //---------------------------------------------------------------------------
+// kk4s: live threads, for TVPStopAllThreads
+static std::mutex kk4sThreadsMutex;
+static std::vector<tTVPThread*> kk4sThreads;
+//---------------------------------------------------------------------------
 tTVPThread::~tTVPThread()
 {
+	{
+		std::lock_guard<std::mutex> lock(kk4sThreadsMutex);
+		kk4sThreads.erase(std::remove(kk4sThreads.begin(), kk4sThreads.end(), this), kk4sThreads.end());
+	}
 	if( Thread != nullptr ) {
 		SDL_DetachThread(Thread);
 		Thread = nullptr;
@@ -41,12 +53,16 @@ int tTVPThread::StartProc(void * arg)
 {
 	// スレッドが開始されたのでフラグON
 	tTVPThread* _this = (tTVPThread*)arg;
+	kk4s::PlaceWorkerThread("engine"); // kk4s: off the main thread's core (Switch)
+	kk4s::TrackThread(); // kk4s: stopped at exit if still running (Switch)
 	_this->ThreadId = SDL_ThreadID();
 	SDL_LockMutex(_this->Mtx);
 	_this->ThreadStarting = true;
 	SDL_CondBroadcast(_this->Cond);
 	SDL_UnlockMutex(_this->Mtx);
 	(_this)->Execute();
+	kk4s::UntrackThread(); // kk4s
+	_this->kk4sFinished = true; // kk4s: last access to _this, it may be deleted right after
 
 	// Execute();
 	return 0;
@@ -59,12 +75,36 @@ void tTVPThread::StartTread()
 		if (Thread == nullptr) {
 			TVPThrowInternalError;
 		}
+		{ // kk4s
+			std::lock_guard<std::mutex> lock(kk4sThreadsMutex);
+			kk4sThreads.push_back(this);
+		}
 		SDL_LockMutex(Mtx);
 		while (!ThreadStarting) {
         	SDL_CondWait(Cond, Mtx);
     	}
     	SDL_UnlockMutex(Mtx);
 	}
+}
+//---------------------------------------------------------------------------
+// kk4s
+int TVPStopAllThreads(tjs_uint timeout_ms)
+{
+	std::vector<tTVPThread*> threads;
+	{
+		std::lock_guard<std::mutex> lock(kk4sThreadsMutex);
+		threads = kk4sThreads;
+	}
+	for (tTVPThread* t : threads) t->RequestStop();
+	Uint32 deadline = SDL_GetTicks() + timeout_ms;
+	int left = 0;
+	for (tTVPThread* t : threads) {
+		while (!t->HasFinished() && SDL_GetTicks() < deadline) SDL_Delay(1);
+		if (t->HasFinished()) t->WaitFor(); // joins: the thread has ended
+		else ++left;
+	}
+	kk4s::Log("threads: %d engine thread(s) stopped at exit, %d did not stop", (int)threads.size() - left, left);
+	return left;
 }
 //---------------------------------------------------------------------------
 tTVPThreadPriority tTVPThread::GetPriority()

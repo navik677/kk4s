@@ -89,6 +89,7 @@ public:
 	 読込みスレッドの終了を要求する(終了は待たない)
 	 */
 	void ExitRequest();
+	void RequestStop() override { ExitRequest(); } // kk4s
 	
 	/**
 	 * 読込み要求

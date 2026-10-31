@@ -15,7 +15,9 @@ sdmc:/switch/kk4s/
 ├── last.txt                       last played game
 ├── .from_game                     marker: started again after a game (skip autostart)
 ├── overlay/                       reserved (M2: replacement files over xp3 contents)
-└── profiles/                      reserved (M3: per-game profiles)
+└── profiles/<GameName>/            Kirikiroid2 helper files for a game (xp3filter.tjs, Override2.tjs,
+                                   AfterInit2.tjs) kept outside the game folder; more per-game
+                                   settings later (M3)
 ```
 
 Folders are created on the first start (`covers/` when the first cover is saved).

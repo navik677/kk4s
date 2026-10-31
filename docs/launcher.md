@@ -66,7 +66,8 @@ Network work runs on detached SDL threads with a 1 MiB stack; the UI polls the j
 | Separate saves | on (default) / off — see below |
 | Return to the launcher after a game | on (default) / off |
 | Autostart the last game | 3 s countdown, any input cancels; not after coming back from a game |
-| Controls | action per pad button (A, B, X, Y, L, R, ZL, ZR, +, −) in games |
+| Controls | action per pad button (A, B, X, Y, L, R, ZL, ZR, +, −) in games; defaults + = Esc, − = Tab. L3 + R3 (menu) is fixed |
+| CPU boost (Switch) | on (default): 1785 MHz instead of 1020 MHz while a game runs (`appletSetCpuBoostMode(FastLoad)`, the GPU drops to its minimum, which is plenty for one textured quad) |
 | Download all covers | see above |
 
 Stored in `<data>/settings.ini` with the play history (`played.<folder>=<time> <count>`) and the
@@ -89,12 +90,16 @@ existing save files are copied over; the originals stay where they are.
 
 ## In-game menu
 
-+ or − (any button set to "kk4s menu" in Controls; F1 on PC) opens a menu over the game. The game
-gets no input while it is open (held keys are released first).
+Both sticks pressed together (L3 + R3; F1 on PC) open and close a menu over the game. + and − are
+left to the game (Esc / Tab by default); any button can still be set to "kk4s menu" in Controls. The
+game gets no input while the menu is open (held keys are released first).
 
 - Resume
 - Quick save / quick load: KAG bookmark 900 (`kag.saveBookMark(900)` / `loadBookMark`), a slot the
   game's own save screens do not show. Games without the standard KAG functions show "not supported".
+  A bookmark does not contain KAG's click / key hooks, so quick save also writes the hook counts
+  (`data900.kdt.kk4s`) and quick load drops hooks added after that (e.g. "click skips the logo"
+  from The Makings of a Lady, which broke the first click after loading during the logo).
 - Volume: 0–100 % in steps of 10 (`WaveSoundBuffer.globalVolume`), saved and applied at the next start.
 - Controls: same list as in the launcher.
 - Exit to the launcher / quit kk4s (second press): `kag.saveSystemVariables()` first, then exit.
@@ -105,7 +110,9 @@ while it is visible the engine's own present is skipped.
 ## Returning to the launcher
 
 `kk4s::ExitAfterGame`: on Switch it asks hbloader to start `kk4s.nro` again (`envSetNextLoad`),
-except when the system is closing the app (HOME → close); on PC it re-executes itself when the game
+except when the system is closing the app (HOME → close). This needs libnx' default
+`__nx_applet_exit_mode` (0): with 1 (inherited from krkrs) an application in title takeover closed
+itself on exit and hbloader never got control back, so "exit to the launcher" quit kk4s; on PC it re-executes itself when the game
 was picked in the launcher. `<data>/.from_game` tells the next start to skip autostart.
 
 ## Debugging aids (PC)

@@ -8,7 +8,7 @@ Status: **full** = same behaviour, **approx** = similar result, **stub** = does 
 | DLL | Provides | Status |
 |---|---|---|
 | wuvorbis.dll | Ogg Vorbis decoding | full (engine decoder) |
-| krmovie.dll | video playback | engine (FFmpeg), not tested yet |
+| krmovie.dll | video playback (`VideoOverlay`) | kk4s FFmpeg player (`movie/kk4s_videoplayer.cpp`): overlay and layer modes, sound through the mixer, wall clock; mixer mode is drawn like overlay; contrast / hue controls are no-ops. Files that cannot be opened end at once instead of hanging |
 | dirlist.dll | `getDirList()` | full (engine internal plugin) |
 | csvParser, fftgraph, getSample, perspective, saveStruct, varfile, win32dialog, wutcwf | see `engine/README.upstream.md` | engine internal (krkrs) |
 | util.dll | `GetFileSize`, `DeleteFile`, `MoveFile` | full |

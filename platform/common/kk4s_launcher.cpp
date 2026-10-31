@@ -194,9 +194,12 @@ void RunDetached(const char* name, F fn) {
     auto* heap = new F(std::move(fn));
     SDL_Thread* t = SDL_CreateThreadWithStackSize(
         [](void* p) -> int {
+            PlaceWorkerThread("launcher job");
+            TrackThread();
             F* f = static_cast<F*>(p);
             (*f)();
             delete f;
+            UntrackThread();
             return 0;
         },
         name, 1u << 20, heap);
@@ -494,8 +497,9 @@ enum class Sheet { None, Settings, Controls, Game };
 
 enum RowId {
     kRowLanguage, kRowLayout, kRowSort, kRowBackground, kRowExplicit, kRowSeparateSaves, kRowReturn,
-    kRowAutostart, kRowControls, kRowCovers,
+    kRowAutostart, kRowControls, kRowCovers, kRowCpuBoost,
     kRowResetControls = 50,
+    kRowMenuCombo,
     kRowPadFirst = 100, // + index into kPadRows
     kRowGameCover = 200, kRowGameCoverDelete, kRowGameBackup, kRowGameRestore, kRowGameDelete,
 };
@@ -710,6 +714,9 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             SheetRow covers{kRowCovers, T(i18n::kDownloadAllCovers), T(i18n::kDownloadAllHint)};
             covers.disabled = (bool)batch;
             rows.push_back(covers);
+#ifdef __SWITCH__ // last: rows before it are addressed by index (kRowControls)
+            toggle(kRowCpuBoost, i18n::kCpuBoost, settings.cpu_boost, i18n::kCpuBoostHint);
+#endif
         } else if (which == Sheet::Controls) {
             for (size_t i = 0; i < sizeof(kPadRows) / sizeof(kPadRows[0]); ++i) {
                 SheetRow r{kRowPadFirst + (int)i, kPadRows[i].name};
@@ -717,6 +724,9 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
                 r.choice = true;
                 rows.push_back(r);
             }
+            SheetRow combo{kRowMenuCombo, T(i18n::kOpenMenuHint)}; // not configurable, shown for reference
+            combo.disabled = true;
+            rows.push_back(combo);
             rows.push_back(SheetRow{kRowResetControls, T(i18n::kResetControls)});
         } else if (which == Sheet::Game && !games.empty()) {
             rows.push_back(SheetRow{kRowGameCover, T(i18n::kCoverFromInternet)});
@@ -781,6 +791,7 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             case kRowSeparateSaves: settings.separate_saves = !settings.separate_saves; break;
             case kRowReturn: settings.return_to_launcher = !settings.return_to_launcher; break;
             case kRowAutostart: settings.autostart = !settings.autostart; break;
+            case kRowCpuBoost: settings.cpu_boost = !settings.cpu_boost; break;
             case kRowControls: open_sheet(Sheet::Controls); save = false; break;
             case kRowCovers: {
                 save = false;

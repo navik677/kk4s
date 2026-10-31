@@ -25,9 +25,13 @@
 #include "kk4s_settings.h"
 
 #include <algorithm>
+#include <sys/stat.h>
+#include <cstring>
+#include <dirent.h>
 #include <atomic>
 #include <cctype>
 #include <cstdlib>
+#include <map>
 #include <mutex>
 #include <set>
 #include <string>
@@ -62,10 +66,10 @@ static std::string Lower(std::string s) {
     return s;
 }
 
-// Run a .tjs file that sits directly in the game folder. Errors are logged,
-// never fatal: a broken helper script must not stop the game.
+// Run a helper .tjs from the game folder or <data>/profiles/<game>/. Errors
+// are logged, never fatal: a broken helper script must not stop the game.
 static bool RunGameScript(const char* name) {
-    std::string path = kk4s::FindGameFile(name);
+    std::string path = kk4s::FindCompatFile(name);
     if (path.empty()) return false;
     // Debugging aid: KK4S_SKIP=AfterInit2.tjs,Override2.tjs disables helpers.
     if (const char* skip = getenv("KK4S_SKIP")) {
@@ -345,11 +349,150 @@ bool ScriptFilterActive() {
     return g_filter_func != nullptr;
 }
 
+// Engine options the Windows exe carries. krkrconf stores them inside the exe
+// after the marker "XOPT_EMBED_AREA_" + 4 bytes, as key:"value" pairs with
+// \xNN escapes ("dbstyle:\"\x61\x75\x74\x6F\",waitvsync:..."), then a NUL and
+// the list of option names that exe knows. Only -evalcontext matters here:
+// Kirikiri 2 before -evalcontext existed (e.g. 2.19, Fate/stay night) ran the
+// "!" eval operator on the global object; later versions run it on "this"
+// unless the exe says -evalcontext=global. KAG's [eval] runs inside kag, so
+// [eval exp="var tx=..."] made kag.tx instead of a global and FSN stopped at
+// its title (Kirikiroid2 packs patch this in AfterInit2.tjs).
+// Scan one file for the option area and for the option name "evalcontext"
+// (ASCII or UTF-16), in chunks: exes can be large and the SD card is slow.
+struct ExeScan { bool has_area = false, knows_evalcontext = false; std::string area; };
+static ExeScan ScanExe(const std::string& path) {
+    ExeScan r;
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) return r;
+    static const std::string kMarker = "XOPT_EMBED_AREA_";
+    static const std::string kEval = "evalcontext";
+    static const std::string kEval16 = std::string("e\0v\0a\0l\0c\0o\0n\0t\0e\0x\0t\0", 22);
+    const size_t keep = 64; // overlap between chunks
+    std::string win;
+    long long base = 0; // file offset of win[0]
+    char buf[1 << 16];
+    size_t got;
+    long long area_at = -1;
+    while ((got = fread(buf, 1, sizeof(buf), f)) > 0) {
+        win.append(buf, got);
+        if (!r.knows_evalcontext && (win.find(kEval) != std::string::npos || win.find(kEval16) != std::string::npos))
+            r.knows_evalcontext = true;
+        if (area_at < 0) {
+            size_t m = win.find(kMarker);
+            if (m != std::string::npos) area_at = base + (long long)m + (long long)kMarker.size() + 4;
+        }
+        if (win.size() > keep) {
+            base += (long long)(win.size() - keep);
+            win.erase(0, win.size() - keep);
+        }
+    }
+    if (area_at >= 0 && fseek(f, (long)area_at, SEEK_SET) == 0) {
+        char area[8192];
+        size_t n = fread(area, 1, sizeof(area), f);
+        r.has_area = true;
+        r.area.assign(area, strnlen(area, n));
+    }
+    fclose(f);
+    return r;
+}
+
+// Engine options the Windows exe carries. krkrconf stores them inside the exe
+// after the marker "XOPT_EMBED_AREA_" + 4 bytes, as key:"value" pairs with
+// \xNN escapes ("dbstyle:\"\x61\x75\x74\x6F\",waitvsync:..."), then a NUL and
+// the list of option names that exe knows. Only -evalcontext matters here:
+// Kirikiri 2 before -evalcontext existed (e.g. 2.19, Fate/stay night) ran the
+// "!" eval operator on the global object; later versions run it on "this"
+// unless the exe says -evalcontext=global. KAG's [eval] runs inside kag, so
+// [eval exp="var tx=..."] made kag.tx instead of a global and FSN stopped at
+// its title (Kirikiroid2 packs patch this in AfterInit2.tjs).
+static void ApplyExeOptions() {
+    std::string dir = kk4s::GameDir();
+    DIR* d = opendir(dir.c_str());
+    if (!d) return;
+    std::string best_name;
+    ExeScan best;
+    long long best_size = -1;
+    while (struct dirent* e = readdir(d)) {
+        std::string n = Lower(e->d_name);
+        if (n.size() < 5 || n.compare(n.size() - 4, 4, ".exe") != 0) continue;
+        std::string path = dir + e->d_name;
+        struct stat st;
+        if (stat(path.c_str(), &st) != 0 || st.st_size > (64ll << 20)) continue;
+        // the engine exe: has the option area; the biggest one if there are several
+        if ((long long)st.st_size <= best_size) continue;
+        ExeScan scan = ScanExe(path);
+        if (!scan.has_area) continue;
+        best = scan;
+        best_name = e->d_name;
+        best_size = st.st_size;
+    }
+    closedir(d);
+    if (!best.has_area) return;
+
+    std::map<std::string, std::string> opts;
+    {
+        const std::string& area = best.area;
+        size_t i = 0;
+        while (i < area.size()) {
+            size_t colon = area.find(':', i);
+            if (colon == std::string::npos || colon + 1 >= area.size() || area[colon + 1] != '"') break;
+            std::string key = area.substr(i, colon - i), value;
+            size_t j = colon + 2;
+            for (; j < area.size() && area[j] != '"'; ++j) {
+                if (area[j] == '\\' && j + 3 < area.size() && area[j + 1] == 'x') {
+                    value += (char)strtol(area.substr(j + 2, 2).c_str(), nullptr, 16);
+                    j += 3;
+                } else if (area[j] == '\\' && j + 1 < area.size()) {
+                    value += area[++j]; // \" or \\ and the like
+                } else {
+                    value += area[j];
+                }
+            }
+            opts[key] = value;
+            i = j + 2; // past the closing quote and the comma
+        }
+    }
+    bool knows_evalcontext = best.knows_evalcontext;
+    auto it = opts.find("evalcontext");
+    bool global_eval = !knows_evalcontext || (it != opts.end() && it->second == "global");
+    std::string list;
+    for (const auto& kv : opts) list += " " + kv.first + "=" + kv.second;
+    kk4s::Log("compat: %s options:%s%s", best_name.c_str(), list.empty() ? " (none)" : list.c_str(),
+              knows_evalcontext ? "" : " (engine older than -evalcontext)");
+    if (global_eval) {
+        TJSEvalOperatorIsOnGlobal = true;
+        kk4s::Log("compat: \"!\" evaluates on the global object (-evalcontext=global)");
+    }
+    if (!knows_evalcontext) {
+        // same era: a class "var x;" did not hide a native property x (old KAG3
+        // MessageLayer: "var face; // font" + "face = dfProvince" for drawing)
+        TJSClassVarKeepsProperty = true;
+        kk4s::Log("compat: class variables keep native properties (old Kirikiri 2)");
+    }
+}
+
 void BeforeStartup() {
     g_main_thread = std::this_thread::get_id();
     RegisterFonts();
     RegisterStoragesExtensions();
-    RunGameScript("xp3filter.tjs");
+    ApplyExeOptions();
+    if (!RunGameScript("xp3filter.tjs")) {
+        // A .tpm plugin decrypts the archives on Windows; kk4s cannot run it yet.
+        std::string dir = kk4s::GameDir();
+        if (DIR* d = opendir(dir.c_str())) {
+            while (struct dirent* e = readdir(d)) {
+                std::string n = Lower(e->d_name);
+                if (n.size() > 4 && n.compare(n.size() - 4, 4, ".tpm") == 0) {
+                    kk4s::Log("compat: %s found but no xp3filter.tjs: encrypted archives will not open. Put the "
+                              "Kirikiroid2 xp3filter.tjs for this game into the game folder or into %s/<game folder>/",
+                              e->d_name, kk4s::ProfilesDir().c_str());
+                    break;
+                }
+            }
+            closedir(d);
+        }
+    }
 }
 
 void AfterExecuteStorage(const ttstr& shortname) {

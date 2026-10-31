@@ -1,17 +1,52 @@
 # Handoff — read this first in a new session
 
-Last update: 2026-10-31. Goal: **any Kirikiri (KAG/TJS2) game folder runs unmodified** on the
+Last update: 2026-10-31 (end of session). Goal: **any Kirikiri (KAG/TJS2) game folder runs unmodified** on the
 Switch (and on PC via the viewer). Game files are never changed; fixes live in the engine,
 `compat/` or kk4s' own files. Full requirements: `docs/original-prompt.md`; milestones: `docs/roadmap.md`.
 
-## Where we are
+## Where we are (2026-11-01)
 
-- kk4s runs on a real Switch (title takeover): launcher with covers, four tested games (see
-  `docs/status.md`), in-game menu, saves outside the game folder, gamepad + touch.
-- The PC viewer (same engine, `platform/desktop/`) is the main test loop: Linux (Fedora) locally,
-  Linux + Windows in CI.
-- Test games are not in the repo (`game/` is git-ignored); the user keeps copies under `game/` and
-  `~/Documents/` on the dev PC and on the Switch SD card.
+`main` has all work up to now (PR #1 "Switch fixes" merged). The SD card holds the latest build.
+
+Works on the Switch (user-tested): launcher, exit to the launcher (engine threads stopped,
+detached thread stacks closed), in-game menu on L3 + R3, saves outside the game folder, FSN PC
+version (only `profiles/FSN/xp3filter.tjs` needed), loading saves, choices after a loaded save,
+video playback (FFmpeg player). PC viewer is the test loop; `KK4S_INPUT_SCRIPT` drives games like
+a Switch user (pad, touch, screenshots, `eval`) - see `docs/debugging.md`.
+
+### Open problem the user is waiting on: audio clicks on the Switch
+Clicking A while a voice line plays (skipping it) gives an audible "tap" on the Switch only.
+- Fixed already (verified on PC with SDL's `disk` audio driver + sine analysis): per-chunk
+  `SDL_AudioCVT` resampling (now one `SDL_AudioStream` per buffer), hard stop of a playing sound
+  (now ~8 ms fade tail, also kept when the buffer is deleted: `AdoptTail`). The click remains.
+- PC mixer output for "stop voice -> open next -> play" is clean, so the cause is on the device
+  side: SDL's Switch driver (`SDL_switchaudio.c`) queues only ONE 4096-sample buffer (~85 ms)
+  ahead; any late callback or empty stream = gap.
+- The current build logs `audio: late callback ...` and `audio: stream ... ran dry ...`
+  (`WaveMixer.cpp`). NEXT STEP: get a Switch log with clicks (user skips voices, exits to the
+  launcher, fetch `logs/` over FTP) and fix what it shows. Ideas: if callbacks are late -> raise the
+  audio thread priority / use more device buffers (own audren path or SDL hint); if streams run dry
+  -> bigger L1 lead (`TVPAL_BUFFER_COUNT` 4 x 125 ms) or find the lock the feeder thread
+  (`tTVPWaveSoundBufferThread`) waits on during the slow frames (300-900 ms) that follow a click.
+
+### Other known issues
+- Slow frames on page changes (Switch): 300-900 ms, almost all "other" (game scripts / layer ops
+  in TJS). Not yet profiled further.
+- "Text appears at once" in FSN = the game's own setting (already-read text speed = instant);
+  unread text types normally. Not a bug.
+- `.tpm` decryption not implemented: encrypted games need a Kirikiroid2 `xp3filter.tjs`
+  (game folder or `<data>/profiles/<game>/`).
+- Video: wall-clock sync (not audio clock); mixer mode drawn like overlay; not speed-checked for
+  WMV/H.264 on the Switch.
+- Quick-load hook trimming (`data900.kdt.kk4s`) is count-based (approximate).
+
+### What was done in the 2026-10-31/11-01 sessions (details in `docs/status.md`)
+Exit to launcher (libnx exit mode, engine shutdown, `TVPStopAllThreads`, `__syscall_thread_detach`
+reaping, pausing leftovers), L3 + R3 menu, worker threads on cores 1-2, CPU boost setting, -O3
+pixel loops, fonts in memory, 64 KB write buffer, slow-frame breakdown, old Kirikiri 2 compat
+(exe options, `-evalcontext=global`, class vars keeping native properties), util.dll / fstat.dll,
+profiles folder for helper scripts, quick-load hook trimming, KAG call-stack restore fix (choices
+after loading), video player + anti-hang, audio resampling and fade-out, input scripts with `eval`.
 
 ## Repo map
 
@@ -49,7 +84,10 @@ KK4S_ROOT=/tmp/kk4s-run ./out-desktop/kk4s game/fsn    # one game; without an ar
 Windows (no admin): portable MSYS2 (`msys2-base-x86_64-latest.sfx.exe`), `pacman -Syu` twice, then
 `DEPS=1 bash tools/build-desktop.sh` in a UCRT64 shell. Details: `docs/pc-viewer.md`.
 
-Switch builds come from CI (`gh run download <id>`); locally via Docker (`README.md`).
+Switch builds come from CI (`gh run download <id>`); locally via Docker (`README.md`). On the
+Fedora dev box there is only podman, which needs the full image name:
+`sed 's#^FROM devkitpro/#FROM docker.io/devkitpro/#' Dockerfile > /tmp/Dockerfile && podman build -t kk4s-build -f /tmp/Dockerfile .`,
+then `podman run --rm -v "$PWD":/src:Z kk4s-build bash tools/build-switch.sh` → `out/kk4s.nro`.
 
 ## Working with the user's Switch
 
@@ -67,7 +105,7 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 ## Debugging toolbox
 
 - **Log first** (`logs/kk4s-*.log`): script exceptions with TJS stack traces, `compat:` decisions,
-  `fonts:`, `input:`, `launcher:`, `overlay:` lines, `slow frame: N ms` for frames over 200 ms.
+  `fonts:`, `input:`, `launcher:`, `overlay:` lines, `slow frame: N ms (compose …, other …)` for frames over 200 ms (fields: `docs/debugging.md`).
 - **Crash reports**: Atmosphere report + `kk4s.elf` of the same build (git hash in the log). Without
   devkitPro, `eu-addr2line -f -C -i -e kk4s.elf 0x<offset>` works on the aarch64 ELF; the report
   prints offsets as `kk4s + 0x...`. See `docs/debugging.md`.
@@ -98,12 +136,14 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 
 ## Next steps
 
-1. Aspect-correct scaling of the game picture (letterbox / pillarbox; currently stretched).
-2. Video playback check (`krmovie.dll` → FFmpeg), e.g. the openings in the test games.
-3. Real extrans transitions (wave, ripple, mosaic, turn, rotate*) instead of crossfade.
-4. Built-in x86-32 interpreter + minimal PE loader for `.tpm` decryptors (decided: own
-   interpreter, not Unicorn — no JIT for homebrew), so games without `xp3filter.tjs` work.
-5. More plugins as games need them (layerExDraw, layerExImage, kagexopt, …).
-6. Overlay folder (replacement files over xp3 contents) and per-game profiles.
-7. Hardware checks: album mode memory, docked ↔ handheld, sleep / resume.
-8. Synthetic compat tests (needs an xp3 packer for tests).
+1. Audio clicks on the Switch: read the diagnostics above from a fresh Switch log and fix.
+2. Profile the 300-900 ms slow frames on the Switch (which TJS / layer operations).
+3. Go through more games with input scripts on PC (any KAG game must work unmodified); fix
+   engine differences generically (like `TJSClassVarKeepsProperty`, KAG restore), never per game.
+4. `.tpm` decryptor support (own x86 interpreter + PE loader), so no `xp3filter.tjs` is needed.
+5. Real extrans transitions; more plugins as games need them (layerExDraw, layerExImage, ...).
+6. Video: sync to the audio clock; check decode speed on the Switch.
+7. Overlay folder and per-game profiles (M2/M3).
+
+Rules from the user: test on the Switch before merging; everything must work for any Kirikiri
+game, not just FSN; never commit game files or keys; game folders are never modified.

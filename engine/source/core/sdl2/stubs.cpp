@@ -43,6 +43,13 @@
 #include "kk4s_settings.h"
 #include "kk4s_overlay.h"
 #include "kk4s_i18n.h"
+#include "SysInitIntf.h" // kk4s: TVPSystemUninit
+#include "kk4s_internal.h" // kk4s: MakeDir
+#include "kk4s_video.h" // kk4s: video overlay
+#include <mutex> // kk4s
+#include <vector> // kk4s
+#include <unistd.h> // kk4s: _exit
+#include "ThreadIntf.h" // kk4s: TVPStopAllThreads
 
 
 class TVPWindowLayer;
@@ -68,6 +75,74 @@ bool sdlProcessEventsForFrames(int frames);
 // its own keycodes (they only match for Enter/Esc/Space). kk4sKeyState backs
 // System.getKeyState(), which KAG polls for "skip while Ctrl is held".
 static tjs_uint8 kk4sKeyState[256]; // bit 0: down now, bit 4: went down since last query
+
+// kk4s: video over the game picture (kk4s_video.h). The player thread fills
+// these; the main thread uploads and draws them.
+static std::mutex kk4sVideoMutex;
+static void* kk4sVideoOwner = nullptr;
+static std::vector<uint8_t> kk4sVideoPixels;
+static int kk4sVideoW = 0, kk4sVideoH = 0;
+static bool kk4sVideoNewFrame = false, kk4sVideoVisible = false, kk4sVideoChanged = false;
+static SDL_Rect kk4sVideoRect = {0, 0, 0, 0};
+static SDL_Texture* kk4sVideoTexture = nullptr;
+static int kk4sVideoTexW = 0, kk4sVideoTexH = 0;
+namespace kk4s {
+void VideoScreenFrame(void* who, const uint8_t* rgba, int w, int h) {
+	std::lock_guard<std::mutex> lock(kk4sVideoMutex);
+	if (kk4sVideoOwner && kk4sVideoOwner != who) return;
+	kk4sVideoOwner = who;
+	kk4sVideoPixels.assign(rgba, rgba + (size_t)w * h * 4);
+	kk4sVideoW = w;
+	kk4sVideoH = h;
+	kk4sVideoNewFrame = kk4sVideoChanged = true;
+}
+void VideoScreenRect(void* who, int l, int t, int r, int b, bool visible) {
+	std::lock_guard<std::mutex> lock(kk4sVideoMutex);
+	kk4sVideoOwner = who;
+	kk4sVideoRect = {l, t, r - l, b - t};
+	kk4sVideoVisible = visible;
+	kk4sVideoChanged = true;
+}
+void VideoScreenRemove(void* who) {
+	std::lock_guard<std::mutex> lock(kk4sVideoMutex);
+	if (kk4sVideoOwner != who) return;
+	kk4sVideoOwner = nullptr;
+	kk4sVideoVisible = false;
+	kk4sVideoPixels.clear();
+	kk4sVideoChanged = true;
+}
+} // namespace kk4s
+// Upload the newest video frame and draw it over the game picture, which is
+// stretched from game_w x game_h to the whole output.
+static void kk4sDrawVideo(SDL_Renderer* r, int game_w, int game_h) {
+	std::lock_guard<std::mutex> lock(kk4sVideoMutex);
+	kk4sVideoChanged = false;
+	if (!kk4sVideoOwner || !kk4sVideoVisible || kk4sVideoPixels.empty() || game_w <= 0 || game_h <= 0) return;
+	if (!kk4sVideoTexture || kk4sVideoTexW != kk4sVideoW || kk4sVideoTexH != kk4sVideoH) {
+		if (kk4sVideoTexture) SDL_DestroyTexture(kk4sVideoTexture);
+		kk4sVideoTexture = SDL_CreateTexture(r, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, kk4sVideoW, kk4sVideoH);
+		kk4sVideoTexW = kk4sVideoW;
+		kk4sVideoTexH = kk4sVideoH;
+		kk4sVideoNewFrame = true;
+	}
+	if (!kk4sVideoTexture) return;
+	if (kk4sVideoNewFrame) {
+		SDL_UpdateTexture(kk4sVideoTexture, nullptr, kk4sVideoPixels.data(), kk4sVideoW * 4);
+		kk4sVideoNewFrame = false;
+	}
+	int ow = 0, oh = 0;
+	SDL_GetRendererOutputSize(r, &ow, &oh);
+	SDL_Rect rc = kk4sVideoRect;
+	if (rc.w <= 0 || rc.h <= 0) rc = {0, 0, game_w, game_h};
+	SDL_Rect dst = {rc.x * ow / game_w, rc.y * oh / game_h, rc.w * ow / game_w, rc.h * oh / game_h};
+	SDL_RenderCopy(r, kk4sVideoTexture, nullptr, &dst);
+}
+static bool kk4sVideoNeedsPresent() {
+	std::lock_guard<std::mutex> lock(kk4sVideoMutex);
+	return kk4sVideoChanged && (kk4sVideoVisible || !kk4sVideoOwner);
+}
+static unsigned kk4sPadHeld = 0;     // kk4s::kPad* bits held right now
+static unsigned kk4sFramesShown = 0; // presents so far (main loop idles when nothing changed)
 static void kk4sSetKeyState(tjs_uint vk, bool down) {
 	if (vk >= 256) return;
 	if (down) kk4sKeyState[vk] |= 0x11;
@@ -379,7 +454,9 @@ public:
 		if (!tex) return;
 		//TODO: Update and swap SDL
 		// SDL_LockTexture(framebuffer, NULL, NULL, NULL);
+		Uint32 kk4sStart = SDL_GetTicks(); // kk4s: frame stats
 		SDL_UpdateTexture(framebuffer, NULL, tex->GetPixelData(), tex->GetPitch());
+		kk4s::CurrentFrameStats().upload += SDL_GetTicks() - kk4sStart;
 		// SDL_UnlockTexture(framebuffer);
 		if (kk4s::overlay::Visible()) { // kk4s: the menu loop presents this frame with the menu on top
 			hasDrawn = true;
@@ -387,7 +464,11 @@ public:
 		}
 		SDL_RenderClear(renderer);
 		SDL_RenderCopy(renderer, framebuffer, NULL, NULL);
+		kk4sDrawVideo(renderer, curWindowW, curWindowH); // kk4s: video overlay
+		kk4sStart = SDL_GetTicks();
 		SDL_RenderPresent(renderer);
+		kk4s::CurrentFrameStats().present += SDL_GetTicks() - kk4sStart;
+		++kk4sFramesShown;
 		hasDrawn = true;
 	}
 #if 0
@@ -632,6 +713,7 @@ public:
 	//   X, ZR = Ctrl held (skip)      Y = Space
 	//   L = Page Up (backlog)         R = Page Down
 	//   ZL = Shift                    + = Esc, - = Tab
+	// L3 + R3 together open the kk4s menu (kk4sPadChange).
 	void kk4sPadPress(unsigned button, bool down) {
 		static int logged = 0; // diagnostics for the first presses
 		if (down && logged < 40) { ++logged; kk4s::Log("input: pad 0x%x -> game", button); }
@@ -655,6 +737,23 @@ public:
 			default: break;
 		}
 	}
+	// One button changed (Switch: libnx, PC: SDL controller events).
+	void kk4sPadChange(unsigned bit, bool down) {
+		unsigned before = kk4sPadHeld;
+		kk4sPadHeld = down ? (kk4sPadHeld | bit) : (kk4sPadHeld & ~bit);
+		if (bit & kk4s::kPadMenuCombo) {
+			// both sticks pressed: open / close the menu; single stick clicks do nothing
+			bool now_both = (kk4sPadHeld & kk4s::kPadMenuCombo) == kk4s::kPadMenuCombo;
+			bool was_both = (before & kk4s::kPadMenuCombo) == kk4s::kPadMenuCombo;
+			if (now_both && !was_both) {
+				if (kk4s::overlay::IsOpen()) kk4s::overlay::Close();
+				else kk4sOpenOverlay();
+			}
+			return;
+		}
+		if (kk4s::overlay::IsOpen()) kk4s::overlay::Pad(bit, down); // kk4s: menu takes the pad
+		else kk4sPadPress(bit, down);
+	}
 	// kk4s in-game menu: let go of keys the game thinks are held, then open it.
 	void kk4sOpenOverlay() {
 		for (tjs_uint vk = 1; vk < 256; ++vk)
@@ -674,13 +773,23 @@ public:
 		}
 	}
 	// Draw the last game frame (and the menu) and present.
-	void kk4sPresent(bool with_overlay) {
+	void kk4sPresent(bool with_overlay, const char* shot_bmp = nullptr) {
 		if (!framebuffer) return;
 		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 		SDL_RenderClear(renderer);
 		SDL_RenderCopy(renderer, framebuffer, NULL, NULL);
+		kk4sDrawVideo(renderer, curWindowW, curWindowH); // kk4s: video overlay
 		if (with_overlay) kk4s::overlay::Draw(renderer);
+		if (shot_bmp) { // the back buffer holds the full frame now
+			int ow = 0, oh = 0;
+			SDL_GetRendererOutputSize(renderer, &ow, &oh);
+			SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(0, ow, oh, 32, SDL_PIXELFORMAT_ARGB8888);
+			if (surf && SDL_RenderReadPixels(renderer, nullptr, SDL_PIXELFORMAT_ARGB8888, surf->pixels, surf->pitch) == 0)
+				SDL_SaveBMP(surf, shot_bmp);
+			if (surf) SDL_FreeSurface(surf);
+		}
 		SDL_RenderPresent(renderer);
+		++kk4sFramesShown;
 	}
 
 	// Switch: poll libnx once per frame and turn button changes into presses.
@@ -690,16 +799,13 @@ public:
 		if (!kk4s::ReadPad(held)) return;
 		// A closed window (e.g. the save dialog) has no TJS instance until it is deleted.
 		if (isBeingDeleted || !window || !hasDrawn || !TJSNativeInstance || !TJSNativeInstance->CanDeliverEvents()) {
-			prev = held;
+			prev = kk4sPadHeld = held;
 			return;
 		}
 		unsigned changed = held ^ prev;
 		prev = held;
-		for (unsigned bit = 1; changed && bit <= kk4s::kPadDown; bit <<= 1) {
-			if (!(changed & bit)) continue;
-			if (kk4s::overlay::IsOpen()) kk4s::overlay::Pad(bit, (held & bit) != 0); // kk4s: menu takes the pad
-			else kk4sPadPress(bit, (held & bit) != 0);
-		}
+		for (unsigned bit = 1; changed && bit <= kk4s::kPadLast; bit <<= 1)
+			if (changed & bit) kk4sPadChange(bit, (held & bit) != 0);
 	}
 	// PC pads: analog input -> keys, with hysteresis so a resting stick does not chatter.
 	void kk4sAxisKey(Sint16 value, tjs_uint negKey, tjs_uint posKey) {
@@ -856,8 +962,7 @@ public:
 					case SDL_CONTROLLERBUTTONDOWN:
 					case SDL_CONTROLLERBUTTONUP: {
 						unsigned b = kk4s::PadFromSdlButton(event.cbutton.button);
-						if (kk4s::overlay::IsOpen()) kk4s::overlay::Pad(b, event.type == SDL_CONTROLLERBUTTONDOWN);
-						else kk4sPadPress(b, event.type == SDL_CONTROLLERBUTTONDOWN);
+						if (b) kk4sPadChange(b, event.type == SDL_CONTROLLERBUTTONDOWN);
 						break;
 					}
 					case SDL_CONTROLLERAXISMOTION: {
@@ -932,7 +1037,12 @@ static void kk4sOverlayFrame() {
 				kk4s::overlay::Toast(res == 1 ? kk4s::i18n::T(kk4s::i18n::kSaved)
 									 : res == -2 ? kk4s::i18n::T(kk4s::i18n::kNotSupported)
 												 : kk4s::i18n::T(kk4s::i18n::kCannotSaveNow));
-				if (res == 1) kk4s::overlay::SetQuickSaveExists(true);
+				if (res == 1) {
+					kk4s::overlay::SetQuickSaveExists(true);
+					// remember how many click / key hooks the game had (see QuickLoad)
+					kk4sEval(TJS_W("(function() { if (typeof kag.leftClickHook == 'undefined' || typeof kag.rightClickHook == 'undefined' || typeof kag.keyDownHook == 'undefined') return;")
+							 TJS_W(" [kag.leftClickHook.count, kag.rightClickHook.count, kag.keyDownHook.count].saveStruct(kag.getBookMarkFileNameAtNum(900) + '.kk4s'); } incontextof global)()"), &ok);
+				}
 				kk4s::Log("overlay: quick save -> %d", (int)res);
 				break;
 			}
@@ -940,7 +1050,21 @@ static void kk4sOverlayFrame() {
 				tTJSVariant v = kk4sEval(TJS_W("typeof global.kag == 'undefined' || kag === void || typeof kag.loadBookMark == 'undefined' ? -2 : (!Storages.isExistentStorage(kag.getBookMarkFileNameAtNum(900)) ? -1 : (kag.loadBookMark(900), 1))"), &ok);
 				tjs_int64 res = ok && v.Type() != tvtVoid ? v.AsInteger() : -2;
 				kk4s::Log("overlay: quick load -> %d", (int)res);
-				if (res == 1) kk4s::overlay::Close();
+				if (res == 1) {
+					// A bookmark does not hold the click / key hooks. Hooks the game added
+					// for a moment (e.g. "click skips the logo, jump to *pre_title") stayed
+					// on after loading and broke the first click. Drop hooks added after
+					// the quick save was made; the game's own load menu is never shown at
+					// such moments, ours is.
+					tTJSVariant n = kk4sEval(TJS_W("(function() { var name = kag.getBookMarkFileNameAtNum(900) + '.kk4s';")
+											 TJS_W(" if (typeof kag.leftClickHook == 'undefined' || !Storages.isExistentStorage(name)) return 0;")
+											 TJS_W(" var c = Scripts.evalStorage(name), h = [kag.leftClickHook, kag.rightClickHook, kag.keyDownHook], r = 0;")
+											 TJS_W(" for (var i = 0; i < 3; i++) if (h[i].count > +c[i]) { r += h[i].count - c[i]; h[i].count = +c[i]; }")
+											 TJS_W(" return r; } incontextof global)()"), &ok);
+					if (ok && n.Type() != tvtVoid && n.AsInteger() > 0)
+						kk4s::Log("overlay: quick load dropped %d hook(s) added after the save", (int)n.AsInteger());
+					kk4s::overlay::Close();
+				}
 				else kk4s::overlay::Toast(res == -1 ? kk4s::i18n::T(kk4s::i18n::kNoQuickSave) : kk4s::i18n::T(kk4s::i18n::kNotSupported));
 				break;
 			}
@@ -982,6 +1106,122 @@ static void kk4sOverlayFrame() {
 	was_visible = visible;
 }
 
+// kk4s: debugging aid (PC): KK4S_INPUT_SCRIPT=<file> plays gamepad presses,
+// touches and screenshots at given times through the same code paths as the
+// Switch pad and touch screen (docs/debugging.md). One command per line:
+//   <ms> pad A [hold_ms]     A B X Y L R ZL ZR PLUS MINUS LEFT UP RIGHT DOWN L3 R3
+//   <ms> tap <x> <y>         x, y in 0..1 of the screen
+//   <ms> shot <file.bmp>     relative names go to $KK4S_ROOT/shots/
+//   <ms> quit
+//   <ms> eval <tjs expression>   logs the result ("script: eval -> ...")
+// <ms> counts from the game start; "+<ms>" is relative to the previous line.
+struct kk4sScriptCmd { Uint32 at; std::string op, a1, a2; };
+static std::vector<kk4sScriptCmd> kk4sScript;
+static size_t kk4sScriptPos = 0;
+static Uint32 kk4sScriptStart = 0;
+static std::vector<std::pair<Uint32, unsigned>> kk4sScriptReleases; // (time, pad bit)
+static std::vector<std::pair<Uint32, SDL_Event>> kk4sScriptEvents;
+
+static void kk4sScriptLoad() {
+	static bool loaded = false;
+	if (loaded) return;
+	loaded = true;
+	const char* path = getenv("KK4S_INPUT_SCRIPT");
+	if (!path) return;
+	FILE* f = fopen(path, "r");
+	if (!f) { kk4s::Log("script: cannot open %s", path); return; }
+	char line[512];
+	Uint32 last = 0;
+	while (fgets(line, sizeof(line), f)) {
+		char t[32] = {0}, op[32] = {0}, a1[256] = {0}, a2[64] = {0};
+		if (line[0] == '#' || sscanf(line, "%31s %31s %255s %63s", t, op, a1, a2) < 2) continue;
+		Uint32 at = t[0] == '+' ? last + (Uint32)atoi(t + 1) : (Uint32)atoi(t);
+		last = at;
+		if (!strcmp(op, "eval")) { // the rest of the line is the expression
+			const char* e = strstr(line, "eval") + 4;
+			while (*e == ' ' || *e == '\t') ++e;
+			std::string expr = e;
+			while (!expr.empty() && (expr.back() == '\n' || expr.back() == '\r')) expr.pop_back();
+			kk4sScript.push_back({at, op, expr, ""});
+			continue;
+		}
+		kk4sScript.push_back({at, op, a1, a2});
+	}
+	fclose(f);
+	kk4s::Log("script: %zu command(s) from %s", kk4sScript.size(), path);
+}
+
+static unsigned kk4sPadByName(const std::string& n) {
+	static const struct { const char* name; unsigned bit; } kNames[] = {
+		{"A", kk4s::kPadA}, {"B", kk4s::kPadB}, {"X", kk4s::kPadX}, {"Y", kk4s::kPadY}, {"L", kk4s::kPadL},
+		{"R", kk4s::kPadR}, {"ZL", kk4s::kPadZL}, {"ZR", kk4s::kPadZR}, {"PLUS", kk4s::kPadPlus},
+		{"MINUS", kk4s::kPadMinus}, {"LEFT", kk4s::kPadLeft}, {"UP", kk4s::kPadUp}, {"RIGHT", kk4s::kPadRight},
+		{"DOWN", kk4s::kPadDown}, {"L3", kk4s::kPadLStick}, {"R3", kk4s::kPadRStick}};
+	for (const auto& k : kNames) if (n == k.name) return k.bit;
+	return 0;
+}
+
+static void kk4sScriptTick() {
+	kk4sScriptLoad();
+	if (kk4sScript.empty() || !_currentWindowLayer) return;
+	Uint32 now = SDL_GetTicks();
+	if (!kk4sScriptStart) kk4sScriptStart = now;
+	Uint32 t = now - kk4sScriptStart;
+	for (size_t i = 0; i < kk4sScriptReleases.size();) {
+		if (t >= kk4sScriptReleases[i].first) {
+			_currentWindowLayer->kk4sPadChange(kk4sScriptReleases[i].second, false);
+			kk4sScriptReleases.erase(kk4sScriptReleases.begin() + i);
+		} else ++i;
+	}
+	for (size_t i = 0; i < kk4sScriptEvents.size();) {
+		if (t >= kk4sScriptEvents[i].first) {
+			SDL_PushEvent(&kk4sScriptEvents[i].second);
+			kk4sScriptEvents.erase(kk4sScriptEvents.begin() + i);
+		} else ++i;
+	}
+	while (kk4sScriptPos < kk4sScript.size() && t >= kk4sScript[kk4sScriptPos].at) {
+		const kk4sScriptCmd& c = kk4sScript[kk4sScriptPos++];
+		kk4s::Log("script: %u %s %s %s", (unsigned)c.at, c.op.c_str(), c.a1.c_str(), c.a2.c_str());
+		if (c.op == "pad") {
+			unsigned bit = kk4sPadByName(c.a1);
+			if (!bit) continue;
+			if (c.a2 == "down") { _currentWindowLayer->kk4sPadChange(bit, true); continue; }
+			if (c.a2 == "up") { _currentWindowLayer->kk4sPadChange(bit, false); continue; }
+			_currentWindowLayer->kk4sPadChange(bit, true);
+			kk4sScriptReleases.push_back({t + (c.a2.empty() ? 100 : (Uint32)atoi(c.a2.c_str())), bit});
+		} else if (c.op == "tap") {
+			SDL_Event e;
+			memset(&e, 0, sizeof(e));
+			e.type = SDL_FINGERDOWN;
+			e.tfinger.x = (float)atof(c.a1.c_str());
+			e.tfinger.y = (float)atof(c.a2.c_str());
+			SDL_PushEvent(&e);
+			e.type = SDL_FINGERUP;
+			kk4sScriptEvents.push_back({t + 80, e});
+		} else if (c.op == "shot") {
+			std::string file = c.a1;
+			if (!file.empty() && file[0] != '/') {
+				kk4s::detail::MakeDir(kk4s::RootDir() + "/shots");
+				file = kk4s::RootDir() + "/shots/" + file;
+			}
+			_currentWindowLayer->kk4sPresent(kk4s::overlay::Visible(), file.c_str());
+		} else if (c.op == "eval") {
+			try {
+				tTJSVariant v;
+				TVPExecuteExpression(ttstr(c.a1.c_str()), &v);
+				kk4s::Log("script: eval -> %s", ttstr(v).AsNarrowStdString().c_str());
+			} catch (const eTJS& e) {
+				kk4s::Log("script: eval failed: %s", e.GetMessage().AsNarrowStdString().c_str());
+			} catch (...) {
+				kk4s::Log("script: eval failed");
+			}
+		} else if (c.op == "quit") {
+			kk4s::SetExitMode(kk4s::ExitMode::Quit);
+			TVPExitApplication(0);
+		}
+	}
+}
+
 bool sdlProcessEvents() {
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
@@ -1003,13 +1243,32 @@ bool sdlProcessEvents() {
 		}
 	}
 	if (_currentWindowLayer) _currentWindowLayer->kk4sPadFrame(); // kk4s: Switch buttons
+	kk4sScriptTick(); // kk4s: KK4S_INPUT_SCRIPT (debugging)
 	Uint32 kk4sStart = SDL_GetTicks();
+	unsigned kk4sShownBefore = kk4sFramesShown;
 	::Application->Run();
 	iTVPTexture2D::RecycleProcess();
 	// kk4s: log frames that stall (helps find freezes on Switch)
 	Uint32 kk4sTime = SDL_GetTicks() - kk4sStart;
-	if (kk4sTime >= 200) kk4s::Log("slow frame: %u ms", (unsigned)kk4sTime);
+	static const Uint32 kk4sSlowMs = getenv("KK4S_SLOW_MS") ? (Uint32)atoi(getenv("KK4S_SLOW_MS")) : 200; // PC: lower to find stalls
+	kk4s::FrameStats& kk4sStats = kk4s::CurrentFrameStats();
+	if (kk4sTime >= kk4sSlowMs) {
+		// the rest (scripts, events, timers, image loading, sound start) = total - listed parts
+		unsigned parts = kk4sStats.compose + kk4sStats.upload + kk4sStats.present + kk4sStats.read +
+						 kk4sStats.write + kk4sStats.gc;
+		kk4s::Log("slow frame: %u ms (compose %u, upload %u, present %u, file reads %u ms / %u, writes %u ms / %u, gc %u, other %u)",
+				  (unsigned)kk4sTime, kk4sStats.compose, kk4sStats.upload, kk4sStats.present, kk4sStats.read,
+				  kk4sStats.reads, kk4sStats.write, kk4sStats.writes, kk4sStats.gc,
+				  (unsigned)kk4sTime > parts ? (unsigned)kk4sTime - parts : 0);
+	}
+	kk4sStats = kk4s::FrameStats();
 	kk4sOverlayFrame();
+	// kk4s: a video frame (or its rectangle) changed while the game picture did not
+	if (_currentWindowLayer && kk4sFramesShown == kk4sShownBefore && kk4sVideoNeedsPresent())
+		_currentWindowLayer->kk4sPresent(kk4s::overlay::Visible());
+	// kk4s: nothing new on screen -> a short sleep instead of spinning. A present
+	// waits for vsync by itself; without one this loop ran flat out.
+	if (kk4sFramesShown == kk4sShownBefore) SDL_Delay(1);
 	return true;
 }
 
@@ -1077,6 +1336,11 @@ int main(int argc, char **argv) {
 		SDL_DestroyWindow(window);
 		SDL_Quit();
 		kk4s::Shutdown();
+#ifdef __SWITCH__
+		// like ExitAfterGame: no libc teardown after Shutdown() paused leftover
+		// threads (a paused launcher job may hold a malloc / FILE lock)
+		_exit(0);
+#endif
 		return 0;
 	}
 
@@ -1092,6 +1356,8 @@ int main(int argc, char **argv) {
 	// at the game folder.
 	delete[] _wargv[0];
 	_wargv[0] = kk4sWiden((kk4sGameDir + "krkr.exe").c_str());
+
+	kk4s::SetGamePerformance(kk4s::LiveSettings().cpu_boost); // kk4s: Switch CPU boost while the game runs
 
 	::Application = new tTVPApplication();
 	::Application->StartApplication( _argc, _wargv );
@@ -1181,6 +1447,15 @@ bool TVPGetJoyPadAsyncState(tjs_uint keycode, bool getcurrent)
 }
 
 void TVPExitApplication(int code) {
+	// kk4s: shut the engine down first, like the normal "System.terminate" path
+	// does. Sound buffers, timers etc. end their threads there; the in-game menu
+	// and script errors came here directly and left the threads running, and on
+	// the Switch they kept running inside the next NRO (crash in the launcher).
+	if (!TVPSystemUninitCalled) {
+		kk4s::Log("TVPExitApplication(%d): engine shutdown", code);
+		try { TVPSystemUninit(); } catch (...) { kk4s::Log("engine shutdown failed"); }
+	}
+	TVPStopAllThreads(1000); // kk4s: sound decoders, image loader: not ended by the shutdown
 	SDL_DestroyRenderer(renderer);
 	renderer = NULL;
 	SDL_DestroyWindow(window);

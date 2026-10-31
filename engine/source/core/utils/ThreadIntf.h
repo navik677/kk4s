@@ -39,6 +39,7 @@ private:
 	SDL_mutex *Mtx;
 	SDL_cond *Cond;
 	bool ThreadStarting;
+	volatile bool kk4sFinished; // kk4s: Execute() has returned
 
 	static int StartProc(void * arg);
 
@@ -52,6 +53,12 @@ public:
 
 protected:
 	virtual void Execute() {}
+
+public:
+	// kk4s: ask the thread to end (TVPStopAllThreads). The default only sets
+	// the flag; threads that sleep on an event override it to wake up too.
+	virtual void RequestStop() { Terminate(); }
+	bool HasFinished() const { return kk4sFinished; }
 
 public:
 	void StartTread();
@@ -70,6 +77,11 @@ public:
 
 //---------------------------------------------------------------------------
 // tTVPThreadEvent
+//---------------------------------------------------------------------------
+// kk4s: end every engine thread that is still running before the process
+// exits (the engine shutdown does not end all of them). Waits up to timeout_ms
+// in total; returns how many did not end.
+int TVPStopAllThreads(tjs_uint timeout_ms);
 //---------------------------------------------------------------------------
 class tTVPThreadEvent
 {

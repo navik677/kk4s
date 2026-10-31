@@ -1388,6 +1388,13 @@ tjs_int tTJSInterCodeContext::ExecuteCode(tTJSVariant *ra_org, tjs_int startip,
 				break;
 
 			case VM_SPDS:
+				// kk4s: class member declaration over an existing property (old Kirikiri 2)
+				if(TJSClassVarKeepsProperty && ContextType == ctClass &&
+					code[1] == TJS_TO_VM_REG_ADDR(-1) && kk4sClassVarOnProperty(ra, code))
+				{
+					code += 4;
+					break;
+				}
 				SetPropertyDirect(ra, code, TJS_MEMBERENSURE|TJS_IGNOREPROP);
 				code += 4;
 				break;
@@ -1646,6 +1653,28 @@ void tTJSInterCodeContext::GetPropertyDirect(tTJSVariant *ra,
 			clo.ObjThis?clo.ObjThis:ra[-1].AsObjectNoAddRef());
 	if(TJS_FAILED(hr))
 		TJSThrowFrom_tjs_error(hr, TJS_GET_VM_REG(DataArea, code[3]).GetString());
+}
+//---------------------------------------------------------------------------
+// kk4s: "var x;" / "var x = v;" in a class body where the object already has
+// a property x (a native one such as Layer.face): keep the property, as old
+// Kirikiri 2 did; an initial value goes through the property. Returns false
+// to let the normal code replace the member.
+bool tTJSInterCodeContext::kk4sClassVarOnProperty(tTJSVariant *ra, const tjs_int32 *code)
+{
+	tTJSVariant *target = TJS_GET_VM_REG_ADDR(ra, code[1]);
+	if(target->Type() != tvtObject || !target->AsObjectNoAddRef()) return false;
+	tTJSVariantClosure clo = target->AsObjectClosureNoAddRef();
+	iTJSDispatch2 *objthis = clo.ObjThis ? clo.ObjThis : ra[-1].AsObjectNoAddRef();
+	const tTJSVariant &name = TJS_GET_VM_REG(DataArea, code[2]);
+	tTJSVariant existing;
+	if(TJS_FAILED(clo.PropGet(TJS_IGNOREPROP, name.GetString(), name.GetHint(), &existing, objthis)))
+		return false;
+	if(existing.Type() != tvtObject || !existing.AsObjectNoAddRef()) return false;
+	if(existing.AsObjectClosureNoAddRef().IsInstanceOf(0, NULL, NULL, TJS_W("Property"), NULL) != TJS_S_TRUE)
+		return false;
+	tTJSVariant *value = TJS_GET_VM_REG_ADDR(ra, code[3]);
+	if(value->Type() == tvtVoid) return true; // "var x;": the property stays
+	return TJS_SUCCEEDED(clo.PropSet(TJS_MEMBERENSURE, name.GetString(), name.GetHint(), value, objthis));
 }
 //---------------------------------------------------------------------------
 void tTJSInterCodeContext::SetPropertyDirect(tTJSVariant *ra,

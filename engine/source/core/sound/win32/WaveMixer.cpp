@@ -1,5 +1,6 @@
 #include "tjsCommHead.h"
 #include "WaveMixer.h"
+#include "kk4s_platform.h" // kk4s
 // #ifdef __APPLE__
 // #include <OpenAL/al.h>
 // #include <OpenAL/alc.h>
@@ -102,8 +103,12 @@ public:
 	float _pan = 0;
 	const signed int MAX_VOLUME = 16384; // limit in signed 16bit
 	int16_t _volume_raw[8];
-	SDL_AudioCVT *_cvt = nullptr;
-	std::vector<uint8_t> _cvtbuf;
+	// kk4s: format / rate conversion to the device format. SDL_AudioCVT was used
+	// on each appended chunk separately, so the resampler restarted at every
+	// chunk edge: small clicks, heard on the Switch (always 48 kHz) and not on
+	// PCs whose device took the game's rate. SDL_AudioStream keeps its state.
+	SDL_AudioStream *_conv = nullptr;
+	SDL_mutex *_conv_mtx = nullptr;
 	int _frame_size = 0;
 
 	void RecalcVolume() {
@@ -122,16 +127,20 @@ public:
 	}
 	SDL_mutex *_buffer_mtx;
 	std::deque<std::vector<uint8_t> > _buffers;
+	// kk4s: a sound stopped while playing (e.g. a voice skipped with a click)
+	// used to end mid-wave: an audible click. The next few ms of it are kept
+	// here and mixed fading out to silence (device format, _buffer_mtx).
+	std::vector<uint8_t> _tail;
+	size_t _tailPos = 0;
+	bool _dry = false; // kk4s diagnostics
+	void CaptureTailLocked();
 	tjs_uint _sendedFrontBuffer = 0;
 	tjs_uint _sendedSamples = 0, _inCachedSamples = 0;
 
-	tTVPSoundBuffer(int framesize, SDL_AudioCVT *cvt) : _frame_size(framesize), _cvt(cvt) {
+	tTVPSoundBuffer(int framesize, SDL_AudioStream *conv) : _frame_size(framesize), _conv(conv) {
 		_buffer_mtx = SDL_CreateMutex();
+		_conv_mtx = SDL_CreateMutex();
 		RecalcVolume();
-		if (cvt) {
-			_cvtbuf.resize(/*2352*/ 2400 * 2 * 4 * _cvt->len_mult); // IEEE f.32 stereo 48000kHz
-			_cvt->buf = &_cvtbuf.front();
-		}
 	}
 	virtual ~tTVPSoundBuffer();
 	virtual void Release() override { delete this; }
@@ -142,11 +151,17 @@ public:
 		_playing = false;
 	}
 	virtual void Stop() override {
+		Reset(); // keeps a fade-out tail if it was playing
 		_playing = false;
-		Reset();
 	}
 	virtual void Reset() override {
+		if (_conv) { // kk4s: drop what the converter still holds
+			SDL_LockMutex(_conv_mtx);
+			SDL_AudioStreamClear(_conv);
+			SDL_UnlockMutex(_conv_mtx);
+		}
 		SDL_LockMutex(_buffer_mtx);
+		if (_playing) CaptureTailLocked(); // kk4s
 		_buffers.clear();
 		_inCachedSamples = 0;
 		_sendedFrontBuffer = 0;
@@ -167,25 +182,19 @@ public:
 	}
 	virtual float GetPan() override { return _pan; }
 	virtual void AppendBuffer(const void *_inbuf, unsigned int inlen/*, int tag = 0*/) override {
-		if (_cvt) {
+		if (_conv) {
 			std::vector<uint8_t> buffer;
-			uint8_t* inbuf = (uint8_t*)_inbuf;
-			int buflen = _frame_size * 2352;
-			_cvt->len = buflen;
-			while (inlen > buflen) { // fill 2352 samples to fit 48k/44.1k
-				memcpy(_cvt->buf, inbuf, buflen);
-				SDL_ConvertAudio(_cvt);
-				buffer.insert(buffer.end(), _cvt->buf, _cvt->buf + _cvt->len_cvt);
-				inlen -= buflen;
-				inbuf += buflen;
+			SDL_LockMutex(_conv_mtx);
+			if (SDL_AudioStreamPut(_conv, _inbuf, (int)inlen) == 0) {
+				int avail = SDL_AudioStreamAvailable(_conv);
+				if (avail > 0) {
+					buffer.resize(avail);
+					int got = SDL_AudioStreamGet(_conv, buffer.data(), avail);
+					buffer.resize(got > 0 ? got : 0);
+				}
 			}
-			if (inlen > 0) {
-				int buflen = inlen;
-				memcpy(_cvt->buf, inbuf, buflen);
-				_cvt->len = buflen;
-				SDL_ConvertAudio(_cvt);
-				buffer.insert(buffer.end(), _cvt->buf, _cvt->buf + _cvt->len_cvt);
-			}
+			SDL_UnlockMutex(_conv_mtx);
+			if (buffer.empty()) return;
 			SDL_LockMutex(_buffer_mtx);
 			_inCachedSamples += buffer.size() / _frame_size;
 			_buffers.emplace_back();
@@ -230,6 +239,8 @@ public:
 		_spec.format = AUDIO_S16;
 		_spec.channels = 2;
 		_spec.callback = [](void *p, Uint8 *s, int l) {
+			static bool placed = false; // kk4s: SDL's audio thread, off the main thread's core (Switch)
+			if (!placed) { placed = true; kk4s::PlaceWorkerThread("audio", true); }
 			memset(s, 0, l);
 			((iTVPAudioRenderer*)p)->FillBuffer(s, l);
 		};
@@ -276,20 +287,16 @@ public:
 			default: return nullptr;
 			}
 		}
-		SDL_AudioCVT *cvt = nullptr;
+		SDL_AudioStream *conv = nullptr;
 		if (spec.freq != _spec.freq ||
 			spec.channels != _spec.channels ||
 			spec.format != _spec.format) {
-			cvt = new SDL_AudioCVT;
-			int err = SDL_BuildAudioCVT(cvt,
-				spec.format, spec.channels, spec.freq,
+			conv = SDL_NewAudioStream(spec.format, spec.channels, spec.freq,
 				_spec.format, _spec.channels, _spec.freq);
-			if (err != 1) {
-				delete cvt; return nullptr;
-			}
+			if (!conv) return nullptr;
 		}
 
-		tTVPSoundBuffer* s = new tTVPSoundBuffer(fmt.BytesPerSample * fmt.Channels, cvt);
+		tTVPSoundBuffer* s = new tTVPSoundBuffer(fmt.BytesPerSample * fmt.Channels, conv);
 		SDL_LockMutex(_streams_mtx);
 		_streams.emplace(s);
 		SDL_UnlockMutex(_streams_mtx);
@@ -302,11 +309,63 @@ public:
 		SDL_UnlockMutex(_streams_mtx);
 	}
 
+	// kk4s: fade-out tails of sound buffers deleted right after a stop (the
+	// engine recreates the buffer for the next file, e.g. the next voice line)
+	struct tOrphanTail { std::vector<uint8_t> data; size_t pos; int16_t vol[8]; };
+	std::vector<tOrphanTail> _orphanTails;
+	void AdoptTail(std::vector<uint8_t> &data, size_t pos, const int16_t *vol) {
+		SDL_LockMutex(_streams_mtx);
+		_orphanTails.emplace_back();
+		_orphanTails.back().data.swap(data);
+		_orphanTails.back().pos = pos;
+		memcpy(_orphanTails.back().vol, vol, sizeof(_orphanTails.back().vol));
+		SDL_UnlockMutex(_streams_mtx);
+	}
+	// mix data[pos..] fading out linearly over the whole tail; returns the new pos
+	size_t MixFadeTail(uint8_t *out, int len, const std::vector<uint8_t> &data, size_t pos, int16_t *vol) {
+		int ch = _spec.channels, frame = _frame_size;
+		size_t total = data.size(), n = std::min((size_t)len, total - pos);
+		n = n / frame * frame;
+		if (!n) return total;
+		std::vector<uint8_t> faded(data.begin() + pos, data.begin() + pos + n);
+		for (size_t f = 0; f < n / frame; ++f) {
+			float gain = 1.0f - (float)(pos + f * frame) / (float)total;
+			for (int c = 0; c < ch; ++c) {
+				if (_spec.format == AUDIO_F32LSB) {
+					float *v = (float*)&faded[f * frame] + c;
+					*v *= gain;
+				} else if (SDL_AUDIO_BITSIZE(_spec.format) == 16) {
+					int16_t *v = (int16_t*)&faded[f * frame] + c;
+					*v = (int16_t)(*v * gain);
+				}
+			}
+		}
+		MixAudio(out, faded.data(), (int)n, vol);
+		return pos + n;
+	}
+
 	void FillBuffer(Uint8 *buf, int len) {
 		// memset(buf, 0, len);
+		{ // kk4s diagnostics: a late callback means the device ran out of sound
+			static Uint32 last = 0;
+			static int logged = 0;
+			Uint32 now = SDL_GetTicks();
+			Uint32 expect = _frame_size > 0 && _spec.freq > 0 ? (Uint32)((uint64_t)len / _frame_size * 1000 / _spec.freq) : 0;
+			if (last && expect && now - last > expect + expect / 2 && logged < 40) {
+				++logged;
+				kk4s::Log("audio: late callback, %u ms after the previous one (a buffer lasts %u ms)", now - last, expect);
+			}
+			last = now;
+		}
 		SDL_LockMutex(_streams_mtx);
 		for (tTVPSoundBuffer* s : _streams) {
 			s->FillBuffer(buf, len);
+		}
+		for (size_t i = 0; i < _orphanTails.size();) { // kk4s
+			tOrphanTail &t = _orphanTails[i];
+			t.pos = MixFadeTail(buf, len, t.data, t.pos, t.vol);
+			if (t.pos >= t.data.size()) _orphanTails.erase(_orphanTails.begin() + i);
+			else ++i;
 		}
 		SDL_UnlockMutex(_streams_mtx);
 	}
@@ -328,8 +387,17 @@ tTVPSoundBuffer::~tTVPSoundBuffer()
 {
 	Stop();
 	TVPAudioRenderer->ReleaseStream(this);
+	// kk4s: the fade-out tail outlives the buffer
+	std::vector<uint8_t> tail;
+	size_t tailpos;
+	SDL_LockMutex(_buffer_mtx);
+	tail.swap(_tail);
+	tailpos = _tailPos;
+	SDL_UnlockMutex(_buffer_mtx);
+	if (tailpos < tail.size()) TVPAudioRenderer->AdoptTail(tail, tailpos, _volume_raw);
 	SDL_DestroyMutex(_buffer_mtx);
-	if (_cvt) delete _cvt;
+	if (_conv) SDL_FreeAudioStream(_conv);
+	SDL_DestroyMutex(_conv_mtx);
 }
 
 tjs_uint tTVPSoundBuffer::GetLatencySamples()
@@ -350,8 +418,32 @@ float tTVPSoundBuffer::GetLatencySeconds()
 	return GetLatencySamples() / TVPAudioRenderer->GetSpec().freq;
 }
 
+// kk4s: take up to ~8 ms of the not yet played data as the fade-out tail
+void tTVPSoundBuffer::CaptureTailLocked()
+{
+	const SDL_AudioSpec &spec = TVPAudioRenderer->GetSpec();
+	int frame = SDL_AUDIO_BITSIZE(spec.format) / 8 * spec.channels;
+	if (frame <= 0) return;
+	size_t want = (size_t)(spec.freq / 125) * frame; // 8 ms
+	_tail.clear();
+	_tailPos = 0;
+	size_t pos = _sendedFrontBuffer;
+	for (auto it = _buffers.begin(); it != _buffers.end() && _tail.size() < want; ++it, pos = 0) {
+		if (pos >= it->size()) continue;
+		size_t n = std::min(want - _tail.size(), it->size() - pos);
+		_tail.insert(_tail.end(), it->begin() + pos, it->begin() + pos + n);
+	}
+	_tail.resize(_tail.size() / frame * frame);
+}
+
 void tTVPSoundBuffer::FillBuffer(uint8_t *out, int len)
 {
+	if (!_tail.empty()) { // kk4s: fade out what was playing when it was stopped
+		SDL_LockMutex(_buffer_mtx);
+		_tailPos = TVPAudioRenderer->MixFadeTail(out, len, _tail, _tailPos, _volume_raw);
+		if (_tailPos >= _tail.size()) { _tail.clear(); _tailPos = 0; }
+		SDL_UnlockMutex(_buffer_mtx);
+	}
 	if (!_playing) return;
 	SDL_LockMutex(_buffer_mtx);
 	while (len > 0 && !_buffers.empty()) {
@@ -370,6 +462,16 @@ void tTVPSoundBuffer::FillBuffer(uint8_t *out, int len)
 			_buffers.pop_front();
 		}
 	}
+	if (len > 0 && _sendedSamples > 0) { // kk4s diagnostics: playing but no data
+		static int logged = 0;
+		if (!_dry && logged < 40) {
+			++logged;
+			kk4s::Log("audio: stream %p ran dry (%d bytes missing, %u samples played)", (void*)this, len, _sendedSamples);
+		}
+		_dry = true;
+	} else {
+		_dry = false;
+	}
 	SDL_UnlockMutex(_buffer_mtx);
 }
 
@@ -386,6 +488,8 @@ public:
 		}
 		_frame_size = SDL_AUDIO_BITSIZE(_spec.format) / 8 * _spec.channels;
 		SDL_Log("Audio Device: %s", SDL_GetCurrentAudioDriver());
+		kk4s::Log("audio: %s, %d Hz, %d ch, format 0x%x, %d samples per buffer", SDL_GetCurrentAudioDriver(),
+				  _spec.freq, _spec.channels, (unsigned)_spec.format, (int)_spec.samples); // kk4s
 		SDL_PauseAudioDevice(_playback_id, false);
 		SetupMixer();
 		return true;

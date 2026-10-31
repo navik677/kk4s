@@ -159,6 +159,8 @@ public:
 	void SetInterval(tjs_uint64 interval) { Interval = interval; }
 
 
+public:
+	void RequestStop() override { Terminate(); Event.Set(); } // kk4s: TVPStopAllThreads
 } static * TVPContinuousHandlerCallLimitThread = NULL;
 //---------------------------------------------------------------------------
 

@@ -14,6 +14,8 @@
 #include "tjsCommHead.h"
 #include "FreeType.h"
 #include "kk4s_compat.h" // kk4s
+#include "kk4s_platform.h" // kk4s: log
+#include <mutex> // kk4s
 #ifdef KK4S_WIN32_NATIVE
 #include "NativeFreeTypeFace.h"
 #endif
@@ -38,6 +40,7 @@
 #include FT_TRUETYPE_UNPATENTED_H
 #include FT_SYNTHESIS_H
 #include FT_BITMAP_H
+static std::shared_ptr<std::vector<FT_Byte>> kk4sFontImageFromStream(const ttstr& name, tTJSBinaryStream* file); // kk4s
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
@@ -138,7 +141,7 @@ protected:
 	FT_Face Face;	//!< FreeType face オブジェクト
 	tTJSBinaryStream* File;	 //!< tTJSBinaryStream オブジェクト
 	std::vector<tjs_string> FaceNames; //!< Face名を列挙した配列
-	//std::unique_ptr<tjs_uint8[]> FontImage;
+	std::shared_ptr<std::vector<FT_Byte>> FontImage; // kk4s: whole font file (shared, see kk4sFontImages)
 
 private:
 	FT_StreamRec Stream;
@@ -491,7 +494,7 @@ tGenericFreeTypeFace::tGenericFreeTypeFace(const ttstr &fontname, tjs_uint32 opt
 		// FT_StreamRec の各フィールドを埋める
 		FT_StreamRec * fsr = &Stream;
 //#ifndef ANDROID
-#if 1
+#if 0 // kk4s: from memory (see kk4sFontImages)
 		fsr->base = 0;
 		fsr->size = static_cast<unsigned long>(File->GetSize());
 		fsr->pos = 0;
@@ -500,15 +503,12 @@ tGenericFreeTypeFace::tGenericFreeTypeFace(const ttstr &fontname, tjs_uint32 opt
 		fsr->read = IoFunc;
 		fsr->close = CloseFunc;
 #else
-		tjs_uint32 fileSize = (tjs_uint32)File->GetSize();
-		FontImage.reset( new tjs_uint8[fileSize] );
-		File->SetPosition( 0 );
-		File->ReadBuffer( (void*)FontImage.get(), fileSize );
+		FontImage = kk4sFontImageFromStream( fontname, File );
 		delete File;
 		File = nullptr;
 
-		fsr->base = FontImage.get();
-		fsr->size = fileSize;
+		fsr->base = FontImage->data();
+		fsr->size = (unsigned long)FontImage->size();
 		fsr->pos = 0;
 		fsr->descriptor.pointer = nullptr;
 		fsr->pathname.pointer = nullptr;
@@ -552,6 +552,48 @@ tGenericFreeTypeFace::tGenericFreeTypeFace(const ttstr &fontname, tjs_uint32 opt
 	}
 }
 //---------------------------------------------------------------------------
+// kk4s: font files are read into memory once and kept. FreeType reads glyph
+// data from its stream on demand in small seek + read steps; on the Switch each
+// is a request to the SD card through the file system service, so a page of new
+// glyphs (first appearance of a size, a long page shown at once) took seconds.
+static std::mutex kk4sFontImagesMutex;
+static std::map<tjs_string, std::shared_ptr<std::vector<FT_Byte>>> kk4sFontImages;
+
+static std::shared_ptr<std::vector<FT_Byte>> kk4sFontImageFromPath(const std::string& path)
+{
+	tjs_string key;
+	TVPEncodeUTF8ToUTF16(key, path);
+	std::lock_guard<std::mutex> lock(kk4sFontImagesMutex);
+	auto it = kk4sFontImages.find(key);
+	if(it != kk4sFontImages.end()) return it->second;
+	std::shared_ptr<std::vector<FT_Byte>> data;
+	if(FILE* f = fopen(path.c_str(), "rb"))
+	{
+		auto buf = std::make_shared<std::vector<FT_Byte>>();
+		FT_Byte chunk[65536];
+		size_t got;
+		while((got = fread(chunk, 1, sizeof(chunk), f)) > 0) buf->insert(buf->end(), chunk, chunk + got);
+		fclose(f);
+		if(!buf->empty()) data = buf;
+	}
+	if(data) kk4s::Log("fonts: %s loaded into memory (%u KB)", path.c_str(), (unsigned)(data->size() >> 10));
+	kk4sFontImages[key] = data;
+	return data;
+}
+
+static std::shared_ptr<std::vector<FT_Byte>> kk4sFontImageFromStream(const ttstr& name, tTJSBinaryStream* file)
+{
+	std::lock_guard<std::mutex> lock(kk4sFontImagesMutex);
+	auto it = kk4sFontImages.find(name.AsStdString());
+	if(it != kk4sFontImages.end() && it->second) return it->second;
+	auto buf = std::make_shared<std::vector<FT_Byte>>((size_t)file->GetSize());
+	file->SetPosition(0);
+	if(!buf->empty()) file->ReadBuffer(buf->data(), (tjs_uint)buf->size());
+	kk4s::Log("fonts: %s loaded into memory (%u KB)", name.AsNarrowStdString().c_str(), (unsigned)(buf->size() >> 10));
+	kk4sFontImages[name.AsStdString()] = buf;
+	return buf;
+}
+//---------------------------------------------------------------------------
 tGenericFreeTypeFace::tGenericFreeTypeFace(const std::string& path, const ttstr &fontname, tjs_uint32 index ) : File(nullptr), Face(nullptr)
 {
 	memset(&Stream, 0, sizeof(Stream));
@@ -562,8 +604,15 @@ tGenericFreeTypeFace::tGenericFreeTypeFace(const std::string& path, const ttstr 
 
 		FT_Open_Args args;
 		memset(&args, 0, sizeof(args));
-		args.flags = FT_OPEN_PATHNAME;
-		args.pathname = const_cast<char*>(path.c_str());
+		FontImage = kk4sFontImageFromPath(path); // kk4s: from memory
+		if(FontImage) {
+			args.flags = FT_OPEN_MEMORY;
+			args.memory_base = FontImage->data();
+			args.memory_size = (FT_Long)FontImage->size();
+		} else {
+			args.flags = FT_OPEN_PATHNAME;
+			args.pathname = const_cast<char*>(path.c_str());
+		}
 		args.num_params = 1;
 		args.params = parameters;
 		FT_Error err = FT_Open_Face( FreeTypeLibrary, &args, index, &Face);
