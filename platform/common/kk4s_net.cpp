@@ -224,7 +224,79 @@ std::string JsonEscape(const std::string& s) {
 
 } // namespace
 
-bool SearchVndbCovers(const std::string& query, std::vector<CoverCandidate>& out, std::string& err) {
+static std::string LowerAscii(std::string s) {
+    for (char& ch : s) ch = (char)tolower((unsigned char)ch);
+    return s;
+}
+
+// 2: query at the start of a title as whole words, 1: whole words elsewhere, 0: fuzzy.
+static int MatchScore(const std::string& query, const CoverCandidate& c) {
+    std::string q = LowerAscii(query);
+    int best = 0;
+    for (const std::string* t : {&c.title, &c.alt_title}) {
+        std::string s = LowerAscii(*t);
+        for (size_t at = s.find(q); !q.empty() && at != std::string::npos; at = s.find(q, at + 1)) {
+            size_t end = at + q.size();
+            bool left = at == 0 || !isalnum((unsigned char)s[at - 1]);
+            bool right = end == s.size() || !isalnum((unsigned char)s[end]);
+            if (left && right) best = std::max(best, at == 0 ? 2 : 1);
+        }
+    }
+    return best;
+}
+
+bool IsConfidentMatch(const std::string& query, const CoverCandidate& c) { return MatchScore(query, c) > 0; }
+
+std::string CleanQuery(const std::string& t) {
+    static const char* const kJunk[] = {"russian", "rus", "ru", "english", "eng", "en", "ukrainian", "ukr", "ua",
+                                        "japanese", "jap", "jp", "patch", "patched", "translation", "translated",
+                                        "fix", "repack", "rip", "steam", "gog", "full", "final", "uncensored"};
+    // split into words, dropping bracketed parts and separators
+    std::vector<std::string> words;
+    std::string cur;
+    int depth = 0;
+    auto flush = [&] {
+        if (cur.empty()) return;
+        std::string low = LowerAscii(cur);
+        bool junk = false;
+        for (const char* j : kJunk) junk = junk || low == j;
+        // versions: v1, v1.02, 1.0
+        if (!junk && (low[0] == 'v' || isdigit((unsigned char)low[0])) && low.size() > 1 &&
+            low.find_first_not_of("v0123456789.") == std::string::npos && low.find('.') != std::string::npos)
+            junk = true;
+        if (!junk && low.size() > 1 && low[0] == 'v' && low.find_first_not_of("0123456789", 1) == std::string::npos)
+            junk = true;
+        if (!junk) words.push_back(cur);
+        cur.clear();
+    };
+    for (char c : t) {
+        if (c == '[' || c == '(' || c == '{') { flush(); ++depth; continue; }
+        if ((c == ']' || c == ')' || c == '}') && depth > 0) { --depth; continue; }
+        if (depth) continue;
+        if (c == ' ' || c == '_' || c == '-' || c == '+' || c == '.' || c == ',' || c == '~') { flush(); continue; }
+        cur += c;
+    }
+    flush();
+    std::string out;
+    for (const std::string& w : words) out += (out.empty() ? "" : " ") + w;
+    return out.empty() ? t : out;
+}
+
+bool SearchCoversForTitle(const std::string& title, bool hide_explicit, std::vector<CoverCandidate>& out,
+                          std::string& used_query, std::string& err) {
+    std::string q = CleanQuery(title);
+    while (true) {
+        used_query = q;
+        if (!SearchVndbCovers(q, hide_explicit, out, err)) return false;
+        if (!out.empty()) return true;
+        size_t sp = q.rfind(' ');
+        if (sp == std::string::npos) return true; // nothing even for one word
+        q = q.substr(0, sp);
+    }
+}
+
+bool SearchVndbCovers(const std::string& query, bool hide_explicit, std::vector<CoverCandidate>& out,
+                      std::string& err) {
     out.clear();
     std::string body = "{\"filters\":[\"search\",\"=\",\"" + JsonEscape(query) +
                        "\"],\"fields\":\"title,alttitle,released,image.url,image.thumbnail,image.sexual\","
@@ -240,7 +312,7 @@ bool SearchVndbCovers(const std::string& query, std::vector<CoverCandidate>& out
         const Json& img = r["image"];
         if (img.type != Json::Object || img["url"].type != Json::String) continue;
         // Skip covers VNDB users voted as sexual (0 = safe, 1 = suggestive, 2 = explicit).
-        if (img["sexual"].type == Json::Number && img["sexual"].num >= 1.0) continue;
+        if (hide_explicit && img["sexual"].type == Json::Number && img["sexual"].num >= 1.0) continue;
         CoverCandidate c;
         c.title = r["title"].str;
         c.alt_title = r["alttitle"].str;
@@ -251,26 +323,9 @@ bool SearchVndbCovers(const std::string& query, std::vector<CoverCandidate>& out
     }
     // VNDB's search is fuzzy ("Sharin" ranks "Sharing Is Caring" first): prefer
     // titles that contain the query as whole words, keep VNDB's order otherwise.
-    auto lower = [](std::string s) {
-        for (char& ch : s) ch = (char)tolower((unsigned char)ch);
-        return s;
-    };
-    std::string q = lower(query);
-    auto score = [&](const CoverCandidate& c) {
-        int best = 0;
-        for (const std::string* t : {&c.title, &c.alt_title}) {
-            std::string s = lower(*t);
-            for (size_t at = s.find(q); at != std::string::npos; at = s.find(q, at + 1)) {
-                size_t end = at + q.size();
-                bool left = at == 0 || !isalnum((unsigned char)s[at - 1]);
-                bool right = end == s.size() || !isalnum((unsigned char)s[end]);
-                if (left && right) best = std::max(best, at == 0 ? 2 : 1);
-            }
-        }
-        return best;
-    };
-    std::stable_sort(out.begin(), out.end(),
-                     [&](const CoverCandidate& a, const CoverCandidate& b) { return score(a) > score(b); });
+    std::stable_sort(out.begin(), out.end(), [&](const CoverCandidate& a, const CoverCandidate& b) {
+        return MatchScore(query, a) > MatchScore(query, b);
+    });
     return true;
 }
 

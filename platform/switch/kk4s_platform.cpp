@@ -22,6 +22,7 @@ namespace kk4s {
 using namespace detail;
 
 static bool g_inited = false;
+static bool g_psm = false; // psm (battery) service opened
 static bool g_nxlink = false;
 
 std::string RootDir() { return "sdmc:/switch/kk4s"; }
@@ -54,6 +55,7 @@ void Init(int, char**) {
 void Shutdown() {
     if (!g_inited) return;
     Log("kk4s: shutdown");
+    if (g_psm) psmExit();
     CloseLog();
     socketExit();
     romfsExit();
@@ -93,6 +95,53 @@ std::vector<std::string> SystemFontFiles() {
     }
     return out;
 }
+
+std::string SystemLanguage() {
+    std::string code = "en";
+    if (R_SUCCEEDED(setInitialize())) {
+        u64 lc = 0;
+        SetLanguage lang;
+        if (R_SUCCEEDED(setGetSystemLanguage(&lc)) && R_SUCCEEDED(setMakeLanguage(lc, &lang))) {
+            switch (lang) {
+                case SetLanguage_JA: code = "ja"; break;
+                case SetLanguage_RU: code = "ru"; break;
+                default: code = "en"; break; // the Switch has no Ukrainian UI
+            }
+        }
+        setExit();
+    }
+    return code;
+}
+
+int BatteryPercent(bool* charging) {
+    if (!g_psm) g_psm = R_SUCCEEDED(psmInitialize());
+    if (!g_psm) return -1;
+    u32 p = 0;
+    if (R_FAILED(psmGetBatteryChargePercentage(&p))) return -1;
+    if (charging) {
+        PsmChargerType ct = PsmChargerType_Unconnected;
+        psmGetChargerType(&ct);
+        *charging = ct != PsmChargerType_Unconnected;
+    }
+    return (int)p;
+}
+
+bool EditText(const std::string& guide, std::string& text) {
+    SwkbdConfig kbd;
+    if (R_FAILED(swkbdCreate(&kbd, 0))) return false;
+    swkbdConfigMakePresetDefault(&kbd);
+    swkbdConfigSetGuideText(&kbd, guide.c_str());
+    swkbdConfigSetInitialText(&kbd, text.c_str());
+    swkbdConfigSetStringLenMax(&kbd, 120);
+    char out[512] = {0};
+    Result rc = swkbdShow(&kbd, out, sizeof(out));
+    swkbdClose(&kbd);
+    if (R_FAILED(rc) || !out[0]) return false;
+    text = out;
+    return true;
+}
+
+bool EditTextAvailable() { return true; }
 
 bool ReadPad(unsigned& held) {
     static PadState pad;

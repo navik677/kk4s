@@ -64,6 +64,35 @@ std::string RootDir() { return g_root; }
 
 bool ReadPad(unsigned& held) { held = 0; return false; } // SDL controller events on PC
 
+std::string SystemLanguage() {
+#ifdef _WIN32
+    switch (PRIMARYLANGID(GetUserDefaultUILanguage())) {
+        case LANG_UKRAINIAN: return "uk";
+        case LANG_RUSSIAN: return "ru";
+        case LANG_JAPANESE: return "ja";
+        default: return "en";
+    }
+#else
+    for (const char* var : {"LC_ALL", "LC_MESSAGES", "LANG"}) {
+        const char* v = getenv(var);
+        if (v && v[0] && v[1] && strcmp(v, "C") != 0 && strncmp(v, "POSIX", 5) != 0)
+            return std::string(v, 2);
+    }
+    return "en";
+#endif
+}
+
+int BatteryPercent(bool* charging) {
+    int pct = -1;
+    SDL_PowerState st = SDL_GetPowerInfo(nullptr, &pct);
+    if (charging) *charging = st == SDL_POWERSTATE_CHARGING || st == SDL_POWERSTATE_CHARGED;
+    if (st == SDL_POWERSTATE_NO_BATTERY || st == SDL_POWERSTATE_UNKNOWN) return -1;
+    return pct;
+}
+
+bool EditText(const std::string&, std::string&) { return false; } // PC: typed in place
+bool EditTextAvailable() { return false; }
+
 MemoryInfo QueryMemory() { return MemoryInfo{0, 0, false}; }
 
 void Init(int argc, char** argv) {

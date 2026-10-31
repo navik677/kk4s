@@ -19,8 +19,24 @@ struct CoverCandidate {
     std::string thumb_url;  // small preview
 };
 
-// Visual novels on VNDB matching query, best first, with a non-explicit cover.
-bool SearchVndbCovers(const std::string& query, std::vector<CoverCandidate>& out, std::string& err);
+// Visual novels on VNDB matching query, best first (whole-word title matches
+// before fuzzy ones). hide_explicit skips covers VNDB marks as sexual.
+bool SearchVndbCovers(const std::string& query, bool hide_explicit, std::vector<CoverCandidate>& out,
+                      std::string& err);
+
+// Search words from a game title / folder name: no [tags], (notes), versions,
+// language or "patch" words; separators become spaces.
+// "Tsukihime Plus+Disc Russian" -> "Tsukihime Plus Disc".
+std::string CleanQuery(const std::string& title);
+
+// SearchVndbCovers on CleanQuery(title); with no results, retries with the
+// last word dropped. used_query gets the query that produced the results.
+bool SearchCoversForTitle(const std::string& title, bool hide_explicit, std::vector<CoverCandidate>& out,
+                          std::string& used_query, std::string& err);
+
+// True when the best match contains the query as whole words (safe to take
+// without asking, e.g. "download all covers").
+bool IsConfidentMatch(const std::string& query, const CoverCandidate& c);
 
 } // namespace net
 } // namespace kk4s

@@ -56,6 +56,17 @@ bool ReadPad(unsigned& held);
 // SDL_GameControllerButton -> PadButton (0 if not used). For PC pads.
 unsigned PadFromSdlButton(int sdl_button);
 
+// System UI language as a two-letter code ("uk", "en", "ru", "ja", ...).
+std::string SystemLanguage();
+
+// Battery charge 0..100, or -1 if unknown / no battery.
+int BatteryPercent(bool* charging);
+
+// System on-screen keyboard (Switch). Returns false if there is none or the
+// user cancelled; text is changed only on success.
+bool EditText(const std::string& guide, std::string& text);
+bool EditTextAvailable(); // true if EditText shows a system keyboard
+
 // Initial window size and SDL window flags for this platform.
 void WindowConfig(int& width, int& height, unsigned& sdl_flags);
 

@@ -15,7 +15,7 @@ Details: `docs/status.md`, `docs/kirikiroid-compat.md`, `docs/plugins.md`, `docs
 | Path | What |
 |---|---|
 | `engine/` | krkrs (uyjulian) sources. Our edits are marked with `kk4s:` comments (`git grep kk4s: engine/`). Commit `98ac529` is the pristine upstream import. |
-| `platform/common/` | logger, game scan, project dir, font file scan, small POSIX shims (`kk4s_fs.h`), graphical launcher (`kk4s_launcher.cpp`: covers, icons from .ico/.exe, gamepad/touch) |
+| `platform/common/` | logger, game scan, project dir, font file scan, small POSIX shims (`kk4s_fs.h`), graphical launcher (`kk4s_launcher.cpp`; drawing `kk4s_ui`, images `kk4s_image`, texts `kk4s_i18n`, `settings.ini` `kk4s_settings`, VNDB/curl `kk4s_net`) |
 | `platform/switch/`, `platform/desktop/` | launcher, paths, memory, window config, system fonts per platform |
 | `compat/kk4s_compat.cpp` | Kirikiroid2 conventions (`xp3filter.tjs`, `Storages.setXP3ArchiveExtractionFilter`, `Override2.tjs`, `AfterInit2.tjs`), engine log → kk4s log, font registration, missing-plugin log |
 | `compat/kk4s_plugins.cpp` | table `dll name → native replacement` (util.dll, p.dll, …) |

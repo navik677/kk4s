@@ -4,6 +4,7 @@
 sdmc:/switch/kk4s/
 ├── kk4s.nro
 ├── last.txt                 last played game (launcher)
+├── settings.ini             launcher settings + play history (language, layout, sort, ...)
 ├── games/
 │   └── <GameName>/          original game folder, untouched (data.xp3, patch*.xp3, video/, ...)
 ├── covers/<GameName>.jpg    optional cover art for the launcher (png / jpg / webp)
@@ -31,7 +32,15 @@ Title: first line of `games/<GameName>/title.txt`, then `covers/<GameName>.txt` 
 the folder name. Portrait images (about 5:7) fit the card best.
 
 Launcher controls: D-pad / left stick / swipe = choose, A / tap the selected card = play,
-Y = cover search, + = quit. In the search: A = take this cover, B = back.
+Y = cover search, X / gear = settings, + = quit. In the search: A = take this cover,
+X = edit the search text (Switch keyboard; on PC type in place), B = back.
+The search cleans the title first ("Tsukihime Plus+Disc Russian" -> "Tsukihime Plus Disc") and
+retries with fewer words when VNDB finds nothing.
+
+Settings (X): language (auto / Українська / English / Русский / 日本語), layout (carousel / grid),
+sort (title / recently played), cover background, hide explicit covers, download all missing
+covers (takes a VNDB match only when the title matches as whole words).
 
 Debugging aids (PC): `KK4S_LAUNCHER_SHOT=<file.bmp>` saves one launcher frame and quits;
-`KK4S_LAUNCHER_SEARCH=1` opens the cover search first (`=pick` also takes the first result).
+`KK4S_LAUNCHER_SEARCH=1` opens the cover search first (`=pick` also takes the first result);
+`KK4S_LAUNCHER_SETTINGS=1` opens the settings first.
