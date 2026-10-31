@@ -91,8 +91,8 @@ std::vector<std::string> SystemFontFiles();
 // case-insensitively ("xp3filter.tjs" finds "XP3Filter.tjs"). "" if missing.
 std::string FindGameFile(const char* name);
 
-// Logging. Every line goes to the log file (flushed per line, fsync at most
-// every 2 s) and to stderr (nxlink, if connected).
+// Logging. Lines go to stderr (nxlink, if connected) and to the log file,
+// written by a background thread every 200 ms (fsync at most every 2 s).
 void Log(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void LogRaw(const char* text);
 

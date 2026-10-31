@@ -5,8 +5,13 @@
 #include <SDL.h>
 
 #include <algorithm>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <dirent.h>
@@ -40,26 +45,56 @@ static std::string g_game_dir;
 // ---------------------------------------------------------------------------
 // logging
 
-// Every line is flushed to the OS, but fsync (slow on the Switch SD card:
-// syncing every line froze games that log each scenario tag) runs at most
-// every 2 seconds. Shutdown closes the file, which syncs the rest.
+// The log is written by a background thread in batches (every 200 ms, fsync
+// at most every 2 s). Writing each line straight to the Switch SD card cost
+// several ms per line, and the engine logs every scenario tag: that froze
+// games for seconds. On a crash the last ~200 ms of lines can be missing
+// (Atmosphere's crash report has the backtrace).
+static std::mutex g_log_mutex;
+static std::condition_variable g_log_cv;
+static std::string g_log_pending;
+static bool g_log_stop = false;
+static std::thread* g_log_thread = nullptr; // never destroyed: a joinable std::thread at exit would terminate()
+
+static void WriteLogBatch(const std::string& batch, bool sync) {
+    if (!g_log || batch.empty()) return;
+    fwrite(batch.data(), 1, batch.size(), g_log);
+    fflush(g_log);
+    if (sync) {
+#ifdef _WIN32
+        _commit(_fileno(g_log));
+#else
+        fsync(fileno(g_log));
+#endif
+    }
+}
+
+static void LogWriterThread() {
+    time_t last_sync = time(nullptr);
+    std::unique_lock<std::mutex> lock(g_log_mutex);
+    while (true) {
+        g_log_cv.wait_for(lock, std::chrono::milliseconds(200),
+                          [] { return g_log_stop || g_log_pending.size() > (64u << 10); });
+        std::string batch;
+        batch.swap(g_log_pending);
+        bool stop = g_log_stop;
+        lock.unlock();
+        time_t now = time(nullptr);
+        bool sync = stop || now - last_sync >= 2;
+        if (sync) last_sync = now;
+        WriteLogBatch(batch, sync);
+        lock.lock();
+        if (stop && g_log_pending.empty()) return;
+    }
+}
+
 void LogRaw(const char* text) {
     if (!text) return;
     fputs(text, stderr);
-    if (g_log) {
-        fputs(text, g_log);
-        fflush(g_log);
-        static time_t last_sync = 0;
-        time_t now = time(nullptr);
-        if (now - last_sync >= 2) {
-            last_sync = now;
-#ifdef _WIN32
-            _commit(_fileno(g_log));
-#else
-            fsync(fileno(g_log));
-#endif
-        }
-    }
+    std::lock_guard<std::mutex> lock(g_log_mutex);
+    if (!g_log) return;
+    g_log_pending += text;
+    if (g_log_pending.size() > (64u << 10)) g_log_cv.notify_one();
 }
 
 void Log(const char* fmt, ...) {
@@ -122,10 +157,28 @@ void InitDataDirsAndLog() {
     snprintf(name, sizeof(name), "/kk4s-%04d%02d%02d-%02d%02d%02d.log",
              t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
     g_log = fopen((LogsDir() + name).c_str(), "w");
+    if (g_log) {
+        g_log_stop = false;
+        g_log_thread = new std::thread(LogWriterThread);
+        atexit(CloseLog); // flush on any exit() path, not only Shutdown()
+    }
 }
 
 void CloseLog() {
+    if (g_log_thread) {
+        {
+            std::lock_guard<std::mutex> lock(g_log_mutex);
+            g_log_stop = true;
+        }
+        g_log_cv.notify_one();
+        g_log_thread->join();
+        delete g_log_thread;
+        g_log_thread = nullptr;
+    }
+    std::lock_guard<std::mutex> lock(g_log_mutex);
     if (g_log) {
+        WriteLogBatch(g_log_pending, true);
+        g_log_pending.clear();
         fclose(g_log);
         g_log = nullptr;
     }

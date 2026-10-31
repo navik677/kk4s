@@ -751,6 +751,10 @@ static inline tTJSVariantArrayStack * TJSGetVariantArrayStack()
 //---------------------------------------------------------------------------
 void TJSVariantArrayStackAddRef()
 {
+	// kk4s: other threads use their own stack (TJSGetVariantArrayStack) and
+	// must not touch this non-atomic count: a racing Release() on the audio
+	// thread deleted the main thread's stack while it was in use (crash).
+	if(TJSVariantArrayStackRefCount > 0 && std::this_thread::get_id() != TJSVariantArrayStackOwner) return;
 	if(TJSVariantArrayStackRefCount == 0)
 	{
 		TJSVariantArrayStack = new tTJSVariantArrayStack;
@@ -761,6 +765,7 @@ void TJSVariantArrayStackAddRef()
 //---------------------------------------------------------------------------
 void TJSVariantArrayStackRelease()
 {
+	if(std::this_thread::get_id() != TJSVariantArrayStackOwner) return; // kk4s: see AddRef
 	if(TJSVariantArrayStackRefCount == 1)
 	{
 		delete TJSVariantArrayStack;

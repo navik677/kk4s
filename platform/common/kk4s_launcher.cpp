@@ -476,8 +476,11 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
     const float grid_x0 = 640 - (cols * gstep_x - (gstep_x - gw)) / 2;
 
     float pos = (float)sel, grid_scroll = 0;
-    float bg_fade = 1;
-    int bg_prev = -1, bg_cur = (int)sel;
+    // background layers: {game index, opacity}; the newest fades in on top and
+    // older ones stay as they were (switching mid-fade must not jump)
+    struct BgLayer { int game; float alpha; };
+    std::vector<BgLayer> bg = {{(int)sel, 1.f}};
+    auto refresh_bg = [&] { bg.push_back({(int)sel, 0.f}); };
     Input in;
     std::string chosen;
     bool running = true, leaving = false;
@@ -853,9 +856,10 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             pick_pos = std::max(-0.4f, std::min((float)found.size() - 0.6f, in.drag_pos - (in.drag_x - in.drag_x0) / 196));
         else
             pick_pos = Approach(pick_pos, (float)pick, dt);
-        if ((int)sel != bg_cur) { bg_prev = bg_cur; bg_cur = (int)sel; bg_fade = 0; }
-        bg_fade = Clamp01(bg_fade + dt * 3.5f);
-        float glow = 0.5f + 0.5f * std::sin(now / 300.f);
+        if (bg.empty() || bg.back().game != (int)sel) bg.push_back({(int)sel, 0.f});
+        bg.back().alpha = Clamp01(bg.back().alpha + dt * 3.0f);
+        if (bg.back().alpha >= 1) bg.erase(bg.begin(), bg.end() - 1); // fully covered
+        const float glow = 1; // steady glow (a pulsing one read as flicker)
         if (now >= battery_at) { battery = BatteryPercent(&charging); battery_at = now + 30000; }
 
         // background jobs
@@ -890,8 +894,7 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
                     Log("launcher: %s: downloaded cover %s", g.folder.c_str(), found[pick].image_url.c_str());
                     LoadGame(r, g);
                     close_search();
-                    bg_fade = 0;
-                    bg_prev = -1;
+                    refresh_bg();
                     show_toast(T(i18n::kCoverSaved));
                 } else {
                     search_msg = i18n::F(i18n::kDownloadFailed, ok ? T(i18n::kCannotWriteSd) : err);
@@ -920,8 +923,7 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
                 show_toast(i18n::F(i18n::kCoversDone, std::to_string(batch->saved)));
                 batch.reset();
                 resort();
-                bg_fade = 0;
-                bg_prev = -1;
+                refresh_bg();
             } else {
                 show_toast(i18n::F(i18n::kCoversProgress, std::to_string(processed) + "/" + std::to_string(total)), 60000);
             }
@@ -948,10 +950,7 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
                 Gradient(v, 0, 0, 1280, 720, WithAlpha(Rgba(g.tint.r, g.tint.g, g.tint.b, 120), alpha), Rgba(0, 0, 0, 0));
             }
         };
-        if (!games.empty()) {
-            if (bg_fade < 1) draw_bg(bg_prev, 1);
-            draw_bg(bg_cur, Ease(bg_fade));
-        }
+        for (const BgLayer& l : bg) draw_bg(l.game, l.alpha);
         Gradient(v, 0, 0, 1280, 180, Rgba(8, 10, 16, 200), Rgba(8, 10, 16, 0));
         Gradient(v, 0, 360, 1280, 360, Rgba(8, 10, 16, 0), Rgba(8, 10, 16, 235));
         HGradient(v, 0, 0, 220, 720, Rgba(8, 10, 16, 110), Rgba(8, 10, 16, 0));
