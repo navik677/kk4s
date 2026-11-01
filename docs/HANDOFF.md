@@ -251,6 +251,11 @@ game, not just FSN; never commit game files or keys; game folders are never modi
 
 The CXDEC decryption, PSB/psbfile, KAG/Scripts compat and debugging aids are on `main` now. The
 current state, the blockers and the next steps are in **`docs/handoff-native-cx.md`** and
-`docs/cxdec.md`. Short version: ATRI renders its first screens and stops at the Steam chain; FSN
-(Russian patch) runs on the PC and hangs on the Switch after a fade (suspicion in the handoff, not
-verified). The FSN rules above still apply to every change.
+`docs/cxdec.md`. Short version (2026-11-01 21:40): **the original ATRI repack folder now reaches
+its title screen** - CXDEC, `hnfn` names, Steam detection (`-steam=yes`), a `krkrsteam.dll` Steam
+stub, release `-debugwin=no`, win32dialog classes, the `PSBFile(storage)` constructor and PSB
+`null`->void got it past all earlier blockers; the next gap is the real `textrender.dll` (no-op stub)
+and the other KAGZ plugins. FSN (Russian patch) still runs on the PC (Рус-moon logo + `TitleMenu.ks`,
+`project dir: .../data.xp3>`); its Switch hang after FlowTracker's "skip to next scene" is still
+unresolved (see the handoff: the TJS **global object** is invalidated in `onTransitionCompleted`; a
+new register diagnostic names it). The FSN rules above still apply to every change.

@@ -41,6 +41,8 @@
 
 // engine/source/core/visual/FreeType.cpp
 extern void TVPAddSystemFontToFreeType(const std::string& storage, std::vector<tjs_string>* faces);
+// engine/source/core/base/win32/SysInitImpl.cpp
+extern std::vector<ttstr> TVPProgramArguments;
 
 namespace kk4s {
 namespace compat {
@@ -473,11 +475,63 @@ static void ApplyExeOptions() {
     }
 }
 
+// Steam builds are started with "-steam=yes" by their Windows loader (the exe or
+// PackinOne). custom.tjs then loads steam.tjs, which hooks KAG's [実績] (achievement)
+// macro; without the argument the macro calls kag.errorCmd and is a fatal error
+// (ATRI). Detect the Steam build from its own files, before startup.tjs runs:
+// steam_api.dll is always in the game folder; steam.tjs is either a file or inside
+// a steam*.xp3 that the game's startup.tjs mounts later.
+static bool HasFileInGameDir(const char* name) {
+    DIR* d = opendir(kk4s::GameDir().c_str());
+    if (!d) return false;
+    bool found = false;
+    while (struct dirent* e = readdir(d)) {
+        if (Lower(e->d_name) == name) { found = true; break; }
+    }
+    closedir(d);
+    return found;
+}
+
+static bool HasProgramArgument(const tjs_char* prefix) {
+    for (const ttstr& a : ::TVPProgramArguments)
+        if (a.StartsWith(prefix)) return true;
+    return false;
+}
+
+static void DetectSteamBuild() {
+    // KiriKiri Z's startup.tjs: debugWindowEnabled = -debugwin != "no" ?
+    // inXP3archivePacked : convertMode. Release exes pass "-debugwin=no"
+    // (otherwise a packaged game, which is packed, gets the developer log
+    // window - a native Win32 dialog we cannot show, and games die when their
+    // error path opens it). kk4s is the player, so default it off; a developer
+    // can still pass KK4S_ARGS=-debugwin=yes.
+    if (!HasProgramArgument(TJS_W("-debugwin"))) {
+        ::TVPProgramArguments.push_back(ttstr(TJS_W("-debugwin=no")));
+        kk4s::Log("compat: added -debugwin=no (release mode, no developer log window)");
+    }
+
+    // Steam builds are started with "-steam=yes" by their Windows loader (the exe or
+    // PackinOne). custom.tjs then loads steam.tjs, which hooks KAG's [実績] (achievement)
+    // macro; without the argument the macro calls kag.errorCmd and is a fatal error
+    // (ATRI). Detect the Steam build from its own files, before startup.tjs runs:
+    // steam_api.dll is always in the game folder; steam.tjs is either a file or inside
+    // a steam*.xp3 that the game's startup.tjs mounts later.
+    // Plain files in the game folder (not storages: DLLs are not exposed there,
+    // and steam.xp3 itself is an archive file).
+    if (!HasFileInGameDir("steam_api.dll")) return;
+    if (!HasFileInGameDir("steam.tjs") && !HasFileInGameDir("steam.xp3")) return;
+    if (HasProgramArgument(TJS_W("-steam"))) return; // already given (KK4S_ARGS or the command line)
+    ::TVPProgramArguments.push_back(ttstr(TJS_W("-steam=yes")));
+    kk4s::Log("compat: Steam build (steam_api.dll + steam.tjs/steam.xp3): added -steam=yes");
+}
+
 void BeforeStartup() {
     g_main_thread = std::this_thread::get_id();
+    ResetPluginLinks(); // new game: its TJS globals are new, link built-ins again
     RegisterFonts();
     RegisterStoragesExtensions();
     ApplyExeOptions();
+    DetectSteamBuild();
     InstallScriptsCompat(); // Scripts.foreach/getObjectKeys/clone when the engine lacks them
     if (!RunGameScript("xp3filter.tjs")) {
         // A .tpm plugin decrypts the archives on Windows; kk4s cannot run it yet.
@@ -549,11 +603,14 @@ void AfterStartup() {
             kk4s::Log("compat: KAG tag trace level %d", atoi(trace));
             // also log what KAG reports through errorCmd/errorLine (the game then tries to open
             // a Windows log window and the text is lost)
+            // kag.errorCmd may be a function or a callable Property object (Steam
+            // builds wrap it in steam.tjs); both are "Object", only functions have
+            // apply(), so call the Property directly in kag's context.
             TVPExecuteScript(TJS_W(
                 "if(typeof kag != \"undefined\" && typeof global.__kk4s_ec == \"undefined\") {"
                 " global.__kk4s_ec = kag.errorCmd; global.__kk4s_el = kag.errorLine;"
-                " if(typeof global.__kk4s_ec == \"Object\") kag.errorCmd = function(a, b, c) { Debug.message(\"kag errorCmd: [\" + a + \"] [\" + b + \"] [\" + c + \"]\"); return global.__kk4s_ec.apply(kag, [a, b, c]); };"
-                " if(typeof global.__kk4s_el == \"Object\") kag.errorLine = function(a, b, c) { Debug.message(\"kag errorLine: [\" + a + \"] [\" + b + \"] [\" + c + \"]\"); return global.__kk4s_el.apply(kag, [a, b, c]); };"
+                " if(typeof global.__kk4s_ec == \"Object\") kag.errorCmd = function(a, b, c) { Debug.message(\"kag errorCmd: [\" + a + \"] [\" + b + \"] [\" + c + \"]\"); return typeof global.__kk4s_ec.apply == \"Object\" ? global.__kk4s_ec.apply(kag, [a, b, c]) : (global.__kk4s_ec incontextof kag)(a, b, c); };"
+                " if(typeof global.__kk4s_el == \"Object\") kag.errorLine = function(a, b, c) { Debug.message(\"kag errorLine: [\" + a + \"] [\" + b + \"] [\" + c + \"]\"); return typeof global.__kk4s_el.apply == \"Object\" ? global.__kk4s_el.apply(kag, [a, b, c]) : (global.__kk4s_el incontextof kag)(a, b, c); };"
                 "}"));
         } catch (...) {
             kk4s::Log("compat: KK4S_KAG_TRACE: no kag.conductor in this game");

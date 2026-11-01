@@ -25,6 +25,15 @@
 namespace TJS
 {
 //---------------------------------------------------------------------------
+// kk4s: KK4S_DUMP_BYTECODE=<part of a script name> also dumps source scripts
+// (KAGLayer.tjs and other text scripts are not loaded as bytecode).
+static bool kk4sShouldDumpScript(const tjs_char *name)
+{
+	static const char *dumpname = getenv("KK4S_DUMP_BYTECODE");
+	if(!dumpname || !name) return false;
+	return ttstr(name).AsNarrowStdString().find(dumpname) != std::string::npos;
+}
+//---------------------------------------------------------------------------
 // tTJSScriptCache - a class to cache script blocks
 //---------------------------------------------------------------------------
 tTJSScriptCache::tTJSScriptCache(tTJS *owner)
@@ -48,6 +57,7 @@ void tTJSScriptCache::ExecScript(const tjs_char *script, tTJSVariant *result,
 	{
 		if(name) blk->SetName(name, lineofs);
 		blk->SetText(result, script, context, false);
+		if(kk4sShouldDumpScript(name)) blk->Dump(); // kk4s
 	}
 	catch(...)
 	{
@@ -69,6 +79,7 @@ void tTJSScriptCache::ExecScript(const ttstr &script, tTJSVariant *result,
 	{
 		if(name) blk->SetName(name->c_str(), lineofs);
 		blk->SetText(result, script.c_str(), context, false);
+		if(name && kk4sShouldDumpScript(name->c_str())) blk->Dump(); // kk4s
 	}
 	catch(...)
 	{

@@ -112,13 +112,13 @@ remaining manual step for "folder → play" on Switch.
   names (`psb://`, `var://`) that were turned into file paths, the temp directory
   (`sdmc:/tmp` -> `<data>/tmp`), `[emb escape=false]` and the `taglist` element field of
   `KAGParserEx.dll` (emulated in the built-in KAG parser, only for games that link that plugin).
-- **Next blocker:** after the warning page the game calls the macro `[実績 name=開始]`, which does
-  `kag.errorCmd("実績:開始")` on purpose: `steam.tjs` (with `krkrsteam.dll`) overrides `errorCmd` to turn
-  these into Steam achievements. Without that override it is a fatal error. `steam.tjs` is run by the
-  game's real `startup.tjs`, which kk4s replaces with a KiriKiri Z shim (the real one is obfuscated
-  bytecode the loader cannot read), so the Steam chain never starts. Options: (a) a `krkrsteam.dll`
-  compat stub plus running `steam.tjs` from the shim when the game has it; (b) make the bytecode
-  loader read the obfuscated `startup.tjs` (object code words XOR 0x61), the generic fix.
+- **Steam chain (fixed 2026-11-01):** kk4s now detects the Steam build (`steam_api.dll` +
+  `steam.tjs`/`steam.xp3` in the folder), passes `-steam=yes` and `-debugwin=no` (release semantics)
+  and provides `krkrsteam.dll` (a `Steam` object; achievements logged, cloud off). `steam.tjs` then
+  installs its `[実績]` handling and the game no longer dies there.
+- **It now reaches the title screen** (`title.ks`) from the original folder, with the Russian menu
+  rendered. The remaining pieces are the real `textrender.dll` (currently a no-op stub) and the other
+  KAGZ plugins (`layerEx*`, `AlphaMovie`, ...). Details in `docs/handoff-native-cx.md`.
 
 ## FSN regression check (2026-11-01)
 

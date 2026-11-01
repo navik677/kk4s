@@ -14,19 +14,49 @@ Tsukihime Russian must keep working; compare against `main` (`4d767de`/`0576d4e`
 `ResolveProjectDir`, the global XP3 mount order, or mount all `*.xp3` for all games. `main` is not
 to be modified. The user writes Ukrainian; keep answers short, outcome first.
 
-## State (desktop build, original ATRI folder)
+## State (desktop build, original ATRI folder) - updated 2026-11-01 21:40
 
-- Cx (CXDEC) archives decrypt natively; scheme verified per archive (see `docs/cxdec.md`).
-- The game **renders its first screens** (logo, WARNING page with `.pimg` image and text).
-- It then dies on `[実績 name=開始]`: that macro calls `kag.errorCmd("実績:開始")` on purpose; **`steam.tjs`
-  (with `krkrsteam.dll`) overrides `kag.errorCmd`** to turn these calls into achievements. Without it
-  the call is a fatal error ("致命的なエラー", then the game tries to open a Windows log window).
-- Last verified: FSN desktop log identical to `main` after all changes (0 exceptions).
-- **Switch**: the NRO on the SD card is an *older* build (`174792f`, 19:28): it has the Cx decoder,
-  win32dialog, Scripts.foreach etc., but NOT psbfile/media fixes/KAGParserEx/equalStruct. A local Switch
-  build of an earlier state compiled fine. The user tested ATRI on Switch: decrypts, reaches
-  `title.ks`, black screen (same as desktop at that time). FSN/Tsukihime on Switch with the newest code
-  are **not tested**.
+**ATRI now reaches its title screen from the original repack folder** (no extraction): CXDEC decrypts
+every archive, the Steam chain runs, achievements are logged, and `title.ks` renders with the Russian
+translation ("АТРИ - Мои дорогие воспоминания -", menu ПРОДОЛЖИТЬ/НАЧАТЬ/ЗАГРУЗКА/...). Verified with a
+whole-screen capture (`out-desktop/atri-title-screen.png`).
+
+What made it pass the old blockers (all in this commit):
+
+- **Steam build detection**: `compat/kk4s_compat.cpp` `DetectSteamBuild()` adds `-steam=yes` when
+  `steam_api.dll` + `steam.tjs`/`steam.xp3` are in the game folder (checked on disk, not as storages:
+  DLLs are never exposed there). Without it `custom.tjs` never loads `steam.tjs` and `[実績]` is fatal.
+- **`-debugwin=no` by default**: KiriKiri Z's startup does
+  `debugWindowEnabled = -debugwin != "no" ? inXP3archivePacked : convertMode`; a release exe passes
+  `-debugwin=no`. Without it a packed game enables the developer log window (native Win32 dialog) and
+  every `kag.errorCmd` dies in it. A developer can still use `KK4S_ARGS=-debugwin=yes`.
+- **`krkrsteam.dll` built-in** (`compat/kk4s_plugins.cpp`): a `Steam` object with
+  `setAchievement`/`clearAchievement`/`getAchievement` (logged only), `hookScreenshots`,
+  `hookBroadcasting`, `isBroadcasting`, `cloudEnabled=false`, `cloudFileCount=0`,
+  `getCloudFileInfo`/`deleteCloudFile`/`copyCloudFile`. `steam.tjs` only needs `typeof Steam` to
+  exist and `cloudEnabled` to be false; `steam_r18hack.tjs` calls the hook methods.
+- **win32dialog stub**: `WIN32Dialog.Header`/`Items` must be **classes with `store()`** (not dictionaries),
+  plus `makeTemplate`, static `left/top/width/height`, `setPos`/`setSize`/`maximize`/`restoreMaximize`
+  for KAGZ's modeless wrapper. (Static members on the base class are visible on the derived class:
+  verified. A class declared inside `if (...) {}` is block-scoped in TJS2 - keep it top level.)
+- **`PSBFile` constructor takes the storage**: KAGZ's `storagedata.tjs` uses `new PSBFile(name)` and
+  reads `.root` immediately. `ncbind` constructors have a fixed argc, so the class now uses a factory
+  that accepts 0 or 1 argument (`engine/source/plugins/psbfile.cpp`).
+- **PSB `null` -> TJS void** (not a null object): `world.tjs updateProperty` treats `== void` as
+  "no value" and otherwise indexes the value; a null object crashed `restore()` ("Accessing to null
+  object"). This one change took the game from `start.ks` to `title.ks`.
+- **`textrender.dll` built-in**: KAGZ `system/textrender.tjs` declares `class TextRender extends
+  TextRenderBase`; without the class the script fails to load. The stub provides the class and its
+  methods with no-op drawing (text/effects will be incomplete until the real renderer is ported).
+
+Next blocks after the title (in order seen so far): the real text renderer (currently no-op), then the
+scenario/`layerEx*`/`AlphaMovie` plugins as they are used. `k2compat.tjs makeDummyProperty` throws
+"Invalid object context" twice at startup (game-side, non-fatal; same on `main`).
+
+- Last verified: FSN on the desktop build still starts in Russian (Рус-moon logo + `TitleMenu.ks`,
+  `project dir: .../data.xp3>`, 0 script exceptions).
+- **Switch**: the NRO on the SD card is an older build; nothing from this session has been uploaded or
+  tested on hardware yet. Build `out/kk4s.nro` and test before merging.
 
 ## Key discovery of the last session (do this first)
 
@@ -159,10 +189,29 @@ normally, then `@fadein file=A23e time=200 rule=円形(中から外へ) vague=64
 `(exception) The object is already invalidated` in `kaglayer.tjs(87) onTransitionCompleted`, then
 `Script exception raised`. The log then stops (no `shutdown`), so the game is stuck, not crashed.
 
-Suspicion (not verified): a transition's completion callback fires for a layer that was already
-invalidated (cleared or removed by the scene change while the fade was running). The engine's
-transition/event path delivers the callback after `Invalidate` and the TJS exception escapes into the
-event loop, which does not return. Check in this order:
+What the log actually shows (checked 2026-11-01 21:00):
+
+- The user had just used **FlowTrackerPlugin's "skip to next scene"** link (`*skip_to_next`,
+  `@playstop time=200`, `@sestop`, `@cm`) and the game jumped from `...-11.ks` through `???????.ks`
+  into `...-14.ks`. The crash comes 3 s into the new scene, right after the first `@fadein A23e`.
+- The dump is not about the layer's `this`: the failing instruction is the **first statement of
+  `onTransitionCompleted`**, `super.onTransitionCompleted(...)`, which compiles to `global %1;
+  gpd %2, %1.Layer`. Register `%1` is the TJS **global object** and `PropGet` on it returns
+  `TJS_E_INVALIDOBJECT` - the global object itself is invalidated at that moment (not the layer,
+  not the source). So KAG's handler never runs, the conductor keeps waiting for the transition and
+  the game is stuck.
+- PC reproduction with the same SD save did not reach it: the bookmark (`data316.bmp`, identical
+  hash on the Switch and the PC) loads and the PC build plays a different branch (FlowTracker links
+  and timings differ). It is timing/scene-jump dependent, so far Switch only.
+
+New in this build: the exception dump now prints which register holds an invalid object and whether
+it is the TJS global (`tjs: invalid object in register %N: 0x... (the TJS global object)`); it also
+names the exact register for `kaglayer.tjs`. Replay the same scene on the new NRO and send the log -
+that will confirm the global-object theory on hardware.
+
+Suspicion (not verified): jumping to another scene while transitions/`@playstop` are running leaves a
+transition completion event that is delivered after something invalidated the script context (the
+global object), instead of being dropped. Check in this order:
 1. Does the same happen on `main` (4d767de) for the same scene? If not, the cause is in our changes
    (candidates: `Scripts.foreach` returning values, the `[emb]` escape change, `taglist`), so bisect
    those commits on the PC with `KK4S_KAG_TRACE`.

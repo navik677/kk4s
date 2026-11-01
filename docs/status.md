@@ -112,15 +112,14 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
 - Some plugin replacements are approximations or stubs (extrans transitions fall back to crossfade,
   `firespark` / lens effects missing).
 - `.tpm` decryption plugins (e.g. `cxdec.tpm`) are not run: encrypted games need an `xp3filter.tjs`.
-- Steam/PackinOne repacks (tested with ATRI) do not start from the repack folder: names are hidden in
-  `hnfn` chunks and contents are XOR-encrypted. The repack can be extracted once on a PC with its
-  own `version.dll` (KirikiriTools) plus a name-list script; the resulting plain folder runs in kk4s
-  (confirmed in the PC viewer). Native support for the original folder is WIP on branch
-  `wip/packinone-native`: names, magic XOR and the KZ startup shim work; the content cipher is a
-  CXDEC keystream (keys change mid-file), so the CXDEC filter and its control block/keys from the
-  game EXE/DLL are still missing. See [repacks.md](repacks.md) and
-  [packinone-native.md](packinone-native.md). `System.addFont` (KiriKiri Z) was added for the KAGZ
-  startup.
+- Steam/PackinOne repacks (tested with ATRI): **native support now reaches the game's title screen
+  from the original repack folder** - no extraction. `hnfn` names + the CXDEC content filter decrypt
+  the archives; a Steam build is detected from `steam_api.dll` + `steam.tjs`/`steam.xp3` and gets
+  `-steam=yes` + `-debugwin=no`; a `krkrsteam.dll` stub provides the `Steam` object (achievements
+  logged, cloud off). `textrender.dll` is a no-op stub, so text/effects are incomplete and the
+  scenario after the title is not fully playable yet. The one-time extraction path still works too
+  (see [repacks.md](repacks.md)); implementation notes in [cxdec.md](cxdec.md) and
+  [handoff-native-cx.md](handoff-native-cx.md).
 - The game picture is stretched to the whole screen (no aspect-correct scaling / letterbox yet).
 - Overlay folder and per-game profiles (M2/M3) are not implemented.
 - Album (applet) mode memory limits not tested; docked ↔ handheld switching not tested.

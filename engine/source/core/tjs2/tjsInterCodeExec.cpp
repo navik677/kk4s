@@ -1001,6 +1001,26 @@ void tTJSInterCodeContext::DisplayExceptionGeneratedCode(tjs_int codepos,
 		tjs->OutputToConsole(line.c_str());
 	}
 
+	// kk4s: name the invalidated object(s) in the registers. "The object is
+	// already invalidated" alone does not say which object it was; this made
+	// an event-handler crash undiagnosable on the Switch.
+	{
+		iTJSDispatch2 *global = tjs->GetGlobalNoAddRef();
+		for(tjs_int i = 0; i < ra_count; i ++)
+		{
+			if(ra_start[i].Type() != tvtObject) continue;
+			iTJSDispatch2 *obj = ra_start[i].AsObjectNoAddRef();
+			if(!obj) continue;
+			if(obj->IsValid(0, NULL, NULL, obj) == TJS_S_TRUE) continue;
+			tjs_char buf[256];
+			TJS_snprintf(buf, sizeof(buf)/sizeof(tjs_char),
+				TJS_W("tjs: invalid object in register %%%d: 0x%p (%s)"),
+				(int)(i - (MaxVariableCount + VariableReserveCount)), (void*)obj,
+				obj == global ? TJS_W("the TJS global object") : TJS_W("not the global object"));
+			tjs->OutputToConsole(buf);
+		}
+	}
+
 	tjs->OutputToConsoleSeparator(TJS_W("-"), info_len);
 }
 //---------------------------------------------------------------------------

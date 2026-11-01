@@ -348,6 +348,130 @@ static void LinkPDll() {
 }
 
 // ---------------------------------------------------------------------------
+// krkrsteam.dll - the "Steam" object for Steam builds (ATRI and others)
+//
+// steam.tjs links this DLL and turns KAG's [実績 name=...] (achievement) calls
+// into Steam calls through a global "Steam" object. Without the object the
+// game itself calls kag.errorCmd("実績:...") and dies (ATRI). We have no Steam
+// client, so achievements are only logged and cloud files are off; that is
+// enough for the game to run. Keep the members steam.tjs touches: it checks
+// typeof Steam != 'undefined' and Steam.cloudEnabled, and uses setAchievement,
+// clearAchievement, achievementsCount and the cloud* methods.
+static void LinkKrrkSteamDll() {
+    iTJSDispatch2* g = Global();
+    tTJSVariant existing;
+    if (TJS_SUCCEEDED(g->PropGet(0, TJS_W("Steam"), nullptr, &existing, g)) && existing.Type() != tvtVoid)
+        return; // a real Steam plugin is already there
+
+    iTJSDispatch2* steam = TJSCreateCustomObject();
+
+    auto prop = [steam](const tjs_char* name, const tTJSVariant& v) {
+        steam->PropSet(TJS_MEMBERENSURE, name, nullptr, &v, steam);
+    };
+    tTJSVariant zero((tjs_int)0);
+    prop(TJS_W("cloudEnabled"), zero); // no Steam Cloud: steam.tjs hides its cloud menu
+    prop(TJS_W("cloudFileCount"), zero);
+    prop(TJS_W("achievementsCount"), zero);
+
+    DefineFunction(steam, TJS_W("setAchievement"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
+        std::string name = n >= 1 ? Utf8(ttstr(*p[0])) : std::string();
+        kk4s::Log("steam: achievement '%s' (logged only, no Steam client)", name.c_str());
+        if (r) *r = (tjs_int)1;
+        return TJS_S_OK;
+    });
+    DefineFunction(steam, TJS_W("clearAchievement"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
+        std::string name = n >= 1 ? Utf8(ttstr(*p[0])) : std::string();
+        kk4s::Log("steam: clear achievement '%s'", name.c_str());
+        if (r) *r = (tjs_int)1;
+        return TJS_S_OK;
+    });
+    DefineFunction(steam, TJS_W("getAchievement"), [](tTJSVariant* r, tjs_int, tTJSVariant**) -> tjs_error {
+        if (r) *r = (tjs_int)0;
+        return TJS_S_OK;
+    });
+    // steam_r18hack.tjs (shipped in some Steam builds) hides screenshots and
+    // broadcasting; there is no Steam client, so nothing to hook.
+    DefineFunction(steam, TJS_W("hookScreenshots"), [](tTJSVariant* r, tjs_int, tTJSVariant**) -> tjs_error {
+        if (r) *r = (tjs_int)1;
+        return TJS_S_OK;
+    });
+    DefineFunction(steam, TJS_W("hookBroadcasting"), [](tTJSVariant* r, tjs_int, tTJSVariant**) -> tjs_error {
+        if (r) *r = (tjs_int)1;
+        return TJS_S_OK;
+    });
+    DefineFunction(steam, TJS_W("isBroadcasting"), [](tTJSVariant* r, tjs_int, tTJSVariant**) -> tjs_error {
+        if (r) *r = (tjs_int)0;
+        return TJS_S_OK;
+    });
+    // Cloud files: no Steam client, so there are none.
+    DefineFunction(steam, TJS_W("getCloudFileInfo"), [](tTJSVariant* r, tjs_int, tTJSVariant**) -> tjs_error {
+        if (r) r->Clear();
+        return TJS_S_OK;
+    });
+    DefineFunction(steam, TJS_W("deleteCloudFile"), [](tTJSVariant* r, tjs_int, tTJSVariant**) -> tjs_error {
+        if (r) *r = (tjs_int)0;
+        return TJS_S_OK;
+    });
+    DefineFunction(steam, TJS_W("copyCloudFile"), [](tTJSVariant* r, tjs_int, tTJSVariant**) -> tjs_error {
+        if (r) *r = (tjs_int)0;
+        return TJS_S_OK;
+    });
+
+    tTJSVariant sv(steam, steam);
+    steam->Release();
+    g->PropSet(TJS_MEMBERENSURE, TJS_W("Steam"), nullptr, &sv, g);
+    kk4s::Log("compat: Steam object registered (achievements logged, no cloud)");
+}
+
+// ---------------------------------------------------------------------------
+// textrender.dll - KiriKiri Z's text renderer
+//
+// KAGZ's system/textrender.tjs defines "class TextRender extends TextRenderBase"
+// and does most of the work itself (layout, links, ruby, layers); TextRenderBase
+// is only the native low-level part. Without the class the script fails to load
+// and the game stops at start.ks. Provide the class with no-op drawing for now:
+// the game runs, text effects may be missing until the real drawing is ported.
+static void LinkTextRenderDll() {
+    // Note: a class declared inside "if (...) { }" is block-scoped in TJS2 and
+    // its static members are not visible outside, so define it at top level.
+    RunTjsShim("textrender.dll", TJS_W(R"TJS(
+    class TextRenderBase {
+        function TextRenderBase(owner) {}
+        function finalize() {}
+        function setDefault(options) {}
+        function setOption(name, value) {}
+        function setFont(face, size, bold, italic, vertical, angle) {}
+        function setBase(base) {}
+        function onEval(text) { return text; }
+        function onLabel(text) { return text; }
+        function getDelayLabelTime(text) { return 0; }
+        function onFontChange() {}
+        function onGetTextWidth(text) { return 0; }
+        function getTextWidth(text) { return 0; }
+        function onGetGraphSize(name) { return void; }
+        function getGraphLayer(name) { return void; }
+        function setRenderSize(width, height) {}
+        function getRenderWidth() { return 0; }
+        function getRenderHeight() { return 0; }
+        function drawAll(target) { return 0; }
+        // The wrapper calls TextRenderBase.render() as a static (class member).
+        function getTextColor() { return 0xFFFFFFFF; }
+        function getLinkRects() { return []; }
+        function isLinkContains(x, y) { return false; }
+        function getLinkOfPosition(x, y) { return void; }
+        function clear() {}
+        function clearLinkColor() {}
+        function setLinkColor(color) {}
+        function drawText(layer, x, y) { return 0; }
+        function internalDrawText(layer, x, y) { return 0; }
+        function drawCh(layer, x, y, ch) { return 0; }
+    }
+    TextRenderBase.render = function(text, mode, a, b, c) { return 0; };
+    TextRenderBase.drawAllMode = 0;
+)TJS"));
+}
+
+// ---------------------------------------------------------------------------
 // registry
 
 // compat/kk4s_layerfx.cpp
@@ -373,6 +497,8 @@ static const PluginEntry kPlugins[] = {
     {"kagparserex.dll", LinkKAGParserExDll},
     {"fstat.dll", LinkFstatDll},
     {"p.dll", LinkPDll},
+    {"krkrsteam.dll", LinkKrrkSteamDll},
+    {"textrender.dll", LinkTextRenderDll},
     {"filter.dll", LinkFilterDll},
     {"drawer.dll", LinkDrawerDll},
     {"slideopen.dll", LinkSlideOpenDll},
@@ -384,13 +510,19 @@ static const PluginEntry kPlugins[] = {
     {"extrans.dll", ProvidedByEngine},
 };
 
+// One link per game: a plugin registered twice would overwrite globals. This
+// must be cleared for every new game (the TJS engine and its globals are new,
+// but this file stays loaded when the player returns to the launcher).
+static std::set<std::string> g_linked_plugins;
+
+void ResetPluginLinks() { g_linked_plugins.clear(); }
+
 bool LinkBuiltinPlugin(const ttstr& name) {
     std::string n = Utf8(TVPExtractStorageName(name));
     for (char& c : n) c = (char)tolower((unsigned char)c);
     for (const PluginEntry& e : kPlugins) {
         if (n == e.dll) {
-            static std::set<std::string> linked;
-            if (linked.insert(n).second) {
+            if (g_linked_plugins.insert(n).second) {
                 e.link();
                 kk4s::Log("compat: plugin %s -> kk4s built-in", n.c_str());
             }

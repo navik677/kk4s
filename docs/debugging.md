@@ -70,8 +70,12 @@ relative.
 - The log now contains the message of every script exception, as `(exception) <message>`, before
   the VM dump (game-side handlers otherwise hide it).
 - `KK4S_DUMP_BYTECODE=<part of a script name>` prints the engine's own disassembly of every
-  TJS2 bytecode script whose name contains that text (accurate; `tools/tjsdis.py` is not for
-  function bodies). Use the name as the game loads it, e.g. `system.tjs`, `psdlayer.tjs`.
+  TJS2 script whose name contains that text (accurate; `tools/tjsdis.py` is not for function
+  bodies). Use the name as the game loads it, e.g. `system.tjs`, `psdlayer.tjs`; plain-source
+  scripts (e.g. `KAGLayer.tjs`, which is text, not bytecode) are dumped too.
+- An exception dump now names invalidated objects in the registers:
+  `tjs: invalid object in register %1: 0x... (the TJS global object)` / `(not the global object)`.
+  "The object is already invalidated" alone did not say which object it was (FSN's Switch hang).
 - `KK4S_KAG_TRACE=1|2` sets `kag.conductor.debugLevel` once after startup (a game may reset it,
   ATRI does in `first.ks`). For state at a given moment use `KK4S_INPUT_SCRIPT` with `eval`, e.g.
   `25000 eval kag.conductor.curStorage + " line " + kag.conductor.curLine`.

@@ -34,6 +34,9 @@ void AfterExecuteStorage(const ttstr& shortname);
 // Returns false if kk4s has none (compat/kk4s_plugins.cpp).
 bool LinkBuiltinPlugin(const ttstr& name);
 
+// Forget which built-ins were linked (a new game gets a new TJS engine).
+void ResetPluginLinks();
+
 // Plugins.link() for a DLL kk4s has no built-in replacement for.
 void ReportMissingPlugin(const ttstr& name);
 

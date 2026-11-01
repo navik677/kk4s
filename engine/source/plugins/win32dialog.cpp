@@ -74,13 +74,32 @@ static void InitPlugin_WIN32Dialog()
 		TJS_W("	function open() {return 2;}") // IDCANCEL
 		TJS_W("	function close() {}")
 		TJS_W("	function initCommonControlsEx() {return true;}")
+		// kk4s: WIN32DialogEX.store() builds a DLGTEMPLATE from these two; the real
+		// DLL returns a binary string. No dialog is ever shown here (open() above
+		// cancels), so an empty template is enough - but they must be classes with
+		// store(), not dictionaries (KAGZ's log window calls new WIN32Dialog.Header()).
+		TJS_W("	function makeTemplate(header, items) {return \"\";}")
 		TJS_W("	function getBaseUnits() {")
 		TJS_W("		var a = [6, 13]; a.h = a.x = a.cx = a.w = a.width = 6; a.v = a.y = a.cy = a.height = 13; return a;")
 		TJS_W("	}")
 		TJS_W("}")
+		TJS_W("class WIN32DialogHeader { function store(item) {} }")
+		TJS_W("class WIN32DialogItems { function store(item) {} }")
 		// Static members live on the class object itself (WIN32Dialog.Header).
-		TJS_W("WIN32Dialog.Header = %[];")
-		TJS_W("WIN32Dialog.Items = [];"));
+		// KAGZ's modeless wrapper (k2compat_modeless.tjs) reads the last dialog
+		// geometry as WIN32DialogEX.left/top/width/height, which resolves to the
+		// base class' static members: the class inherits them (TJS class
+		// property lookup follows the base class).
+		TJS_W("WIN32Dialog.Header = WIN32DialogHeader;")
+		TJS_W("WIN32Dialog.Items = WIN32DialogItems;")
+		TJS_W("WIN32Dialog.left = 0; WIN32Dialog.top = 0;")
+		TJS_W("WIN32Dialog.width = 0; WIN32Dialog.height = 0;")
+		// k2compat_modeless.tjs calls these on the class (no window is created).
+		// Note the ';': the lines above are concatenated into one script.
+		TJS_W("WIN32Dialog.setPos = function(x, y) { WIN32Dialog.left = x; WIN32Dialog.top = y; };")
+		TJS_W("WIN32Dialog.setSize = function(w, h) { WIN32Dialog.width = w; WIN32Dialog.height = h; };")
+		TJS_W("WIN32Dialog.maximize = function() { };")
+		TJS_W("WIN32Dialog.restoreMaximize = function() { };"));
 	for(size_t i = 0; i < sizeof(kConsts) / sizeof(kConsts[0]); i++)
 	{
 		std::string line = std::string("WIN32Dialog.") + kConsts[i].name + " = " +

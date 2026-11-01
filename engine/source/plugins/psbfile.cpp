@@ -41,7 +41,10 @@ public:
     tTJSVariant result;
 
     void Undefined() override { Put(tTJSVariant()); }
-    void Null() override { Put(tTJSVariant((iTJSDispatch2*)nullptr, (iTJSDispatch2*)nullptr)); }
+    // kk4s: PSB null becomes void. KAGZ's world.tjs treats "value == void" as
+    // "no value" and otherwise indexes the value; a TJS null object is not void
+    // and made restore() crash in updateProperty ("Accessing to null object").
+    void Null() override { Put(tTJSVariant()); }
     void Bool(bool v) override { Put(tTJSVariant((tTVInteger)(v ? 1 : 0))); }
     void Int(int64_t v) override { Put(tTJSVariant((tTVInteger)v)); }
     void Double(double v) override { Put(tTJSVariant((tTVReal)v)); }
@@ -233,8 +236,24 @@ private:
     tTJSVariant root_;
 };
 
+// kk4s: KAGZ's storagedata.tjs uses "new PSBFile(storage)" and reads .root
+// immediately; other code may use "new PSBFile()" + load(). A normal ncbind
+// constructor has a fixed argument count, so use a factory that accepts both.
+static tjs_error TJS_INTF_METHOD PSBFileCreate(PSBFile** result, tjs_int numparams, tTJSVariant** param,
+                                              iTJSDispatch2* objthis) {
+    PSBFile* file = new PSBFile();
+    try {
+        if (numparams >= 1 && param[0] && param[0]->Type() != tvtVoid) file->load(ttstr(*param[0]));
+    } catch (...) {
+        delete file;
+        throw;
+    }
+    *result = file;
+    return TJS_S_OK;
+}
+
 NCB_REGISTER_CLASS(PSBFile) {
-    NCB_CONSTRUCTOR(());
+    Factory(PSBFileCreate);
     NCB_METHOD(load);
     NCB_PROPERTY_RO(root, getRoot);
     NCB_METHOD(clearStorageCache);
