@@ -581,7 +581,18 @@ void TVPExecuteStartupScript()
 		{
 			kk4s::compat::BeforeStartup(); // kk4s: xp3filter.tjs etc.
 			TVPAddLog( TVPInfoLoadingStartupScript + TVPStartupScriptName );
-			TVPExecuteStorage(TVPStartupScriptName);
+			const tjs_char* kk4s_shim = kk4s::compat::StartupScriptShim(); // kk4s
+			if(kk4s_shim)
+			{
+				// kk4s: hashed-name (PackinOne) repack: the real startup.tjs is an
+				// obfuscated bytecode object; use the standard KiriKiri Z start.
+				TVPAddLog( TJS_W("(info) protected repack: running the KiriKiri Z startup shim") );
+				TVPExecuteScript(ttstr(kk4s_shim));
+			}
+			else
+			{
+				TVPExecuteStorage(TVPStartupScriptName);
+			}
 			TVPAddLog( (const tjs_char*)TVPInfoStartupScriptEnded );
 			kk4s::compat::AfterStartup(); // kk4s
 		}

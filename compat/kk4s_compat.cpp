@@ -495,6 +495,22 @@ void BeforeStartup() {
     }
 }
 
+const tjs_char* StartupScriptShim() {
+    // kk4s: hashed-name XP3 (PackinOne) repacks hide the real startup.tjs in an
+    // obfuscated bytecode object; execute the standard KiriKiri Z start instead.
+    // Only for folders that carry the repack markers and have that script.
+    if (kk4s::detail::DetectGameIssue(kk4s::GameDir()).empty()) return NULL;
+    if (!TVPIsExistentStorage(ttstr(TJS_W("system/Initialize.tjs")))) return NULL;
+    return TJS_W(
+        "global.kirikiriz = true;"
+        "global.debugWindowEnabled = false;"
+        "global.inXP3archivePacked = false;"
+        "global.convertMode = 0;"
+        "System.inform = function(m) { Debug.message(\"kk4s inform: \" + m); };"
+        "System.terminate = function(c) { Debug.message(\"kk4s: ignored System.terminate(\" + c + \")\"); };"
+        "Scripts.execStorage(\"system/Initialize.tjs\");");
+}
+
 void AfterExecuteStorage(const ttstr& shortname) {
     std::string n = Lower(ToUtf8(shortname));
     if (n == "override.tjs") {

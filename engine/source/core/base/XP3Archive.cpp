@@ -29,6 +29,7 @@
 #endif
 #endif
 #include <algorithm>
+#include <map>
 
 bool TVPAllowExtractProtectedStorage = true;
 
@@ -345,6 +346,7 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 {
 	Name = name;
 	Count = 0;
+	Kk4sMagicXor = false;
 
 	tjs_uint64 offset;
 
@@ -442,6 +444,38 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 			}
 
 
+			// kk4s: "hnfn" records carry the real file names for hashed-name
+			// archives (PackinOne). They sit at the top level of the index, in
+			// the same order as the File entries; the key is the File's adlr.
+			std::map<tjs_uint32, std::vector<ttstr> > hnfn_names;
+			{
+				tjs_uint ch_pos = 0;
+				while(ch_pos + 12 <= index_size)
+				{
+					tjs_uint32 tag = (tjs_uint32)ReadI32FromMem(indexdata + ch_pos);
+					tjs_uint64 ch_size = (tjs_uint64)ReadI64FromMem(indexdata + ch_pos + 4);
+					if(ch_size > index_size ||
+						ch_pos + 12 + (tjs_uint)ch_size > index_size)
+						break;
+					if(tag == 0x6e666e68) // 'hnfn'
+					{
+						Kk4sMagicXor = true;
+						if(ch_size >= 6)
+						{
+							tjs_uint32 key = (tjs_uint32)ReadI32FromMem(indexdata + ch_pos + 12);
+							tjs_int16 nl = ReadI16FromMem(indexdata + ch_pos + 16);
+							if(nl > 0 && (tjs_uint)(6 + 2 * nl) <= (tjs_uint)ch_size)
+							{
+								ttstr nm = TVPStringFromBMPUnicode(
+									(const tjs_uint16 *)(indexdata + ch_pos + 18), nl);
+								hnfn_names[key].push_back(nm);
+							}
+						}
+					}
+					ch_pos += 12 + (tjs_uint)ch_size;
+				}
+			}
+
 			// read index information from memory
 			tjs_uint ch_file_start = 0;
 			tjs_uint ch_file_size = index_size;
@@ -521,13 +555,36 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 				// read 'aldr' sub-chunk
 				item.FileHash = ReadI32FromMem(indexdata + ch_adlr_start);
 
+				// kk4s: use the real name from the "hnfn" table. Entries that
+				// have no name record are decoys/extra entries inserted by the
+				// protector (the fake startup.tjs): drop them.
+				bool kk4s_skip_item = false;
+				if(Kk4sMagicXor)
+				{
+					std::map<tjs_uint32, std::vector<ttstr> >::iterator hi =
+						hnfn_names.find(item.FileHash);
+					if(hi != hnfn_names.end() && !hi->second.empty())
+					{
+						item.Name = hi->second.front();
+						hi->second.erase(hi->second.begin());
+						NormalizeInArchiveStorageName(item.Name);
+					}
+					else
+					{
+						kk4s_skip_item = true;
+					}
+				}
+
 				// push information
-				ItemVector.push_back(item);
+				if(!kk4s_skip_item)
+				{
+					ItemVector.push_back(item);
+					Count++;
+				}
 
 				// to next file
 				ch_file_start += ch_file_size;
 				ch_file_size = index_size - ch_file_start;
-				Count++;
 			}
 
 			if(!(index_flag & TVP_XP3_INDEX_CONTINUE))
@@ -870,6 +927,13 @@ tTVPXP3ArchiveStream::tTVPXP3ArchiveStream(tTVPXP3Archive *owner,
 	Owner->AddRef(); // hook
 	Stream = stream;
 	OrgSize = orgsize;
+
+	Kk4sMagicXor = Owner->IsKk4sMagicXor();
+	Kk4sKeyKnown = false;
+	Kk4sK2Pending = false;
+	Kk4sK1 = Kk4sK2 = 0;
+	Kk4sMagic = NULL;
+	Kk4sMagicLen = 0;
 }
 //---------------------------------------------------------------------------
 tTVPXP3ArchiveStream::~tTVPXP3ArchiveStream()
@@ -1022,6 +1086,115 @@ tjs_uint64 TJS_INTF_METHOD tTVPXP3ArchiveStream::Seek(tjs_int64 offset, tjs_int 
 	return CurPos;
 }
 //---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// kk4s: hashed-name XP3 ("hnfn", PackinOne) contents are XORed per file with
+// one or two bytes: the first byte can use a different key than the rest. The
+// keys are not stored in the index; derive them from a known prefix of the
+// file format and verify the whole prefix. Unknown formats are left untouched.
+//---------------------------------------------------------------------------
+namespace {
+struct tKk4sMagic { const tjs_uint8* data; tjs_uint len; };
+
+static const tjs_uint8 kk4s_m_png[] = {0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a};
+static const tjs_uint8 kk4s_m_jpg[] = {0xff,0xd8,0xff};
+static const tjs_uint8 kk4s_m_ogg[] = {0x4f,0x67,0x67,0x53};
+static const tjs_uint8 kk4s_m_tlg[] = {'T','L','G','5','.','0',0,'r'};
+static const tjs_uint8 kk4s_m_tlg6[] = {'T','L','G','6','.','0',0,'r'};
+static const tjs_uint8 kk4s_m_tjs[] = {'T','J','S','2','1','0','0',0};
+static const tjs_uint8 kk4s_m_fe[] = {0xfe,0xfe,0x01,0xff,0xfe};
+static const tjs_uint8 kk4s_m_utf8[] = {0xef,0xbb,0xbf};
+static const tjs_uint8 kk4s_m_utf16[] = {0xff,0xfe};
+static const tjs_uint8 kk4s_m_slash[] = {'/','/'};
+static const tjs_uint8 kk4s_m_pbd[] = {'U','K','R','.','5'};
+static const tjs_uint8 kk4s_m_psb[] = {'P','S','B',0};
+static const tjs_uint8 kk4s_m_mdf[] = {'m','d','f',0};
+static const tjs_uint8 kk4s_m_amv[] = {'A','J','P','M'};
+static const tjs_uint8 kk4s_m_tft[] = {'T','V','P',' ','p','r','e','-'};
+static const tjs_uint8 kk4s_m_psd[] = {'8','B','P','S'};
+static const tjs_uint8 kk4s_m_wmv[] = {0x30,0x26,0xb2,0x75};
+static const tjs_uint8 kk4s_m_otf[] = {'O','T','T','O'};
+static const tjs_uint8 kk4s_m_ttf[] = {0x00,0x01,0x00,0x00};
+static const tjs_uint8 kk4s_m_riff[] = {'R','I','F','F'};
+
+static std::string Kk4sLowerExt(const ttstr& name)
+{
+	const tjs_char* s = name.c_str();
+	const tjs_char* dot = NULL;
+	for(const tjs_char* p = s; *p; p++)
+	{
+		if(*p == TJS_W('.')) dot = p;
+		else if(*p == TJS_W('/') || *p == TJS_W('\\')) dot = NULL;
+	}
+	std::string e;
+	if(dot)
+		for(const tjs_char* p = dot + 1; *p; p++)
+		{
+			if(*p >= TJS_W('A') && *p <= TJS_W('Z')) e += (char)(*p - TJS_W('A') + 'a');
+			else if(*p < 128) e += (char)*p;
+		}
+	return e;
+}
+
+static tjs_uint Kk4sMagicList(const std::string& e, tKk4sMagic* out)
+{
+	tjs_uint n = 0;
+#define KK4S_ADD(m) do { out[n].data = m; out[n].len = (tjs_uint)sizeof(m); n++; } while(0)
+	if(e == "png") KK4S_ADD(kk4s_m_png);
+	else if(e == "jpg" || e == "jpeg") KK4S_ADD(kk4s_m_jpg);
+	else if(e == "ogg" || e == "opus") KK4S_ADD(kk4s_m_ogg);
+	else if(e == "wav") KK4S_ADD(kk4s_m_riff);
+	else if(e == "tlg") { KK4S_ADD(kk4s_m_tlg); KK4S_ADD(kk4s_m_tlg6); }
+	else if(e == "tjs")
+	{
+		KK4S_ADD(kk4s_m_tjs); KK4S_ADD(kk4s_m_fe);
+		KK4S_ADD(kk4s_m_utf8); KK4S_ADD(kk4s_m_utf16);
+	}
+	else if(e == "ks" || e == "asd" || e == "func" || e == "ini" ||
+		e == "csv" || e == "txt")
+	{
+		KK4S_ADD(kk4s_m_fe); KK4S_ADD(kk4s_m_utf8); KK4S_ADD(kk4s_m_utf16);
+	}
+	else if(e == "pbd") KK4S_ADD(kk4s_m_pbd);
+	else if(e == "pimg" || e == "scn") { KK4S_ADD(kk4s_m_psb); KK4S_ADD(kk4s_m_mdf); }
+	else if(e == "amv") KK4S_ADD(kk4s_m_amv);
+	else if(e == "tft") KK4S_ADD(kk4s_m_tft);
+	else if(e == "psd") KK4S_ADD(kk4s_m_psd);
+	else if(e == "wmv") KK4S_ADD(kk4s_m_wmv);
+	else if(e == "otf") KK4S_ADD(kk4s_m_otf);
+	else if(e == "ttf") KK4S_ADD(kk4s_m_ttf);
+#undef KK4S_ADD
+	return n;
+}
+
+static bool Kk4sDeriveKey(const ttstr& name, const tjs_uint8* p, tjs_uint n,
+	tjs_uint8& k1, tjs_uint8& k2, bool& k2_known,
+	const tjs_uint8*& magic, tjs_uint& magic_len)
+{
+	tKk4sMagic list[5];
+	tjs_uint count = Kk4sMagicList(Kk4sLowerExt(name), list);
+	for(tjs_uint c = 0; c < count; c++)
+	{
+		const tjs_uint8* m = list[c].data;
+		tjs_uint ml = list[c].len;
+		if(n == 0 || ml == 0) continue;
+		tjs_uint8 a = p[0] ^ m[0];
+		tjs_uint8 b = n >= 2 ? (tjs_uint8)(p[1] ^ m[1]) : a;
+		bool ok = true;
+		for(tjs_uint i = 0; i < ml && i < n; i++)
+		{
+			if((tjs_uint8)(p[i] ^ (i == 0 ? a : b)) != m[i]) { ok = false; break; }
+		}
+		if(ok)
+		{
+			k1 = a; k2 = b; k2_known = n >= 2;
+			magic = m; magic_len = ml;
+			return true;
+		}
+	}
+	return false;
+}
+} // namespace
+//---------------------------------------------------------------------------
 tjs_uint TJS_INTF_METHOD tTVPXP3ArchiveStream::Read(void *buffer, tjs_uint read_size)
 {
 	EnsureSegment();
@@ -1058,6 +1231,65 @@ tjs_uint TJS_INTF_METHOD tTVPXP3ArchiveStream::Read(void *buffer, tjs_uint read_
 				one_size, Owner->GetFileHash(StorageIndex));
 			TVPXP3ArchiveExtractionFilter
 				( (tTVPXP3ExtractionFilterInfo*) &info );
+		}
+		else if(Kk4sMagicXor)
+		{
+			// kk4s: decrypt hashed-name XP3 contents (PackinOne) with keys
+			// derived from the file's magic. See Kk4sDeriveKey above.
+			tjs_uint8* p = (tjs_uint8*)buffer + write_size;
+			tjs_uint64 off = CurPos;
+			if(!Kk4sKeyKnown && off == 0)
+			{
+				bool k2_known = false;
+				if(Kk4sDeriveKey(Owner->GetName(StorageIndex), p, one_size,
+					Kk4sK1, Kk4sK2, k2_known, Kk4sMagic, Kk4sMagicLen))
+				{
+					Kk4sKeyKnown = true;
+					Kk4sK2Pending = !k2_known;
+					static int kk4s_xor_logs = 0;
+					if(kk4s_xor_logs < 30)
+					{
+						kk4s_xor_logs++;
+						kk4s::Log("compat: xor %s k1=%02x k2=%02x (%u bytes)",
+							Owner->GetName(StorageIndex).AsNarrowStdString().c_str(),
+							Kk4sK1, Kk4sK2, (unsigned)one_size);
+					}
+				}
+				else
+				{
+					static int kk4s_nomagic_logs = 0;
+					if(kk4s_nomagic_logs < 30)
+					{
+						kk4s_nomagic_logs++;
+						kk4s::Log("compat: xor no magic for %s (%02x %02x %02x %02x, %u bytes)",
+							Owner->GetName(StorageIndex).AsNarrowStdString().c_str(),
+							one_size > 0 ? p[0] : 0, one_size > 1 ? p[1] : 0,
+							one_size > 2 ? p[2] : 0, one_size > 3 ? p[3] : 0,
+							(unsigned)one_size);
+					}
+					// no known magic for this file: leave the bytes untouched
+					Kk4sMagicXor = false;
+				}
+			}
+			else if(!Kk4sKeyKnown)
+			{
+				Kk4sMagicXor = false;
+			}
+			else if(Kk4sK2Pending && off == 1 && Kk4sMagic && Kk4sMagicLen >= 2 && one_size >= 1)
+			{
+				// the first read was a single byte; derive the rest key now
+				Kk4sK2 = (tjs_uint8)(p[0] ^ Kk4sMagic[1]);
+				bool ok = true;
+				for(tjs_uint i = 1; i < Kk4sMagicLen && i < one_size; i++)
+					if((tjs_uint8)(p[i] ^ Kk4sK2) != Kk4sMagic[i]) { ok = false; break; }
+				if(ok) Kk4sK2Pending = false;
+				else Kk4sMagicXor = false;
+			}
+			if(Kk4sMagicXor)
+			{
+				for(tjs_uint i = 0; i < one_size; i++)
+					p[i] ^= (off + i) == 0 ? Kk4sK1 : Kk4sK2;
+			}
 		}
 
 		// adjust members

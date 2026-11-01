@@ -109,6 +109,11 @@ class tTVPXP3Archive : public tTVPArchive
 	tjs_int Count;
 
 	std::vector<tArchiveItem> ItemVector;
+
+	// kk4s: this archive uses "hnfn" name records and per-file XOR encryption
+	// (PackinOne / hashed-name XP3). The names are in ItemVector.Name; the
+	// contents are decrypted on read with keys guessed from the file magic.
+	bool Kk4sMagicXor;
 public:
 	tTVPXP3Archive(const ttstr & name);
 	~tTVPXP3Archive();
@@ -117,6 +122,8 @@ public:
 	const ttstr & GetName(tjs_uint idx) const { return ItemVector[idx].Name; }
 	tjs_uint32 GetFileHash(tjs_uint idx) const { return ItemVector[idx].FileHash; }
 	ttstr GetName(tjs_uint idx) { return ItemVector[idx].Name; }
+
+	bool IsKk4sMagicXor() const { return Kk4sMagicXor; }
 
 	const ttstr & GetName() const { return Name; }
 
@@ -163,6 +170,14 @@ class tTVPXP3ArchiveStream : public tTJSBinaryStream
 	tTVPSegmentData *SegmentData; // uncompressed segment data
 
 	bool SegmentOpened;
+
+	// kk4s: per-file XOR decryption for "hnfn" (PackinOne) archives.
+	bool Kk4sMagicXor;
+	bool Kk4sKeyKnown;
+	bool Kk4sK2Pending; // first read had only one byte, the rest key is not known yet
+	tjs_uint8 Kk4sK1, Kk4sK2;
+	const tjs_uint8* Kk4sMagic; // magic that matched (for the one-byte case)
+	tjs_uint Kk4sMagicLen;
 
 public:
 	tTVPXP3ArchiveStream(tTVPXP3Archive *owner, tjs_int storageindex,
