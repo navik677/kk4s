@@ -64,3 +64,16 @@ the Switch pad (`sdl2/stubs.cpp`, `kk4sScriptTick`): lines `<ms> pad A [hold_ms]
 (0..1), `<ms> shot name.bmp` (to `$KK4S_ROOT/shots/`), `<ms> eval <TJS expression>` (result in the
 log, e.g. `kag.mainConductor.curStorage + ":" + kag.mainConductor.curLine`), `<ms> quit`; `+<ms>` is
 relative.
+
+## Debugging aids for KiriKiri games (PC)
+
+- The log now contains the message of every script exception, as `(exception) <message>`, before
+  the VM dump (game-side handlers otherwise hide it).
+- `KK4S_DUMP_BYTECODE=<part of a script name>` prints the engine's own disassembly of every
+  TJS2 bytecode script whose name contains that text (accurate; `tools/tjsdis.py` is not for
+  function bodies). Use the name as the game loads it, e.g. `system.tjs`, `psdlayer.tjs`.
+- `KK4S_KAG_TRACE=1|2` sets `kag.conductor.debugLevel` once after startup (a game may reset it,
+  ATRI does in `first.ks`). For state at a given moment use `KK4S_INPUT_SCRIPT` with `eval`, e.g.
+  `25000 eval kag.conductor.curStorage + " line " + kag.conductor.curLine`.
+- Scratch test games: any folder with a `startup.tjs` runs as a game; useful to test one plugin
+  or API in isolation (see `tests/tjs/hello`).

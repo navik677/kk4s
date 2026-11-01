@@ -167,6 +167,7 @@ iTVPStorageMedia * TVPCreateFileMedia();
 	// create basic default "file:" storage media
 /*
 extern void TVPPreNormalizeStorageName(ttstr &name);
+extern bool TVPIsCustomStorageMediaName(const ttstr &name); // kk4s: "media://..." of a registered non-file media
 
 extern tTJSBinaryStream * TVPOpenStream(const ttstr & name, tjs_uint32 flags);
 	// open a storage and return a tTJSBinaryStream instance.

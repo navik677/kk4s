@@ -8,6 +8,7 @@
 //---------------------------------------------------------------------------
 // System Initialization and Uninitialization
 //---------------------------------------------------------------------------
+#include <cstdlib>
 #include "tjsCommHead.h"
 
 
@@ -1628,6 +1629,22 @@ void TVPEnsureDataPathDirectory()
 //---------------------------------------------------------------------------
 static void PushAllCommandlineArguments()
 {
+	// kk4s: KK4S_ARGS="-debug=yes -foo=bar" adds startup options without a command line
+	// (debugging aid; e.g. KAG games keep their log level when started with -debug=yes)
+	if(const char *kk4s_args = getenv("KK4S_ARGS"))
+	{
+		std::string all(kk4s_args), tok;
+		for(size_t i = 0; i <= all.size(); i++)
+		{
+			if(i == all.size() || all[i] == ' ')
+			{
+				if(!tok.empty() && tok[0] == '-') TVPProgramArguments.push_back(ttstr(tok.c_str()));
+				tok.clear();
+			}
+			else tok += all[i];
+		}
+	}
+
 	// store arguments given by commandline to "TVPProgramArguments"
 	bool acceptfilenameargument = GetSystemSecurityOption("acceptfilenameargument") != 0;
 

@@ -19,6 +19,8 @@
 #include "SysInitIntf.h"
 #include "kk4s_compat.h" // kk4s
 #include "kk4s_platform.h" // kk4s
+#include "kk4s_cx.h" // kk4s
+#include "cxdec/cxdec.h" // kk4s
 #include <SDL.h> // kk4s: SDL_GetTicks
 
 #ifdef TVP_COMPRESSION_ENABLE_ZLIB
@@ -29,6 +31,7 @@
 #endif
 #endif
 #include <algorithm>
+#include <map>
 
 bool TVPAllowExtractProtectedStorage = true;
 
@@ -345,6 +348,8 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 {
 	Name = name;
 	Count = 0;
+	Kk4sHashedNames = false;
+	Kk4sCx = NULL;
 
 	tjs_uint64 offset;
 
@@ -442,6 +447,38 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 			}
 
 
+			// kk4s: "hnfn" records carry the real file names for hashed-name
+			// archives (PackinOne). They sit at the top level of the index, in
+			// the same order as the File entries; the key is the File's adlr.
+			std::map<tjs_uint32, std::vector<ttstr> > hnfn_names;
+			{
+				tjs_uint ch_pos = 0;
+				while(ch_pos + 12 <= index_size)
+				{
+					tjs_uint32 tag = (tjs_uint32)ReadI32FromMem(indexdata + ch_pos);
+					tjs_uint64 ch_size = (tjs_uint64)ReadI64FromMem(indexdata + ch_pos + 4);
+					if(ch_size > index_size ||
+						ch_pos + 12 + (tjs_uint)ch_size > index_size)
+						break;
+					if(tag == 0x6e666e68) // 'hnfn'
+					{
+						Kk4sHashedNames = true;
+						if(ch_size >= 6)
+						{
+							tjs_uint32 key = (tjs_uint32)ReadI32FromMem(indexdata + ch_pos + 12);
+							tjs_int16 nl = ReadI16FromMem(indexdata + ch_pos + 16);
+							if(nl > 0 && (tjs_uint)(6 + 2 * nl) <= (tjs_uint)ch_size)
+							{
+								ttstr nm = TVPStringFromBMPUnicode(
+									(const tjs_uint16 *)(indexdata + ch_pos + 18), nl);
+								hnfn_names[key].push_back(nm);
+							}
+						}
+					}
+					ch_pos += 12 + (tjs_uint)ch_size;
+				}
+			}
+
 			// read index information from memory
 			tjs_uint ch_file_start = 0;
 			tjs_uint ch_file_size = index_size;
@@ -521,13 +558,36 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 				// read 'aldr' sub-chunk
 				item.FileHash = ReadI32FromMem(indexdata + ch_adlr_start);
 
+				// kk4s: use the real name from the "hnfn" table. Entries that
+				// have no name record are decoys/extra entries inserted by the
+				// protector (the fake startup.tjs): drop them.
+				bool kk4s_skip_item = false;
+				if(Kk4sHashedNames)
+				{
+					std::map<tjs_uint32, std::vector<ttstr> >::iterator hi =
+						hnfn_names.find(item.FileHash);
+					if(hi != hnfn_names.end() && !hi->second.empty())
+					{
+						item.Name = hi->second.front();
+						hi->second.erase(hi->second.begin());
+						NormalizeInArchiveStorageName(item.Name);
+					}
+					else
+					{
+						kk4s_skip_item = true;
+					}
+				}
+
 				// push information
-				ItemVector.push_back(item);
+				if(!kk4s_skip_item)
+				{
+					ItemVector.push_back(item);
+					Count++;
+				}
 
 				// to next file
 				ch_file_start += ch_file_size;
 				ch_file_size = index_size - ch_file_start;
-				Count++;
 			}
 
 			if(!(index_flag & TVP_XP3_INDEX_CONTINUE))
@@ -547,7 +607,55 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 	if(indexdata) delete [] indexdata;
 	delete st;
 
+	if(Kk4sHashedNames) Kk4sBindCx(); // kk4s: CXDEC, only for hnfn archives
+
 	TVPAddLog( TVPFormatMessage( TVPInfoDoneWithContains, ttstr(Count), ttstr(segmentcount) ) );
+}
+//---------------------------------------------------------------------------
+// kk4s: pick sample entries, read their raw (still encrypted) bytes and let
+// compat decide which CXDEC scheme fits. See compat/kk4s_cx.h.
+void tTVPXP3Archive::Kk4sBindCx()
+{
+	std::vector<kk4s::compat::CxSample> samples;
+	tTJSBinaryStream *st = NULL;
+	try
+	{
+		st = TVPCreateStream(Name);
+		for(size_t i = 0; i < ItemVector.size() && samples.size() < 12; i++)
+		{
+			const tArchiveItem &item = ItemVector[i];
+			if(item.OrgSize < 16 || item.OrgSize > (256u << 10)) continue;
+			kk4s::compat::CxSample s;
+			s.adlr = item.FileHash;
+			bool ok = true;
+			for(size_t g = 0; g < item.Segments.size() && ok; g++)
+			{
+				const tTVPXP3ArchiveSegment &seg = item.Segments[g];
+				std::vector<tjs_uint8> packed((size_t)seg.ArcSize);
+				st->SetPosition(seg.Start);
+				if(!packed.empty()) st->ReadBuffer(&packed[0], (tjs_uint)packed.size());
+				if(seg.IsCompressed)
+				{
+					std::vector<tjs_uint8> un((size_t)seg.OrgSize);
+					uLongf dl = (uLongf)seg.OrgSize;
+					ok = !un.empty() && !packed.empty() &&
+						uncompress(&un[0], &dl, &packed[0], (uLong)packed.size()) == Z_OK &&
+						dl == seg.OrgSize;
+					s.raw.insert(s.raw.end(), un.begin(), un.end());
+				}
+				else
+				{
+					s.raw.insert(s.raw.end(), packed.begin(), packed.end());
+				}
+			}
+			if(ok && s.raw.size() == item.OrgSize) samples.push_back(s);
+		}
+	}
+	catch(...)
+	{
+	}
+	delete st;
+	Kk4sCx = kk4s::compat::BindCxDecoder(Name.AsNarrowStdString(), samples);
 }
 //---------------------------------------------------------------------------
 tTVPXP3Archive::~tTVPXP3Archive()
@@ -870,6 +978,8 @@ tTVPXP3ArchiveStream::tTVPXP3ArchiveStream(tTVPXP3Archive *owner,
 	Owner->AddRef(); // hook
 	Stream = stream;
 	OrgSize = orgsize;
+
+	Kk4sCx = Owner->GetKk4sCx(); // kk4s
 }
 //---------------------------------------------------------------------------
 tTVPXP3ArchiveStream::~tTVPXP3ArchiveStream()
@@ -1022,6 +1132,7 @@ tjs_uint64 TJS_INTF_METHOD tTVPXP3ArchiveStream::Seek(tjs_int64 offset, tjs_int 
 	return CurPos;
 }
 //---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
 tjs_uint TJS_INTF_METHOD tTVPXP3ArchiveStream::Read(void *buffer, tjs_uint read_size)
 {
 	EnsureSegment();
@@ -1058,6 +1169,12 @@ tjs_uint TJS_INTF_METHOD tTVPXP3ArchiveStream::Read(void *buffer, tjs_uint read_
 				one_size, Owner->GetFileHash(StorageIndex));
 			TVPXP3ArchiveExtractionFilter
 				( (tTVPXP3ExtractionFilterInfo*) &info );
+		}
+		else if(Kk4sCx)
+		{
+			// kk4s: CXDEC (hnfn/Cx archive with a verified scheme)
+			Kk4sCx->Decrypt(Owner->GetFileHash(StorageIndex), CurPos,
+				(tjs_uint8*)buffer + write_size, one_size);
 		}
 
 		// adjust members

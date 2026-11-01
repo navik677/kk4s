@@ -12,6 +12,7 @@
 //
 // See docs/kirikiroid-compat.md.
 #include "kk4s_compat.h"
+#include "kk4s_cx.h"
 
 #include "CharacterSet.h"
 #include "DebugIntf.h"
@@ -477,6 +478,7 @@ void BeforeStartup() {
     RegisterFonts();
     RegisterStoragesExtensions();
     ApplyExeOptions();
+    InstallScriptsCompat(); // Scripts.foreach/getObjectKeys/clone when the engine lacks them
     if (!RunGameScript("xp3filter.tjs")) {
         // A .tpm plugin decrypts the archives on Windows; kk4s cannot run it yet.
         std::string dir = kk4s::GameDir();
@@ -493,6 +495,25 @@ void BeforeStartup() {
             closedir(d);
         }
     }
+}
+
+const tjs_char* StartupScriptShim() {
+    // kk4s: hashed-name XP3 (PackinOne) repacks hide the real startup.tjs in an
+    // obfuscated bytecode object; execute the standard KiriKiri Z start instead.
+    // Positive identification only: a Cx (hnfn) archive with a verified CXDEC
+    // scheme was mounted in this run. Folder markers are not enough (FSN's
+    // folder has version.dll/KrkrExtract and must keep its own startup.tjs).
+    if (getenv("KK4S_NO_SHIM")) return NULL; // test the game's own startup.tjs
+    if (!kk4s::compat::AnyCxArchiveBound()) return NULL;
+    if (!TVPIsExistentStorage(ttstr(TJS_W("system/Initialize.tjs")))) return NULL;
+    return TJS_W(
+        "global.kirikiriz = true;"
+        "global.debugWindowEnabled = false;"
+        "global.inXP3archivePacked = false;"
+        "global.convertMode = 0;"
+        "System.inform = function(m) { Debug.message(\"kk4s inform: \" + m); };"
+        "System.terminate = function(c) { Debug.message(\"kk4s: ignored System.terminate(\" + c + \")\"); };"
+        "Scripts.execStorage(\"system/Initialize.tjs\");");
 }
 
 void AfterExecuteStorage(const ttstr& shortname) {
@@ -521,6 +542,23 @@ void AfterStartup() {
     }
     if (g_filter_calls)
         kk4s::Log("compat: xp3 filter called %u times so far", g_filter_calls.load());
+    // debugging aid for KAG games: KK4S_KAG_TRACE=1 (simple) or 2 (verbose) logs every tag
+    if (const char* trace = getenv("KK4S_KAG_TRACE")) {
+        try {
+            TVPExecuteExpression(TJS_W("kag.conductor.debugLevel = ") + ttstr((tjs_int)atoi(trace)));
+            kk4s::Log("compat: KAG tag trace level %d", atoi(trace));
+            // also log what KAG reports through errorCmd/errorLine (the game then tries to open
+            // a Windows log window and the text is lost)
+            TVPExecuteScript(TJS_W(
+                "if(typeof kag != \"undefined\" && typeof global.__kk4s_ec == \"undefined\") {"
+                " global.__kk4s_ec = kag.errorCmd; global.__kk4s_el = kag.errorLine;"
+                " if(typeof global.__kk4s_ec == \"Object\") kag.errorCmd = function(a, b, c) { Debug.message(\"kag errorCmd: [\" + a + \"] [\" + b + \"] [\" + c + \"]\"); return global.__kk4s_ec.apply(kag, [a, b, c]); };"
+                " if(typeof global.__kk4s_el == \"Object\") kag.errorLine = function(a, b, c) { Debug.message(\"kag errorLine: [\" + a + \"] [\" + b + \"] [\" + c + \"]\"); return global.__kk4s_el.apply(kag, [a, b, c]); };"
+                "}"));
+        } catch (...) {
+            kk4s::Log("compat: KK4S_KAG_TRACE: no kag.conductor in this game");
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

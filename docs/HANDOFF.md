@@ -246,3 +246,11 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 
 Rules from the user: test on the Switch before merging; everything must work for any Kirikiri
 game, not just FSN; never commit game files or keys; game folders are never modified.
+
+## Native Cx/PackinOne work (merged from `wip/packinone-native`, 2026-11-01)
+
+The CXDEC decryption, PSB/psbfile, KAG/Scripts compat and debugging aids are on `main` now. The
+current state, the blockers and the next steps are in **`docs/handoff-native-cx.md`** and
+`docs/cxdec.md`. Short version: ATRI renders its first screens and stops at the Steam chain; FSN
+(Russian patch) runs on the PC and hangs on the Switch after a fade (suspicion in the handoff, not
+verified). The FSN rules above still apply to every change.

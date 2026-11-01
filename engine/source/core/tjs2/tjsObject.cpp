@@ -16,6 +16,9 @@
 #include "tjsHashSearch.h"
 #include "tjsGlobalStringMap.h"
 #include "tjsDebug.h"
+#include "tjsError.h"
+
+void TVPAddLog(const TJS::ttstr &line); // kk4s: DebugIntf (same binary)
 
 
 namespace TJS
@@ -471,7 +474,21 @@ void tTJSCustomObject::BeforeDestruction(void)
 {
 	if(TJSObjectHashMapEnabled())
 		TJSSetObjectHashFlag(this, TJS_OHMF_DELETING, TJS_OHMF_SET);
-	_Finalize();
+	// kk4s: this runs from Release(), often inside a destructor (~tTJSVariant)
+	// that is noexcept with GCC, so an exception thrown by a script's finalize()
+	// would call std::terminate. Log it and continue the destruction instead.
+	try
+	{
+		_Finalize();
+	}
+	catch(eTJS &e)
+	{
+		TVPAddLog(ttstr(TJS_W("(kk4s) exception in finalize() during destruction: ")) + e.GetMessage());
+	}
+	catch(...)
+	{
+		TVPAddLog(ttstr(TJS_W("(kk4s) unknown exception in finalize() during destruction")));
+	}
 }
 //---------------------------------------------------------------------------
 bool tTJSCustomObject::CallGetMissing(const tjs_char *name, tTJSVariant &result)

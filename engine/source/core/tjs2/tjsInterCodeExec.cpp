@@ -1541,6 +1541,8 @@ tjs_int tTJSInterCodeContext::ExecuteCode(tTJSVariant *ra_org, tjs_int startip,
 	catch(eTJS &e)
 	{
 		DEBUGGER_EXCEPTION_HOOK;
+		// kk4s: the dump below does not say what went wrong; log the message first
+		Block->GetTJS()->OutputToConsole((ttstr(TJS_W("(exception) ")) + e.GetMessage()).c_str());
 		DisplayExceptionGeneratedCode((tjs_int)(codesave - CodeArea), ra_org);
 		TJS_eTJSScriptError(e.GetMessage(), this, (tjs_int)(codesave-CodeArea));
 	}

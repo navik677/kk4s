@@ -9,6 +9,7 @@
 // Script block caching
 //---------------------------------------------------------------------------
 
+#include <cstdlib>
 #include "tjsCommHead.h"
 
 #include "tjs.h"
@@ -226,7 +227,11 @@ void tTJSScriptCache::LoadByteCode( const tjs_uint8* buff, size_t len, tTJSVaria
 	try {
 		blk = loader->ReadByteCode( Owner, name, buff, len );
 		if( blk != NULL ) {
-			// blk->Dump();
+			// kk4s: KK4S_DUMP_BYTECODE=<part of a script name> prints its disassembly to the log
+			{
+				static const char* dumpname = getenv("KK4S_DUMP_BYTECODE");
+				if(dumpname && name && ttstr(name).AsNarrowStdString().find(dumpname) != std::string::npos) blk->Dump();
+			}
 			blk->ExecuteTopLevel( result, context );
 		} else {
 			TJS_eTJSScriptError( TJSByteCodeBroken, blk, 0 );

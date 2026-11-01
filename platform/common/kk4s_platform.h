@@ -21,6 +21,7 @@ std::string LogsDir();
 std::string SavesDir();
 std::string OverlayDir();
 std::string ProfilesDir();
+std::string TempDir(); // scratch files of the engine (<root>/tmp, created at start)
 
 // Init services, data folders and the log file. Call first in main().
 void Init(int argc, char** argv);

@@ -15,8 +15,16 @@ namespace compat {
 // xp3filter.tjs from the game folder (Kirikiroid2 convention).
 void BeforeStartup();
 
+// kk4s_scripts.cpp: KiriKiri 2/Z Scripts.* APIs missing in this engine (foreach, getObjectKeys, clone).
+void InstallScriptsCompat();
+
 // After startup.tjs returned.
 void AfterStartup();
+
+// kk4s: for hashed-name (PackinOne) repacks the real startup.tjs is an
+// obfuscated bytecode stub. Return a TJS source shim (KiriKiri Z globals then
+// system/Initialize.tjs) when the game has that script, NULL otherwise.
+const tjs_char* StartupScriptShim();
 
 // After TVPExecuteStorage() finished a script (shortname = file name only).
 // Used to run Override2.tjs / AfterInit2.tjs at the right moment.

@@ -23,6 +23,7 @@
 #include "ScriptMgnIntf.h"
 #include "DebugIntf.h"
 #include "FontSystem.h"
+#include "StorageIntf.h"
 #include "tjsArray.h"
 
 //---------------------------------------------------------------------------
@@ -132,7 +133,16 @@ TJS_BEGIN_NATIVE_METHOD_DECL(/*func. name*/addFont)
 {
 	if(numparams < 1) return TJS_E_BADPARAMCOUNT;
 
-	ttstr storage = numparams >= 2 ? ttstr(*param[1]) : ttstr(*param[0]);
+	// Both System.addFont(storage, faceIndex) (KAGZ PreRenderFontEx) and
+	// (face, storage) forms exist: use the first string argument that names an
+	// existing storage, else the first argument.
+	ttstr storage = ttstr(*param[0]);
+	for(tjs_int i = 0; i < numparams && i < 2; i++)
+	{
+		if(param[i]->Type() != tvtString) continue;
+		ttstr s = ttstr(*param[i]);
+		if(TVPIsExistentStorage(s)) { storage = s; break; }
+	}
 
 	std::vector<ttstr> faces;
 	if(TVPFontSystem) TVPFontSystem->AddExtraFont(storage.AsStdString(), &faces);
