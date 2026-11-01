@@ -13,6 +13,8 @@
 #include "UtilStreams.h"
 #include "BitmapBitsAlloc.h"
 #include "LayerIntf.h"
+#include "GraphicsLoaderIntf.h"
+#include "kk4s_compat.h"
 
 tTVPTmpBitmapImage::tTVPTmpBitmapImage()
 	: MetaInfo(NULL)
@@ -216,6 +218,42 @@ void tTVPAsyncImageLoader::LoadRequest( iTJSDispatch2 *owner, tTJSNI_Bitmap* bmp
 	ttstr ext = TVPExtractStorageExt(name);
 	if(ext == TJS_W("")) {
 		TVPThrowExceptionMessage(TJS_W("Filename extension not found/%1"), name);
+	}
+
+	// kk4s: an xp3filter.tjs callback is TJS code and TJS is not thread-safe.
+	// The image worker used to open/read XP3 streams and invoke that callback
+	// from its own thread; FSN crashed in tTJSObjectProxy::AddRef while loading
+	// a TLG. For games using a script extraction filter, do the image load on
+	// this (main) thread instead. This is intentionally limited to filtered
+	// games; normal games retain the asynchronous image path.
+	if (kk4s::compat::ScriptFilterActive() && kk4s::compat::IsMainThread()) {
+		tTVPBaseBitmap dest(TVPGetInitialBitmap());
+		iTJSDispatch2 *metainfo = NULL;
+		ttstr error;
+		try {
+			TVPLoadGraphic(bmp ? &dest : NULL, nname, TVP_clNone, 0, 0,
+				glmNormal, NULL, &metainfo);
+			if (bmp) bmp->CopyFrom(&dest);
+		} catch (eTJS &e) {
+			error = e.GetMessage();
+		} catch (...) {
+			error = TJS_W("unknown image load error");
+		}
+
+		if (bmp) bmp->SetLoading(false);
+		if (owner && owner->IsValid(0, NULL, NULL, owner) == TJS_S_TRUE) {
+			tTJSVariant param[4];
+			param[0] = error.IsEmpty() && metainfo
+				? tTJSVariant(metainfo, metainfo)
+				: tTJSVariant((iTJSDispatch2*)NULL, (iTJSDispatch2*)NULL);
+			param[1] = 0; // synchronous fallback
+			param[2] = error.IsEmpty() ? 0 : 1;
+			param[3] = error;
+			static ttstr eventname(TJS_W("onLoaded"));
+			TVPPostEvent(owner, owner, eventname, 0, TVP_EPT_IMMEDIATE, 4, param);
+		}
+		if (metainfo) metainfo->Release();
+		return;
 	}
 
 	PushLoadQueue( owner, bmp, nname );

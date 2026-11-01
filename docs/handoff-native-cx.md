@@ -184,41 +184,66 @@ Uncommitted: only the `KK4S_NO_SHIM` env line in `compat/kk4s_compat.cpp` (to be
   fonts, sprites/backgrounds, music, transitions, save/load, other translated games), preferably on the
   Switch too. Follow the existing rule in `docs/HANDOFF.md` about FSN precedence.
 
-## FSN hangs on Switch (reported after the 20:20 build, unresolved)
+## FSN crash on Switch (crash report received after 22:00 run)
 
-Log `kk4s-20261101-202113.log` (Switch, FSN, scenario `セイバールート十一日目-14.ks`): the game plays
-normally, then `@fadein file=A23e time=200 rule=円形(中から外へ) vague=64` is followed by
-`(exception) The object is already invalidated` in `kaglayer.tjs(87) onTransitionCompleted`, then
-`Script exception raised`. The log then stops (no `shutdown`), so the game is stuck, not crashed.
+The new Switch log is `kk4s-20261101-220049.log` (build `ba29f9c`), followed by Atmosphere report
+`01793566882_03db116921e60000.log` (2168-0001, 2026-11-01 22:01:22). The user is right: **kk4s
+crashed**, it did not just leave the game stuck. The FSN log stops at 22:01:21 while loading
+`AH01a.tlg`; the crash report was generated one second later.
 
-What the log actually shows (checked 2026-11-01 21:00):
+### Crash report diagnosis (symbolicated with the matching `out/kk4s.elf`)
+
+The crashed thread is the asynchronous graphics loader. Its stack is:
+
+```text
+TJS::tTJSObjectProxy::AddRef()
+TJS::tTJSInterCodeContext::ExecuteAsFunction(...)
+TJS::tTJSInterCodeContext::FuncCall(...)
+std::atomic<unsigned int>::fetch_add / operator++
+ScriptExtractionFilter                         compat/kk4s_compat.cpp:224
+tTVPXP3ArchiveStream::Read                     engine/source/core/base/XP3Archive.cpp:1171
+tTJSBinaryStream::ReadBuffer
+TVPLoadTLG5 / TVPInternalLoadTLG / TVPLoadTLG
+TVPLoadGraphicRouter
+tTVPStreamHolder::~tTVPStreamHolder
+tTVPAsyncImageLoader::LoadImageFromCommand      engine/source/core/visual/GraphicsLoadThread.cpp:292
+tTVPAsyncImageLoader::LoadingThread
+```
+
+So the failure is a **TJS2 XP3 extraction filter being called from the image worker thread** while
+loading an FSN TLG. TJS2 is not thread-safe. The log itself also says
+`compat: xp3 filter script called on a background thread (unsafe)`. The bad `AddRef`/proxy dispatch
+is the crash mechanism; it is not evidence that the TJS global was invalidated, and the new
+`EventIntf` catch-and-continue change did not address it. The user's report that kk4s crashed is
+confirmed by the Atmosphere `Instruction Abort` report.
+
+### Fix under test (2026-11-01)
+
+When `ScriptFilterActive()` is true, `tTVPAsyncImageLoader::LoadRequest` loads graphics synchronously
+on the main thread using the existing `TVPLoadGraphic` path. `TVPTouchImages` likewise skips its
+asynchronous preload branch and uses its synchronous loop. Unfiltered games keep the existing async
+path. This follows the existing XP3 rule that eagerly decrypts filtered files on the main thread and
+removes the observed TLG-worker call into TJS. Desktop FSN regression test with Switch save
+`data316.bmp`: loads and advances, **0 script exceptions**, and no
+`xp3 filter script called on a background thread` warning; filtered TLG/OGG reads are logged as
+main-thread decrypts. Switch build/hardware retest is required before treating this as fixed.
+
+The earlier 21:00 interpretation of the `202113` log was too confident. That older run did show an
+exception at `kaglayer.tjs(87) onTransitionCompleted` after FlowTracker's `*skip_to_next`, but the
+new crash report is a separate, symbolicated failure in the XP3-filter/image-worker path. Do not
+conflate them or claim that suppressing an idle exception fixes this crash.
+
+Historical log details from the older run:
 
 - The user had just used **FlowTrackerPlugin's "skip to next scene"** link (`*skip_to_next`,
   `@playstop time=200`, `@sestop`, `@cm`) and the game jumped from `...-11.ks` through `???????.ks`
   into `...-14.ks`. The crash comes 3 s into the new scene, right after the first `@fadein A23e`.
-- The dump is not about the layer's `this`: the failing instruction is the **first statement of
-  `onTransitionCompleted`**, `super.onTransitionCompleted(...)`, which compiles to `global %1;
-  gpd %2, %1.Layer`. Register `%1` is the TJS **global object** and `PropGet` on it returns
-  `TJS_E_INVALIDOBJECT` - the global object itself is invalidated at that moment (not the layer,
-  not the source). So KAG's handler never runs, the conductor keeps waiting for the transition and
-  the game is stuck.
+- It failed in `onTransitionCompleted` after the scene jump. That older log has no native crash
+  report attached, so it cannot establish the cause of the later 22:01:22 crash.
 - PC reproduction with the same SD save did not reach it: the bookmark (`data316.bmp`, identical
   hash on the Switch and the PC) loads and the PC build plays a different branch (FlowTracker links
   and timings differ). It is timing/scene-jump dependent, so far Switch only.
 
-New in this build: the exception dump now prints which register holds an invalid object and whether
-it is the TJS global (`tjs: invalid object in register %N: 0x... (the TJS global object)`); it also
-names the exact register for `kaglayer.tjs`. Replay the same scene on the new NRO and send the log -
-that will confirm the global-object theory on hardware.
-
-Suspicion (not verified): jumping to another scene while transitions/`@playstop` are running leaves a
-transition completion event that is delivered after something invalidated the script context (the
-global object), instead of being dropped. Check in this order:
-1. Does the same happen on `main` (4d767de) for the same scene? If not, the cause is in our changes
-   (candidates: `Scripts.foreach` returning values, the `[emb]` escape change, `taglist`), so bisect
-   those commits on the PC with `KK4S_KAG_TRACE`.
-2. Which layer is `onTransitionCompleted` invoked on, and what cleared it (`clearlayers`/`@allimage`
-   right before the fade). Dump with `KK4S_DUMP_BYTECODE=kaglayer.tjs`.
-3. The C++ side: the transition object (`tTVPTransition`/`LayerIntf` transition completion) should
-   check the owner is still valid before calling back.
-Do not "fix" it by swallowing the exception in TJS without knowing the cause.
+The invalid-register diagnostic remains available for future script exceptions, but it is not the
+diagnosis for this crash. Keep investigating the older transition exception separately if it recurs
+after the unsafe filter call is removed.

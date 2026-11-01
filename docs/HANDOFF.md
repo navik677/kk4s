@@ -256,6 +256,7 @@ its title screen** - CXDEC, `hnfn` names, Steam detection (`-steam=yes`), a `krk
 stub, release `-debugwin=no`, win32dialog classes, the `PSBFile(storage)` constructor and PSB
 `null`->void got it past all earlier blockers; the next gap is the real `textrender.dll` (no-op stub)
 and the other KAGZ plugins. FSN (Russian patch) still runs on the PC (Рус-moon logo + `TitleMenu.ks`,
-`project dir: .../data.xp3>`); its Switch hang after FlowTracker's "skip to next scene" is still
-unresolved (see the handoff: the TJS **global object** is invalidated in `onTransitionCompleted`; a
-new register diagnostic names it). The FSN rules above still apply to every change.
+`project dir: .../data.xp3>`). The later FSN Switch run actually **crashed kk4s**: the Atmosphere
+report symbolicates to `ScriptExtractionFilter` called by the async TLG/image loader, i.e. TJS
+XP3-filter code ran on a background thread. See `docs/handoff-native-cx.md`; the previous
+global-object/idle-loop theory was incorrect for that crash. The FSN rules above still apply.

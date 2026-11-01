@@ -35,6 +35,7 @@
 #include "Application.h"
 #include "BitmapIntf.h"
 #include "GraphicsLoadThread.h"
+#include "kk4s_compat.h"
 #include <complex>
 #include <list>
 
@@ -1667,7 +1668,7 @@ bool TVPCheckImageCache( const ttstr& nname, tTVPBaseBitmap* dest, tTVPGraphicLo
 	return false;
 }
 //---------------------------------------------------------------------------
-// ŒŸõ‚¾‚¯‚·‚é
+// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 bool TVPHasImageCache( const ttstr& nname, tTVPGraphicLoadMode mode, tjs_uint dw, tjs_uint dh, tjs_int32 keyidx )
 {
 	tjs_uint32 hash;
@@ -2330,7 +2331,10 @@ void TVPTouchImages(const std::vector<ttstr> & storages, tjs_int64 limit,
 		if((tjs_uint64)-limit >= TVPGraphicCacheLimit) return;
 		limitbytes = TVPGraphicCacheLimit + limit;
 	}
-	if (/*!timeout &&*/ storages.size()/* > 1*/) { // using async touching for multi images
+	// A script XP3 extraction filter must only run on the TJS main thread.
+	// Keep normal multi-image touching asynchronous, but use the synchronous
+	// path below for games whose archives need TJS decryption.
+	if (/*!timeout &&*/ storages.size()/* > 1*/ && !kk4s::compat::ScriptFilterActive()) { // using async touching for multi images
 		for (const ttstr &name : storages) {
 			ttstr nname = TVPNormalizeStorageName(name);
 			tjs_uint32 hash;
