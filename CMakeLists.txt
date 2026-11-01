@@ -128,6 +128,8 @@ set(SOURCES
     platform/common/kk4s_settings.cpp
     platform/common/kk4s_ui.cpp
     compat/kk4s_compat.cpp
+    compat/kk4s_cx.cpp
+    compat/cxdec/cxdec.cpp
     compat/kk4s_plugins.cpp
     compat/kk4s_layerfx.cpp
     platform/${KK4S_PLATFORM}/kk4s_platform.cpp

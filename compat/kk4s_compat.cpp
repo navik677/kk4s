@@ -12,6 +12,7 @@
 //
 // See docs/kirikiroid-compat.md.
 #include "kk4s_compat.h"
+#include "kk4s_cx.h"
 
 #include "CharacterSet.h"
 #include "DebugIntf.h"
@@ -498,8 +499,10 @@ void BeforeStartup() {
 const tjs_char* StartupScriptShim() {
     // kk4s: hashed-name XP3 (PackinOne) repacks hide the real startup.tjs in an
     // obfuscated bytecode object; execute the standard KiriKiri Z start instead.
-    // Only for folders that carry the repack markers and have that script.
-    if (kk4s::detail::DetectGameIssue(kk4s::GameDir()).empty()) return NULL;
+    // Positive identification only: a Cx (hnfn) archive with a verified CXDEC
+    // scheme was mounted in this run. Folder markers are not enough (FSN's
+    // folder has version.dll/KrkrExtract and must keep its own startup.tjs).
+    if (!kk4s::compat::AnyCxArchiveBound()) return NULL;
     if (!TVPIsExistentStorage(ttstr(TJS_W("system/Initialize.tjs")))) return NULL;
     return TJS_W(
         "global.kirikiriz = true;"

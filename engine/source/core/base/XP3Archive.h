@@ -80,6 +80,7 @@ TJS_EXP_FUNC_DEF(void, TVPSetXP3ArchiveExtractionFilter, (tTVPXP3ArchiveExtracti
 extern bool TVPIsXP3Archive(const ttstr &name); // check XP3 archive
 extern void TVPClearXP3SegmentCache(); // clear XP3 segment cache
 //---------------------------------------------------------------------------
+namespace kk4s { namespace cxdec { class CxDecoder; } } // kk4s
 struct tTVPXP3ArchiveSegment
 {
 	tjs_uint64 Start;  // start position in archive storage
@@ -110,10 +111,12 @@ class tTVPXP3Archive : public tTVPArchive
 
 	std::vector<tArchiveItem> ItemVector;
 
-	// kk4s: this archive uses "hnfn" name records and per-file XOR encryption
-	// (PackinOne / hashed-name XP3). The names are in ItemVector.Name; the
-	// contents are decrypted on read with keys guessed from the file magic.
-	bool Kk4sMagicXor;
+	// kk4s: the index has "hnfn" (Cx hashed-name) records. Kk4sCx is the CXDEC
+	// decoder bound after a scheme was verified on this archive's entries
+	// (see compat/kk4s_cx.h); NULL when no scheme fits.
+	bool Kk4sHashedNames;
+	kk4s::cxdec::CxDecoder* Kk4sCx;
+	void Kk4sBindCx();
 public:
 	tTVPXP3Archive(const ttstr & name);
 	~tTVPXP3Archive();
@@ -123,7 +126,7 @@ public:
 	tjs_uint32 GetFileHash(tjs_uint idx) const { return ItemVector[idx].FileHash; }
 	ttstr GetName(tjs_uint idx) { return ItemVector[idx].Name; }
 
-	bool IsKk4sMagicXor() const { return Kk4sMagicXor; }
+	kk4s::cxdec::CxDecoder* GetKk4sCx() const { return Kk4sCx; }
 
 	const ttstr & GetName() const { return Name; }
 
@@ -171,13 +174,7 @@ class tTVPXP3ArchiveStream : public tTJSBinaryStream
 
 	bool SegmentOpened;
 
-	// kk4s: per-file XOR decryption for "hnfn" (PackinOne) archives.
-	bool Kk4sMagicXor;
-	bool Kk4sKeyKnown;
-	bool Kk4sK2Pending; // first read had only one byte, the rest key is not known yet
-	tjs_uint8 Kk4sK1, Kk4sK2;
-	const tjs_uint8* Kk4sMagic; // magic that matched (for the one-byte case)
-	tjs_uint Kk4sMagicLen;
+	kk4s::cxdec::CxDecoder* Kk4sCx; // kk4s: CXDEC decoder of the owner (or NULL)
 
 public:
 	tTVPXP3ArchiveStream(tTVPXP3Archive *owner, tjs_int storageindex,
