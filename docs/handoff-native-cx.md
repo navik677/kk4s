@@ -217,7 +217,7 @@ is the crash mechanism; it is not evidence that the TJS global was invalidated, 
 `EventIntf` catch-and-continue change did not address it. The user's report that kk4s crashed is
 confirmed by the Atmosphere `Instruction Abort` report.
 
-### Fix under test (2026-11-01)
+### Fix deployed for hardware test (2026-11-01 22:14)
 
 When `ScriptFilterActive()` is true, `tTVPAsyncImageLoader::LoadRequest` loads graphics synchronously
 on the main thread using the existing `TVPLoadGraphic` path. `TVPTouchImages` likewise skips its
@@ -226,7 +226,9 @@ path. This follows the existing XP3 rule that eagerly decrypts filtered files on
 removes the observed TLG-worker call into TJS. Desktop FSN regression test with Switch save
 `data316.bmp`: loads and advances, **0 script exceptions**, and no
 `xp3 filter script called on a background thread` warning; filtered TLG/OGG reads are logged as
-main-thread decrypts. Switch build/hardware retest is required before treating this as fixed.
+main-thread decrypts. Switch NRO `8d4bef4` (SHA-256
+`4101BB85B3B2AE8E98CAE0D0350B873C281DA34B35EEB277E7FDBE914D02997F`) is uploaded to the SD;
+hardware retest is still required before treating this as fixed.
 
 The earlier 21:00 interpretation of the `202113` log was too confident. That older run did show an
 exception at `kaglayer.tjs(87) onTransitionCompleted` after FlowTracker's `*skip_to_next`, but the

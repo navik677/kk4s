@@ -108,10 +108,10 @@ curl.exe -sS --max-time 600 -o $tmp ftp://192.168.1.135:5000/switch/kk4s/kk4s.nr
 - If curl exits with `28` (timeout), the console is asleep/off; wake it and
   retry. FTP stops when the console sleeps.
 - Upload one big file per `curl` call and compare hashes; the SD is slow.
-- The SD now holds the NRO built from `main` `ba29f9c` (debug log window off +
-  idle-event exceptions no longer unwind the app), 27 432 357 bytes, SHA-256
-  `2D0CB7E400CD13294967441AD8099BDDC9516EB5959FC4F7B6262FBEAF9CE8B5`
-  (uploaded 2026-11-01 22:00, verified by downloading it back).
+- The SD now holds the NRO built from `main` `8d4bef4` (TJS XP3 filters run on
+  the main thread for async graphics in filtered games), 27 432 357 bytes,
+  SHA-256 `4101BB85B3B2AE8E98CAE0D0350B873C281DA34B35EEB277E7FDBE914D02997F`
+  (uploaded 2026-11-01 22:14, verified by downloading it back).
 
 ## Common failure modes (why "it does not build")
 
