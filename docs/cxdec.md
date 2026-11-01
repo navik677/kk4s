@@ -4,8 +4,8 @@ Status (2026-11-01, branch `wip/packinone-native`, not on `main`):
 
 - Generic decoder in the runtime (`compat/cxdec`), verified byte-exact.
 - Scheme recovery **without running the game** works for ATRI (PC tool).
-- The runtime decrypts the original ATRI folder transparently; the game runs to its title
-  scenario but draws nothing yet (not an encryption problem). See "ATRI status".
+- The runtime decrypts the original ATRI folder transparently; the game renders its
+  first screens (not an encryption problem). See "ATRI status".
 - FSN Russian patch: no change against `main` `4d767de` (title screen, logs).
 
 ## Three layers
@@ -105,17 +105,20 @@ remaining manual step for "folder → play" on Switch.
   decoy entry per archive and `main/imagedressmap.txt` (its zlib segment does not
   inflate; to investigate).
 - Verified on Switch too (original folder on the SD card): all Cx archives bind, `patch.xp3` loads.
-- Startup runs through KAG init, `first.ks`, and reaches `title.ks` line 35 (`[s]`, waiting for a
-  choice) with no script exceptions. General gaps fixed on the way (none ATRI specific):
-  `win32dialog.dll` stub, `psbfile.dll` (`PSBFile` + `psb://` media, parser in `compat/psb`,
-  tests in `tests/psb`), `Scripts.foreach/getObjectKeys/getObjectCount/clone`, custom storage
-  media names (`psb://`, `var://`) that the engine turned into file paths, and the temp
-  directory (`sdmc:/tmp` -> `<data>/tmp`).
-- **Open:** the window stays black. The title UI is created by `[syshook name="title.*"]` ->
-  `SystemManager.kagExec` -> `pending("_exec", ...)` (delayed). Layers exist (`fore.base` 1280x960
-  visible, two small visible children) but nothing full-screen is visible, so the hooks that
-  build the title screen did not draw. Next step: trace `_exec`/`pending` and the hook table
-  (`addsyshook`), see "Debugging aids" in `docs/debugging.md`.
+- On the desktop build the game now runs the logo/warning scenario and **renders its first screen**
+  (WARNING page: background image from a `.pimg`, Japanese text). Fixed on the way (all general):
+  `win32dialog.dll` stub, `psbfile.dll` (`PSBFile` + `psb://` media; parser in `compat/psb`, tests in
+  `tests/psb`), `Scripts.foreach/getObjectKeys/getObjectCount/clone/equalStruct`, custom storage media
+  names (`psb://`, `var://`) that were turned into file paths, the temp directory
+  (`sdmc:/tmp` -> `<data>/tmp`), `[emb escape=false]` and the `taglist` element field of
+  `KAGParserEx.dll` (emulated in the built-in KAG parser, only for games that link that plugin).
+- **Next blocker:** after the warning page the game calls the macro `[実績 name=開始]`, which does
+  `kag.errorCmd("実績:開始")` on purpose: `steam.tjs` (with `krkrsteam.dll`) overrides `errorCmd` to turn
+  these into Steam achievements. Without that override it is a fatal error. `steam.tjs` is run by the
+  game's real `startup.tjs`, which kk4s replaces with a KiriKiri Z shim (the real one is obfuscated
+  bytecode the loader cannot read), so the Steam chain never starts. Options: (a) a `krkrsteam.dll`
+  compat stub plus running `steam.tjs` from the shim when the game has it; (b) make the bytecode
+  loader read the obfuscated `startup.tjs` (object code words XOR 0x61), the generic fix.
 
 ## FSN regression check (2026-11-01)
 
