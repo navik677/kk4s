@@ -104,11 +104,14 @@ remaining manual step for "folder → play" on Switch.
 - C++ decoder over every entry: 10 789 entries with adler32 == adlr; failures are the
   decoy entry per archive and `main/imagedressmap.txt` (its zlib segment does not
   inflate; to investigate).
-- The game loads the KAG system scripts, then stops at a black screen: its
-  `win32dialog.tjs` needs `WIN32Dialog.Header` (KiriKiri Z `win32dialog` plugin API,
-  missing in kk4s' stub). Same class of problem as the extracted copy had
-  (`textSpeechMenuItem`), now earlier in the order. Next work is plugin
-  compatibility, not encryption.
+- Verified on Switch too (original folder on the SD card): all Cx archives bind, `patch.xp3` loads.
+- Startup now gets past the KAG environment init. Plugin/API gaps fixed on the way:
+  `win32dialog.dll` stub (class members, real Win32 constants, `getBaseUnits`, ...), and the
+  KiriKiri 2/Z APIs `Scripts.foreach` and `Scripts.getObjectKeys` (compat, only added when missing).
+- **Next blocker:** the UI loader needs `PSBFile` (`psbfile.dll`, reader of PSB/`.pimg` files:
+  `Member "PSBFile" does not exist`). That is a real plugin to implement, not a stub. After the
+  first exception the game's handler tries to open its error console, which needs a
+  `WIN32Dialog.Header` *class* (binary dialog templates) and ends in `TVPExitApplication`.
 
 ## FSN regression check (2026-11-01)
 
