@@ -108,9 +108,10 @@ curl.exe -sS --max-time 600 -o $tmp ftp://192.168.1.135:5000/switch/kk4s/kk4s.nr
 - If curl exits with `28` (timeout), the console is asleep/off; wake it and
   retry. FTP stops when the console sleeps.
 - Upload one big file per `curl` call and compare hashes; the SD is slow.
-- After this session the SD holds an NRO built from `main` `4d767de` (with
-  `System.addFont`), SHA-256 `6D75B284969C02270EF55162DD6196F1F5C542F4AA2185DB0BD477459A608383`.
-  The native WIP branch (`wip/packinone-native`) is **not** in that NRO.
+- The SD now holds the NRO built from `main` `57e9f68` (Steam/KAGZ work: ATRI
+  original folder reaches the title), 27 432 357 bytes, SHA-256
+  `CA07DF72788B56F8BD9A2A661194C9AC0C47A2C64EB745255C0216A3DBE8C976`
+  (uploaded 2026-11-01 21:45, verified by downloading it back).
 
 ## Common failure modes (why "it does not build")
 
