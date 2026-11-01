@@ -29,6 +29,39 @@ Clicking A while a voice line plays (skipping it) gave an audible "tap" on the S
   never flushed). It is silent, so it no longer clicks; a flush would be
   needed for short non-silent 8-bit/lower-rate sounds to play to the last sample.
 
+### Steam repacks / DRM-protected games (ATRI, tested 2026-11-01)
+ATRI -My Dear Moments- PC (Russian repack, DARKSiDERS Steam emu) does not start. Findings:
+- The folder is a Steam/DRM repack: `steam_api.dll`, `ds.ini`, `SteamEmu/`, `plugin/*.dll` + `.sig`,
+  `*.xp3.index`; `plugin/PackinOne.dll`. `data.xp3`'s index is a **PackinOne** blob (`hnfn`) that
+  still contains the standard `File` chunks; the engine parses it and reports 2303 files.
+  `patch.xp3` is a normal XP3 (`Config.tjs`, `*.ks.scn`, no `startup.tjs`).
+- The engine runs `startup.tjs` (316-byte **TJS2 bytecode**; its only strings are `global`,
+  `System`, `inform`, `startup failed: corrupted execution file`). It calls `System.inform` and
+  ends; the engine then exits with `TVPExitApplication(0)` and no script error. This is a native
+  loader/protection stub, not a KAG startup script.
+- Tried and reverted:
+  - mounting every `*.xp3` before startup (`MountAllArchives` in `compat`) — ATRI still exits.
+  - returning the folder as project dir when there is more than one `.xp3` — ATRI still exits and
+    it **broke FSN's Russian patch**: `rufix.xp3`/`rupatch.xp3` stopped overriding, game English.
+  - Both reverted; FSN Russian works again. Lesson below.
+- Plan for "drop it in and it works":
+  1. **Detect and report** (safe, generic): if the folder has `steam_api.dll` + (`ds.ini` /
+     `SteamEmu/` / `*.sig` / `PackinOne.dll` / `*.xp3.index`), log a clear line (and later show it
+     in the launcher): "Steam/PackinOne repack; needs a DRM-free release or Steam/PackinOne
+     support". Do not change mount order.
+  2. Prefer/test **DRM-free releases** (GOG/JAST): they normally have a plain KiriKiri layout.
+  3. Only if it is worth the effort: a **Steam API stub** for the few interfaces the wrapper uses
+     (`SteamAPI_Init`, `SteamUser`, `SteamApps`, `SteamRemoteStorage`, `SteamUtils`) and
+     **PackinOne** index/data decryption. This is DRM circumvention: decide the project policy
+     and legal risk before writing it; it is not a normal engine-compat feature.
+  4. To understand the stub exactly, dump the TJS2 bytecode (`tTJSScriptBlock::Dump` / a small
+     disassembler) and see which global/native call it expects. Do not add per-game hacks to
+     `compat/`; a loose `startup.tjs` in the game folder is a diagnostic only (we never modify
+     game folders).
+  5. `patch.xp3` holds the real `Config.tjs` and compiled `*.ks.scn`; if the wrapper can be
+     satisfied, `KAGParserEx`/`extNagano`/`textrender`/`layerExDraw`/`AlphaMovie` etc. from
+     `plugin/` will be the next missing pieces (all Windows DLLs; need native replacements).
+
 ### Other known issues
 - Slow frames on page changes (Switch): 300-900 ms, almost all "other" (game scripts / layer ops
   in TJS). Not yet profiled further.
@@ -134,6 +167,10 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 - Test runs through symlinks still write into the real game folder (saves, `title.txt`): use copies
   or `KK4S_ROOT` + separate saves, and never write into the user's game folders.
 - The Switch SD card is slow for many small writes / opens: log in batches, cache font faces.
+- Never change `ResolveProjectDir` (folder vs `data.xp3>`) or the global XP3 mount order to fix one
+  game: FSN's Russian patch (`rufix.xp3`/`rupatch.xp3`) depends on the current precedence and the
+  game became English when the project dir was the folder. If a game needs another order, make it an
+  explicit per-game/profile opt-in and test FSN plus ATRI afterwards.
 - SDL's Switch controller mapping is positional (A/B swapped) — read libnx instead.
 - `rm -rf` on variables is blocked by a safety check; use `"${VAR:?}"/...`.
 - The user wants code reviewed before CI, not trial-and-error pushes.
@@ -144,10 +181,13 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 2. Go through more games with input scripts on PC (any KAG game must work unmodified); fix
    engine differences generically (like `TJSClassVarKeepsProperty`, KAG restore), never per game.
 3. `.tpm` decryptor support (own x86 interpreter + PE loader), so no `xp3filter.tjs` is needed.
-4. Real extrans transitions; more plugins as games need them (layerExDraw, layerExImage, ...).
-5. Video: sync to the audio clock; check decode speed on the Switch.
-6. Overlay folder and per-game profiles (M2/M3).
-7. Flush the audio converter at end of stream so the last ~20 ms of a short sound is not lost.
+4. Steam/PackinOne repacks: detect and report them (do not reorder archives); support DRM-free
+   GOG/JAST releases first. A Steam API stub + PackinOne decryption is a separate, DRM-related
+   decision (see the ATRI section above).
+5. Real extrans transitions; more plugins as games need them (layerExDraw, layerExImage, ...).
+6. Video: sync to the audio clock; check decode speed on the Switch.
+7. Overlay folder and per-game profiles (M2/M3).
+8. Flush the audio converter at end of stream so the last ~20 ms of a short sound is not lost.
 
 Rules from the user: test on the Switch before merging; everything must work for any Kirikiri
 game, not just FSN; never commit game files or keys; game folders are never modified.
