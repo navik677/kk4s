@@ -16,6 +16,7 @@
 #include "WindowIntf.h"
 #include "tjsDictionary.h"
 #include "MsgIntf.h"
+#include "DebugIntf.h"
 #include "ScriptMgnIntf.h"
 #include "TickCount.h"
 
@@ -998,11 +999,17 @@ static void _TVPDeliverContinuousEvent() // internal
 				}
 				catch(...)
 				{
-					// failed
+					// kk4s: do not unwind the idle loop with a script exception.
+					// It used to escape to the application loop, which called
+					// TVPExitApplication; on the Switch that shutdown then hung
+					// (FSN: "The object is already invalidated" in an idle event).
+					// Drop the handler like the TJS_FAILED(er) case below and keep
+					// the player responsive (KAG's own error path still runs).
 					TVPContinuousHandlerVector[i].Release();
 					TVPContinuousHandlerVector[i].Object =
 					TVPContinuousHandlerVector[i].ObjThis = NULL;
-					throw;
+					emptyflag = true;
+					TVPAddLog(ttstr(TJS_W("(kk4s) exception in a continuous event handler; handler removed")));
 				}
 				if(TJS_FAILED(er))
 				{

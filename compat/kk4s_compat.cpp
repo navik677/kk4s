@@ -18,6 +18,7 @@
 #include "DebugIntf.h"
 #include "ScriptMgnIntf.h"
 #include "StorageIntf.h"
+#include "SysInitIntf.h"
 #include "XP3Archive.h"
 #include "tjsObject.h"
 #include "kk4s_platform.h"
@@ -584,6 +585,24 @@ void AfterExecuteStorage(const ttstr& shortname) {
 }
 
 void AfterStartup() {
+    // kk4s: KiriKiri Z enables its developer log window when -debugwin is not
+    // "no" (see DetectSteamBuild). The game sets the global in startup.tjs; if
+    // the argument did not reach it (seen on the Switch), the log pad is active
+    // and the first KAGZ log message dies in our win32dialog stub
+    // ("getNumberdId" on a void item) and the title never appears. A player
+    // never needs the log pad; KK4S_ARGS=-debugwin=yes keeps it for debugging.
+    tTJSVariant dbgarg;
+    bool wantDebugWindow = TVPGetCommandLine(TJS_W("-debugwin"), &dbgarg) && ttstr(dbgarg) != TJS_W("no");
+    if (!wantDebugWindow) {
+        try {
+            tTJSVariant dw;
+            TVPExecuteExpression(TJS_W("debugWindowEnabled"), &dw);
+            if (dw.Type() != tvtVoid && (tjs_int)dw != 0)
+                kk4s::Log("compat: developer log window was enabled; turning it off");
+            TVPExecuteExpression(TJS_W("debugWindowEnabled = 0;"));
+        } catch (...) {
+        }
+    }
     RunAfterInit2();
     // game volume from the in-game menu (kk4s settings)
     int volume = LiveSettings().volume;
