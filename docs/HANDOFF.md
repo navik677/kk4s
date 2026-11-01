@@ -14,20 +14,20 @@ version (only `profiles/FSN/xp3filter.tjs` needed), loading saves, choices after
 video playback (FFmpeg player). PC viewer is the test loop; `KK4S_INPUT_SCRIPT` drives games like
 a Switch user (pad, touch, screenshots, `eval`) - see `docs/debugging.md`.
 
-### Open problem the user is waiting on: audio clicks on the Switch
-Clicking A while a voice line plays (skipping it) gives an audible "tap" on the Switch only.
-- Fixed already (verified on PC with SDL's `disk` audio driver + sine analysis): per-chunk
-  `SDL_AudioCVT` resampling (now one `SDL_AudioStream` per buffer), hard stop of a playing sound
-  (now ~8 ms fade tail, also kept when the buffer is deleted: `AdoptTail`). The click remains.
-- PC mixer output for "stop voice -> open next -> play" is clean, so the cause is on the device
-  side: SDL's Switch driver (`SDL_switchaudio.c`) queues only ONE 4096-sample buffer (~85 ms)
-  ahead; any late callback or empty stream = gap.
-- The current build logs `audio: late callback ...` and `audio: stream ... ran dry ...`
-  (`WaveMixer.cpp`). NEXT STEP: get a Switch log with clicks (user skips voices, exits to the
-  launcher, fetch `logs/` over FTP) and fix what it shows. Ideas: if callbacks are late -> raise the
-  audio thread priority / use more device buffers (own audren path or SDL hint); if streams run dry
-  -> bigger L1 lead (`TVPAL_BUFFER_COUNT` 4 x 125 ms) or find the lock the feeder thread
-  (`tTVPWaveSoundBufferThread`) waits on during the slow frames (300-900 ms) that follow a click.
+### Audio clicks on the Switch: fixed 2026-11-01
+Clicking A while a voice line plays (skipping it) gave an audible "tap" on the Switch.
+- Cause: FSN plays `system/mute.wav` when a voice is stopped. It is 8-bit PCM
+  (22050 Hz mono). Kirikiri supplies 8-bit PCM as **unsigned** (WAV/DirectSound
+  convention; `TVPConvertPCMTo16bits` subtracts 0x80), but the SDL mixer told
+  SDL the format was `AUDIO_S8`. The file's near-silence (0x7E/0x7F) became
+  +32256/+32512, i.e. a full-scale positive DC step for ~84 ms, cut off when
+  the stream ran dry: the "tap".
+- Fix: `CreateStream` uses `AUDIO_U8` for 8-bit sources (`WaveMixer.cpp`); SDL
+  converts it to the device's signed 16-bit correctly. Confirmed on the Switch.
+- Also found while diagnosing: the engine's `mute.wav` stream runs dry because
+  SDL's resampler keeps ~20 ms of the final short append in the stream (it is
+  never flushed). It is silent, so it no longer clicks; a flush would be
+  needed for short non-silent 8-bit/lower-rate sounds to play to the last sample.
 
 ### Other known issues
 - Slow frames on page changes (Switch): 300-900 ms, almost all "other" (game scripts / layer ops
@@ -46,7 +46,8 @@ reaping, pausing leftovers), L3 + R3 menu, worker threads on cores 1-2, CPU boos
 pixel loops, fonts in memory, 64 KB write buffer, slow-frame breakdown, old Kirikiri 2 compat
 (exe options, `-evalcontext=global`, class vars keeping native properties), util.dll / fstat.dll,
 profiles folder for helper scripts, quick-load hook trimming, KAG call-stack restore fix (choices
-after loading), video player + anti-hang, audio resampling and fade-out, input scripts with `eval`.
+after loading), video player + anti-hang, audio resampling and fade-out, 8-bit PCM unsigned fix
+(the "tap" when skipping a voice), input scripts with `eval`.
 
 ## Repo map
 
@@ -106,6 +107,9 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 
 - **Log first** (`logs/kk4s-*.log`): script exceptions with TJS stack traces, `compat:` decisions,
   `fonts:`, `input:`, `launcher:`, `overlay:` lines, `slow frame: N ms (compose …, other …)` for frames over 200 ms (fields: `docs/debugging.md`).
+  Audio: `sound: open/start/stop <ptr> '<file>'` ties a mixer stream to its file, `audio: new stream`
+  shows the source format, `audio: jump` flags a large sample step in the mixed output (a click),
+  `audio: stream … ran dry` and `audio: late callback` flag underruns.
 - **Crash reports**: Atmosphere report + `kk4s.elf` of the same build (git hash in the log). Without
   devkitPro, `eu-addr2line -f -C -i -e kk4s.elf 0x<offset>` works on the aarch64 ELF; the report
   prints offsets as `kk4s + 0x...`. See `docs/debugging.md`.
@@ -136,14 +140,14 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 
 ## Next steps
 
-1. Audio clicks on the Switch: read the diagnostics above from a fresh Switch log and fix.
-2. Profile the 300-900 ms slow frames on the Switch (which TJS / layer operations).
-3. Go through more games with input scripts on PC (any KAG game must work unmodified); fix
+1. Profile the 300-900 ms slow frames on the Switch (which TJS / layer operations).
+2. Go through more games with input scripts on PC (any KAG game must work unmodified); fix
    engine differences generically (like `TJSClassVarKeepsProperty`, KAG restore), never per game.
-4. `.tpm` decryptor support (own x86 interpreter + PE loader), so no `xp3filter.tjs` is needed.
-5. Real extrans transitions; more plugins as games need them (layerExDraw, layerExImage, ...).
-6. Video: sync to the audio clock; check decode speed on the Switch.
-7. Overlay folder and per-game profiles (M2/M3).
+3. `.tpm` decryptor support (own x86 interpreter + PE loader), so no `xp3filter.tjs` is needed.
+4. Real extrans transitions; more plugins as games need them (layerExDraw, layerExImage, ...).
+5. Video: sync to the audio clock; check decode speed on the Switch.
+6. Overlay folder and per-game profiles (M2/M3).
+7. Flush the audio converter at end of stream so the last ~20 ms of a short sound is not lost.
 
 Rules from the user: test on the Switch before merging; everything must work for any Kirikiri
 game, not just FSN; never commit game files or keys; game folders are never modified.

@@ -29,6 +29,8 @@
 #include "TickCount.h"
 #include "WaveMixer.h"
 #include "Platform.h"
+#include "kk4s_platform.h" // kk4s
+#include "SDL.h" // kk4s diagnostics (timestamps shared with the mixer)
 
 #define DWORD uint32_t
 #ifdef TVP_SUPPORT_OLD_WAVEUNPACKER
@@ -2378,6 +2380,7 @@ void tTJSNI_WaveSoundBuffer::DestroySoundBuffer()
 
 	if(SoundBuffer)
 	{
+		kk4s::Log("sound: destroy %p", (void*)this); // kk4s diagnostics
 		SoundBuffer->Stop();
 		SoundBuffer->Release();
 		SoundBuffer = NULL;
@@ -2549,7 +2552,12 @@ bool tTJSNI_WaveSoundBuffer::FillL2Buffer(bool firstwrite, bool fromdecodethread
 			AccessUnitSamples,
 			L2BufferSegmentQueues[L2BufferWritePos]);
 
-		if(decoded < (tjs_uint) AccessUnitSamples) L2BufferEnded = true;
+		if(decoded < (tjs_uint) AccessUnitSamples) {
+			L2BufferEnded = true;
+			// kk4s diagnostics: a short unit means the engine thinks the file ended
+			kk4s::Log("sound: %p short decode %u/%u samples at pos %lld (L2 ended), t=%u ms",
+					  (void*)this, decoded, (unsigned)AccessUnitSamples, (long long)DecodePos, SDL_GetTicks());
+		}
 
 		L2BufferDecodedSamplesInUnit[L2BufferWritePos] = decoded;
 	}
@@ -2994,6 +3002,8 @@ void tTJSNI_WaveSoundBuffer::FlushAllLabelEvents()
 void tTJSNI_WaveSoundBuffer::StartPlay()
 {
 	if(!Decoder) return;
+	kk4s::Log("sound: start %p (%d Hz %d ch %d bits)", (void*)this, InputFormat.SamplesPerSec,
+			  InputFormat.Channels, InputFormat.BitsPerSample); // kk4s diagnostics
 
 	// let primary buffer to start running
 	TVPEnsurePrimaryBufferPlay();
@@ -3044,6 +3054,7 @@ void tTJSNI_WaveSoundBuffer::StopPlay()
 {
 	if(!Decoder) return;
 	if(!SoundBuffer) return;
+	kk4s::Log("sound: stop %p", (void*)this); // kk4s diagnostics
 
 	if(Thread->GetRunning()) { Thread->SetPriority(TVPDecodeThreadHighPriority);}
 	tTJSCriticalSectionHolder holder(BufferCS);
@@ -3151,6 +3162,10 @@ void tTJSNI_WaveSoundBuffer::Open(const ttstr & storagename)
 		// retrieve format
 		InputFormat = FilterOutput->GetFormat();
 		Frequency = InputFormat.SamplesPerSec;
+		// kk4s diagnostics: tie a mixer stream to the file it plays
+		kk4s::Log("sound: open %p '%s' (%d Hz %d ch %d bits%s)", (void*)this,
+				  storagename.AsNarrowStdString().c_str(), InputFormat.SamplesPerSec,
+				  InputFormat.Channels, InputFormat.BitsPerSample, InputFormat.IsFloat ? " float" : "");
 	}
 	catch(...)
 	{

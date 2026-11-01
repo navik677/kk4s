@@ -1,6 +1,6 @@
 # Status
 
-Last update: 2026-10-31.
+Last update: 2026-11-01.
 
 ## Builds (CI, every push to main)
 
@@ -74,6 +74,14 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
   jumps in the same test (`WaveMixer.cpp`).
 - A sound stopped while playing (voice skipped with A) ended mid-wave: a click. The mixer now plays
   the next ~8 ms of it fading to silence (`tTVPSoundBuffer::CaptureTailLocked`).
+- 8-bit PCM is unsigned in Kirikiri (WAV/DirectSound convention), but the mixer told SDL it was
+  `AUDIO_S8`. FSN's `system/mute.wav` (played when a voice is stopped) is 8-bit near-silence
+  (0x7E/0x7F), so it became a full-scale +DC step for ~84 ms: the "tap" heard on every skipped
+  voice. 8-bit sources now use `AUDIO_U8`. Confirmed on the Switch.
+- Audio diagnostics in the log: `sound: open/start/stop <ptr> '<file>'`, `audio: new stream` (source
+  format), `audio: jump` (large sample step in the mixed output), `audio: reset/pause/adopt`,
+  `ran dry` and `late callback`. They stay in release builds (marked `kk4s:`); the caps keep the
+  log small.
 - Pixel loops (`tvpgl.cpp`, `gl/blend_function.cpp`, `gl/ResampleImage.cpp`) are built with -O3:
   GCC vectorizes 135 instead of 59 loops in `blend_function.cpp` and 77 instead of 12 in `tvpgl.cpp`
   for aarch64 (NEON).
@@ -98,6 +106,9 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
 ## Not done / not checked
 
 - Video: plays on PC; not checked on the Switch yet (speed of software MPEG / WMV decoding).
+- The audio format converter is not flushed at end of stream: the last ~20 ms of a short sound
+  (or the tail of a resampled voice) can be dropped. The 8-bit `mute.wav` is silent, so it no
+  longer clicks, but short non-silent sounds at a different rate can still be cut slightly early.
 - Some plugin replacements are approximations or stubs (extrans transitions fall back to crossfade,
   `firespark` / lens effects missing).
 - `.tpm` decryption plugins (e.g. `cxdec.tpm`) are not run: encrypted games need an `xp3filter.tjs`.

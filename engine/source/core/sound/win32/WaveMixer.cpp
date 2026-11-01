@@ -134,10 +134,20 @@ public:
 	size_t _tailPos = 0;
 	bool _dry = false; // kk4s diagnostics
 	void CaptureTailLocked();
+	// kk4s diagnostics: how many ms are queued for the device, how many ms of
+	// fade-out are left. Both are guarded by _buffer_mtx.
+	unsigned QueuedMsLocked() const;
+	unsigned TailMsLocked() const;
+	// kk4s diagnostics: what the engine feeds this stream
+	int _src_rate = 0, _src_ch = 0, _src_bits = 0;
+	bool _src_float = false;
+	uint64_t _appendedBytes = 0;
+	int _appends = 0;
 	tjs_uint _sendedFrontBuffer = 0;
 	tjs_uint _sendedSamples = 0, _inCachedSamples = 0;
 
-	tTVPSoundBuffer(int framesize, SDL_AudioStream *conv) : _frame_size(framesize), _conv(conv) {
+	tTVPSoundBuffer(int framesize, SDL_AudioStream *conv, int rate, int ch, int bits, bool isfloat)
+		: _conv(conv), _frame_size(framesize), _src_rate(rate), _src_ch(ch), _src_bits(bits), _src_float(isfloat) {
 		_buffer_mtx = SDL_CreateMutex();
 		_conv_mtx = SDL_CreateMutex();
 		RecalcVolume();
@@ -145,9 +155,23 @@ public:
 	virtual ~tTVPSoundBuffer();
 	virtual void Release() override { delete this; }
 	virtual void Play() override {
+		unsigned tail;
+		SDL_LockMutex(_buffer_mtx);
+		tail = TailMsLocked();
+		SDL_UnlockMutex(_buffer_mtx);
+		// kk4s diagnostics: a voice restarted while its fade-out still plays
+		if (tail) kk4s::Log("audio: play %p with %u ms of fade-out left, t=%u ms", (void*)this, tail, SDL_GetTicks());
 		_playing = true;
 	}
 	virtual void Pause() override {
+		unsigned queued;
+		bool was = _playing;
+		SDL_LockMutex(_buffer_mtx);
+		queued = QueuedMsLocked();
+		SDL_UnlockMutex(_buffer_mtx);
+		// kk4s diagnostics: Pause has no fade-out; if a voice is skipped with
+		// this path it ends mid-wave (a click)
+		if (was) kk4s::Log("audio: pause %p while playing, %u ms queued, no fade, t=%u ms", (void*)this, queued, SDL_GetTicks());
 		_playing = false;
 	}
 	virtual void Stop() override {
@@ -161,12 +185,21 @@ public:
 			SDL_UnlockMutex(_conv_mtx);
 		}
 		SDL_LockMutex(_buffer_mtx);
+		bool wasPlaying = _playing;
+		unsigned queued = QueuedMsLocked();
 		if (_playing) CaptureTailLocked(); // kk4s
+		unsigned tail = TailMsLocked();
 		_buffers.clear();
 		_inCachedSamples = 0;
 		_sendedFrontBuffer = 0;
 		_sendedSamples = 0;
+		_appendedBytes = 0;
+		_appends = 0;
 		SDL_UnlockMutex(_buffer_mtx);
+		// kk4s diagnostics: what was still queued when the buffer was cleared
+		if (wasPlaying)
+			kk4s::Log("audio: reset %p while playing, dropped %u ms, kept %u ms fade, t=%u ms",
+					  (void*)this, queued, tail, SDL_GetTicks());
 	}
 	virtual bool IsPlaying() override {
 		return _playing;
@@ -182,6 +215,7 @@ public:
 	}
 	virtual float GetPan() override { return _pan; }
 	virtual void AppendBuffer(const void *_inbuf, unsigned int inlen/*, int tag = 0*/) override {
+		size_t appended = 0;
 		if (_conv) {
 			std::vector<uint8_t> buffer;
 			SDL_LockMutex(_conv_mtx);
@@ -195,17 +229,27 @@ public:
 			}
 			SDL_UnlockMutex(_conv_mtx);
 			if (buffer.empty()) return;
+			appended = buffer.size();
 			SDL_LockMutex(_buffer_mtx);
 			_inCachedSamples += buffer.size() / _frame_size;
 			_buffers.emplace_back();
 			_buffers.back().swap(buffer);
 			SDL_UnlockMutex(_buffer_mtx);
 		} else {
+			appended = inlen;
 			SDL_LockMutex(_buffer_mtx);
 			_buffers.emplace_back((uint8_t*)_inbuf, ((uint8_t*)_inbuf) + inlen);
 			_inCachedSamples += inlen / _frame_size;
 			SDL_UnlockMutex(_buffer_mtx);
 		}
+		// kk4s diagnostics
+		SDL_LockMutex(_buffer_mtx);
+		_appendedBytes += appended;
+		int appends = ++_appends;
+		SDL_UnlockMutex(_buffer_mtx);
+		if (appends == 1)
+			kk4s::Log("audio: stream %p first append %u bytes (%d Hz %d ch %d bits%s), t=%u ms",
+					  (void*)this, (unsigned)appended, _src_rate, _src_ch, _src_bits, _src_float ? " float" : "", SDL_GetTicks());
 	}
 	virtual bool IsBufferValid() override {
 		return true; // unlimited buffer size
@@ -230,6 +274,36 @@ protected:
 	SDL_mutex *_streams_mtx;
 	std::unordered_set<tTVPSoundBuffer*> _streams;
 	int _frame_size = 0;
+	// kk4s diagnostics: the last output samples and a cap on jump reports. A
+	// click is a large sample-to-sample step in the mixed output, so report
+	// where it happened together with how many streams / fade tails were
+	// mixed into the same device buffer.
+	int16_t _lastOut[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+	int _jumpLogs = 0;
+
+	void ReportJumps(const uint8_t *buf, int len, int streams, int tails) {
+		if (_spec.format != AUDIO_S16LSB && _spec.format != AUDIO_S16SYS) return;
+		int ch = _spec.channels;
+		if (ch <= 0 || ch > 8) return;
+		int frames = len / _frame_size;
+		if (frames <= 0) return;
+		const int16_t *s = (const int16_t*)buf;
+		int worst = -1, worstFrame = 0, worstCh = 0, from = 0, to = 0;
+		for (int f = 0; f < frames; ++f) {
+			for (int c = 0; c < ch; ++c) {
+				int v = s[f * ch + c];
+				int p = f == 0 ? _lastOut[c] : s[(f - 1) * ch + c];
+				int d = v > p ? v - p : p - v;
+				if (d > worst) { worst = d; worstFrame = f; worstCh = c; from = p; to = v; }
+			}
+		}
+		for (int c = 0; c < ch; ++c) _lastOut[c] = s[(frames - 1) * ch + c];
+		if (worst >= 10000 && _jumpLogs < 100) {
+			++_jumpLogs;
+			kk4s::Log("audio: jump %d at sample %d/%d (ch %d, %d -> %d), %d stream(s), %d tail(s), t=%u ms",
+					  worst, worstFrame, frames, worstCh, from, to, streams, tails, SDL_GetTicks());
+		}
+	}
 
 public:
 	iTVPAudioRenderer() {
@@ -281,7 +355,11 @@ public:
 			spec.format = AUDIO_F32LSB;
 		} else {
 			switch (fmt.BitsPerSample) {
-			case 8: spec.format = AUDIO_S8; break;
+			// kk4s: Kirikiri supplies 8-bit PCM as unsigned (WAV/DirectSound
+			// convention; TVPConvertPCMTo16bits subtracts 0x80). SDL was told
+			// AUDIO_S8, so a silent 8-bit sound (FSN's mute.wav: 0x7e/0x7f)
+			// became a full-scale +DC step: a "tap" on every skipped voice.
+			case 8: spec.format = AUDIO_U8; break;
 			case 16: spec.format = AUDIO_S16LSB; break;
 			case 32: spec.format = AUDIO_S32LSB; break;
 			default: return nullptr;
@@ -296,10 +374,14 @@ public:
 			if (!conv) return nullptr;
 		}
 
-		tTVPSoundBuffer* s = new tTVPSoundBuffer(fmt.BytesPerSample * fmt.Channels, conv);
+		tTVPSoundBuffer* s = new tTVPSoundBuffer(fmt.BytesPerSample * fmt.Channels, conv,
+			fmt.SamplesPerSec, fmt.Channels, fmt.BitsPerSample, fmt.IsFloat);
 		SDL_LockMutex(_streams_mtx);
 		_streams.emplace(s);
 		SDL_UnlockMutex(_streams_mtx);
+		kk4s::Log("audio: new stream %p (%d Hz %d ch %d bits%s, conv %s), t=%u ms", (void*)s,
+				  fmt.SamplesPerSec, fmt.Channels, fmt.BitsPerSample, fmt.IsFloat ? " float" : "",
+				  conv ? "yes" : "no", SDL_GetTicks()); // kk4s diagnostics
 		return s;
 	}
 
@@ -353,13 +435,15 @@ public:
 			Uint32 expect = _frame_size > 0 && _spec.freq > 0 ? (Uint32)((uint64_t)len / _frame_size * 1000 / _spec.freq) : 0;
 			if (last && expect && now - last > expect + expect / 2 && logged < 40) {
 				++logged;
-				kk4s::Log("audio: late callback, %u ms after the previous one (a buffer lasts %u ms)", now - last, expect);
+				kk4s::Log("audio: late callback, %u ms after the previous one (a buffer lasts %u ms), t=%u ms", now - last, expect, now);
 			}
 			last = now;
 		}
+		int streams = 0, tails = 0;
 		SDL_LockMutex(_streams_mtx);
 		for (tTVPSoundBuffer* s : _streams) {
 			s->FillBuffer(buf, len);
+			++streams;
 		}
 		for (size_t i = 0; i < _orphanTails.size();) { // kk4s
 			tOrphanTail &t = _orphanTails[i];
@@ -367,7 +451,9 @@ public:
 			if (t.pos >= t.data.size()) _orphanTails.erase(_orphanTails.begin() + i);
 			else ++i;
 		}
+		tails = (int)_orphanTails.size();
 		SDL_UnlockMutex(_streams_mtx);
+		ReportJumps(buf, len, streams, tails); // kk4s diagnostics
 	}
 
 	int MixAudio(uint8_t *dst, uint8_t *src, int len, int16_t *vol) {
@@ -383,6 +469,26 @@ public:
 	virtual int32_t GetUnprocessedSamples() { return 0; }
 };
 
+// kk4s diagnostics (defined here: iTVPAudioRenderer is complete now)
+unsigned tTVPSoundBuffer::QueuedMsLocked() const
+{
+	const SDL_AudioSpec &spec = TVPAudioRenderer->GetSpec();
+	int frame = SDL_AUDIO_BITSIZE(spec.format) / 8 * spec.channels;
+	if (!frame || !spec.freq) return 0;
+	uint64_t bytes = 0;
+	for (auto &b : _buffers) bytes += b.size();
+	bytes -= std::min<uint64_t>(bytes, _sendedFrontBuffer);
+	return (unsigned)(bytes / frame * 1000 / spec.freq);
+}
+
+unsigned tTVPSoundBuffer::TailMsLocked() const
+{
+	const SDL_AudioSpec &spec = TVPAudioRenderer->GetSpec();
+	int frame = SDL_AUDIO_BITSIZE(spec.format) / 8 * spec.channels;
+	if (!frame || !spec.freq || _tailPos >= _tail.size()) return 0;
+	return (unsigned)((uint64_t)(_tail.size() - _tailPos) * 1000 / frame / spec.freq);
+}
+
 tTVPSoundBuffer::~tTVPSoundBuffer()
 {
 	Stop();
@@ -394,7 +500,13 @@ tTVPSoundBuffer::~tTVPSoundBuffer()
 	tail.swap(_tail);
 	tailpos = _tailPos;
 	SDL_UnlockMutex(_buffer_mtx);
-	if (tailpos < tail.size()) TVPAudioRenderer->AdoptTail(tail, tailpos, _volume_raw);
+	if (tailpos < tail.size()) {
+		const SDL_AudioSpec &spec = TVPAudioRenderer->GetSpec();
+		int frame = SDL_AUDIO_BITSIZE(spec.format) / 8 * spec.channels;
+		unsigned ms = frame && spec.freq ? (unsigned)((uint64_t)(tail.size() - tailpos) * 1000 / frame / spec.freq) : 0;
+		kk4s::Log("audio: adopt %u ms fade-out of %p, t=%u ms", ms, (void*)this, SDL_GetTicks()); // kk4s diagnostics
+		TVPAudioRenderer->AdoptTail(tail, tailpos, _volume_raw);
+	}
 	SDL_DestroyMutex(_buffer_mtx);
 	if (_conv) SDL_FreeAudioStream(_conv);
 	SDL_DestroyMutex(_conv_mtx);
@@ -466,7 +578,8 @@ void tTVPSoundBuffer::FillBuffer(uint8_t *out, int len)
 		static int logged = 0;
 		if (!_dry && logged < 40) {
 			++logged;
-			kk4s::Log("audio: stream %p ran dry (%d bytes missing, %u samples played)", (void*)this, len, _sendedSamples);
+			kk4s::Log("audio: stream %p ran dry (%d bytes missing, %u samples played, appended %u bytes in %d call(s), %zu buffer(s) left, t=%u ms)",
+					  (void*)this, len, _sendedSamples, (unsigned)_appendedBytes, _appends, _buffers.size(), SDL_GetTicks());
 		}
 		_dry = true;
 	} else {
