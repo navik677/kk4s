@@ -99,6 +99,9 @@ after loading), video player + anti-hang, audio resampling and fade-out, 8-bit P
 | `platform/common/kk4s_common.cpp` | logger (background writer), game scan, project dir, pad mapping |
 | `platform/switch/`, `platform/desktop/` | platform layer: paths, fonts, pad (libnx on Switch), battery, keyboard, exit to launcher |
 | `tests/tjs/` | `hello` (smoke test), `input` (shows key/mouse events) |
+| `docs/repacks.md` | protected/repacked games: `hnfn` names, XOR layers, verified one-time extraction |
+| `docs/packinone-native.md` | native PackinOne support: WIP branch, CXDEC evidence, next steps |
+| `docs/build-deploy.md` | local build commands (Switch + desktop), FTP deploy and gotchas |
 | `tools/` | `build-switch.sh`, `build-desktop.sh`, `run-linux.sh`, `ci-report.sh`, `resolve-crash.py`, `xp3ls.cpp`, `tjsdis.py` (TJS2 bytecode disassembler) |
 
 Engine hook points (all `kk4s:`): `sdl2/stubs.cpp` (main, window, launcher call, input, in-game
@@ -122,6 +125,8 @@ KK4S_ROOT=/tmp/kk4s-run ./out-desktop/kk4s game/fsn    # one game; without an ar
 
 Windows (no admin): portable MSYS2 (`msys2-base-x86_64-latest.sfx.exe`), `pacman -Syu` twice, then
 `DEPS=1 bash tools/build-desktop.sh` in a UCRT64 shell. Details: `docs/pc-viewer.md`.
+**On the current Windows box the exact working build/FTP commands (MSYS2 + devkitPro, UCRT64,
+quirks) are in `docs/build-deploy.md`.**
 
 Switch builds come from CI (`gh run download <id>`); locally via Docker (`README.md`). On the
 Fedora dev box there is only podman, which needs the full image name:
