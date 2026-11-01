@@ -22,6 +22,36 @@ version (only `profiles/FSN/xp3filter.tjs` needed), loading saves, choices after
 video playback (FFmpeg player). PC viewer is the test loop; `KK4S_INPUT_SCRIPT` drives games like
 a Switch user (pad, touch, screenshots, `eval`) - see `docs/debugging.md`.
 
+### NEVER break FSN's Russian patch (learned the hard way, 2026-11-01)
+FSN's Russian translation lives in `rufix.xp3` and `rupatch.xp3` next to `data.xp3`. It works
+**only** because of the current project-dir/archive precedence:
+- the project dir is `.../FSN/data.xp3>` (not the FSN folder);
+- `rufix.xp3`/`rupatch.xp3` are mounted **after** `data.xp3` by the game's own `startup.tjs` /
+  auto paths, so same-named files in them override the base ones.
+
+What broke it last time: returning the **folder** as the project dir when the game has more than one
+`*.xp3` (and, separately, mounting every `*.xp3` up front). The override order changed, the base
+English files won, and the game became English. Both experiments were reverted; FSN Russian works
+again on `3eed2e1`. Current `main` also has repack detection + `System.addFont`; they do not touch
+the archive order, but FSN must be retested on the Switch after any merge.
+
+Rules for any change that touches `ResolveProjectDir`, `XP3Archive`, `StorageIntf` auto paths or
+startup:
+1. Do **not** change the global project-dir rule or mount order to fix one game. If a game needs a
+   different order, make it an explicit per-game/profile opt-in (and test FSN first).
+2. Do **not** mount all `*.xp3` in `BeforeStartup` for all games.
+3. Gate new archive/startup behaviour narrowly (e.g. only when the game has `hnfn` records, or
+   only when `DetectGameIssue()` finds Steam/PackinOne markers). Check that FSN's folder does not
+   match the gate.
+4. Regression test after every such change: launch FSN, confirm the log says
+   `project dir: .../FSN/data.xp3>` (not the folder), and the title/menu and the first scenario
+   line are in Russian. If it is English, revert before doing anything else.
+
+The native PackinOne WIP (`wip/packinone-native`) follows this: `hnfn` name mapping and the magic
+XOR only activate when the archive contains `hnfn` records, and the KiriKiri Z startup shim only
+when `DetectGameIssue()` flags the folder (steam_api + ds.ini/SteamEmu/PackinOne/.xp3.index).
+FSN has none of those, but it must still be tested on the Switch before merging the branch.
+
 ### Audio clicks on the Switch: fixed 2026-11-01
 Clicking A while a voice line plays (skipping it) gave an audible "tap" on the Switch.
 - Cause: FSN plays `system/mute.wav` when a voice is stopped. It is 8-bit PCM

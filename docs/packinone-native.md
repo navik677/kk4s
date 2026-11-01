@@ -101,6 +101,24 @@ bytecode deobfuscation or keep a KiriKiri Z startup shim.
    independent of the cipher and already tested (the archive lists 2302 real
    names and loads the shim).
 
+## Regression risk: FSN's Russian patch (do not break it again)
+
+On 2026-11-01 the Russian translation of FSN broke while experimenting for ATRI. Cause: the project
+dir was changed to the game **folder** when more than one `*.xp3` exists (and, separately, all
+`*.xp3` were mounted up front). FSN's translation is `rufix.xp3` + `rupatch.xp3` next to `data.xp3`;
+their files override the base ones **only** because they are mounted after `data.xp3` with the
+project dir `.../FSN/data.xp3>`. Changing the order/precedence makes the English base files win.
+
+Therefore, when working on the native PackinOne branch:
+- keep the WIP gated: the `hnfn` name mapping and the magic XOR must only run for archives that
+  actually contain `hnfn` records; the KiriKiri Z startup shim only when `DetectGameIssue()` finds
+  Steam/PackinOne markers (`steam_api.dll` + `ds.ini`/`SteamEmu`/`PackinOne.dll`/`*.xp3.index`).
+  FSN has none of these, so none of the new code may run for FSN;
+- do **not** change `ResolveProjectDir`, the global mount order, or mount all `*.xp3` for all games;
+- after merging/testing the branch, launch FSN and check that the log still says
+  `project dir: .../FSN/data.xp3>` and that the title/menu and first scenario line are Russian.
+  If it is English, the archive precedence changed — revert that part first.
+
 ## How to reproduce the analysis
 
 - Game folder: `E:\ATRI -My Dear Moments-` (repack) on the dev PC.
