@@ -67,7 +67,9 @@ bytes. The old "XOR 0x61 / obfuscated bytecode" conclusion came from the wrong m
 With correct CXDEC the engine loads it fine. Verified: with env `KK4S_NO_SHIM=1` ATRI starts through
 its own `startup.tjs` and behaves exactly like with the shim (same flow, same achievement error).
 
-**Therefore the KiriKiri Z startup shim is unnecessary: remove it.**
+**Therefore the KiriKiri Z startup shim is unnecessary: remove it.** (It is in fact never used for
+ATRI now: `StartupScriptShim()` is called before `data.xp3` is mounted, so `AnyCxArchiveBound()` is
+false; the log has no "protected repack" line and the game's own `startup.tjs` runs.)
 - `compat/kk4s_compat.{h,cpp}`: delete `StartupScriptShim()` (and the uncommitted `KK4S_NO_SHIM` line).
 - `engine/source/core/base/ScriptMgnIntf.cpp` (`TVPExecuteStartupScript`): restore the plain
   `TVPExecuteStorage(TVPStartupScriptName)` (see `git show 4d767de:...` for the original).
