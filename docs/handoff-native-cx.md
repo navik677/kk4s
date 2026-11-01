@@ -10,16 +10,23 @@ kk4s must run **any** PC KiriKiri game from its original folder (repack or origi
 extraction, patching or conversion** by the user. **ATRI is only a test case**, not the product:
 every fix must be generic or gated on positive detection. Do not hardcode ATRI offsets, keys or names.
 Do not break existing games: **FSN with the Russian patch** (`rufix.xp3` + `rupatch.xp3`) and
-Tsukihime Russian must keep working; compare against `main` (`4d767de`/`0576d4e`). Never change
-`ResolveProjectDir`, the global XP3 mount order, or mount all `*.xp3` for all games. `main` is not
-to be modified. The user writes Ukrainian; keep answers short, outcome first.
+Tsukihime Russian must keep working; regression-test them after any shared runtime change. Never
+change `ResolveProjectDir`, the global XP3 mount order, or mount all `*.xp3` for all games. Keep
+changes local and do not push/trigger CI until the user reviews. The user writes Ukrainian; keep
+answers short, outcome first.
 
-## State (desktop build, original ATRI folder) - updated 2026-11-01 21:40
+## State (ATRI is only a test fixture; universal engine is the goal) - updated 2026-11-01 22:20
 
-**ATRI now reaches its title screen from the original repack folder** (no extraction): CXDEC decrypts
-every archive, the Steam chain runs, achievements are logged, and `title.ks` renders with the Russian
-translation ("АТРИ - Мои дорогие воспоминания -", menu ПРОДОЛЖИТЬ/НАЧАТЬ/ЗАГРУЗКА/...). Verified with a
-whole-screen capture (`out-desktop/atri-title-screen.png`).
+ATRI is the PC Steam-repack test fixture only; it is not the product or acceptance target. The
+generic CXDEC/Steam path reaches title setup on desktop, but the user reports the Switch build still
+does not show the title menu. Latest Switch log reaches `title:xrated, 0`, then
+`win32dialog.tjs getNumberdId` tries to index `itemMap` with `void`. Fix the generic KiriKiri Z
+Win32-dialog/log-window compatibility contract; do not add ATRI-specific behavior.
+
+**Regression status:** the user confirms Fate/FSN and the other tested games work well on Switch;
+Fate is playable from beginning to end. The XP3-filter/background-thread crash fix is in NRO
+`8d4bef4` and the user reports the rest of the suite remains healthy. Keep this full-playthrough
+regression mandatory when changing the shared engine or compatibility layer.
 
 What made it pass the old blockers (all in this commit):
 
@@ -53,10 +60,9 @@ Next blocks after the title (in order seen so far): the real text renderer (curr
 scenario/`layerEx*`/`AlphaMovie` plugins as they are used. `k2compat.tjs makeDummyProperty` throws
 "Invalid object context" twice at startup (game-side, non-fatal; same on `main`).
 
-- Last verified: FSN on the desktop build still starts in Russian (Рус-moon logo + `TitleMenu.ks`,
-  `project dir: .../data.xp3>`, 0 script exceptions).
-- **Switch**: the NRO on the SD card is an older build; nothing from this session has been uploaded or
-  tested on hardware yet. Build `out/kk4s.nro` and test before merging.
+- Last desktop FSN regression: Russian title/menu, `project dir: .../data.xp3>`, 0 script exceptions.
+- Latest NRO on the SD: `8d4bef4`, SHA-256
+  `4101BB85B3B2AE8E98CAE0D0350B873C281DA34B35EEB277E7FDBE914D02997F`.
 
 ## Key discovery of the last session (do this first)
 
@@ -217,7 +223,7 @@ is the crash mechanism; it is not evidence that the TJS global was invalidated, 
 `EventIntf` catch-and-continue change did not address it. The user's report that kk4s crashed is
 confirmed by the Atmosphere `Instruction Abort` report.
 
-### Fix deployed for hardware test (2026-11-01 22:14)
+### XP3-filter crash fix (hardware-confirmed by user, 2026-11-01)
 
 When `ScriptFilterActive()` is true, `tTVPAsyncImageLoader::LoadRequest` loads graphics synchronously
 on the main thread using the existing `TVPLoadGraphic` path. `TVPTouchImages` likewise skips its
@@ -227,8 +233,10 @@ removes the observed TLG-worker call into TJS. Desktop FSN regression test with 
 `data316.bmp`: loads and advances, **0 script exceptions**, and no
 `xp3 filter script called on a background thread` warning; filtered TLG/OGG reads are logged as
 main-thread decrypts. Switch NRO `8d4bef4` (SHA-256
-`4101BB85B3B2AE8E98CAE0D0350B873C281DA34B35EEB277E7FDBE914D02997F`) is uploaded to the SD;
-hardware retest is still required before treating this as fixed.
+`4101BB85B3B2AE8E98CAE0D0350B873C281DA34B35EEB277E7FDBE914D02997F`) was uploaded to the SD.
+The user confirms Fate/FSN and other games now run well, with Fate playable from beginning to end;
+this confirms the filter-threading fix for the tested suite. Continue regression testing any change
+to XP3 reading or graphics loading.
 
 The earlier 21:00 interpretation of the `202113` log was too confident. That older run did show an
 exception at `kaglayer.tjs(87) onTransitionCompleted` after FlowTracker's `*skip_to_next`, but the

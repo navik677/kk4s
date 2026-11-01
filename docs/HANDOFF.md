@@ -1,20 +1,24 @@
 # Handoff — read this first in a new session
 
-Last update: 2026-11-01 (end of session). Goal: **any Kirikiri (KAG/TJS2) game folder runs unmodified** on the
-Switch (and on PC via the viewer). Game files are never changed; fixes live in the engine,
-`compat/` or kk4s' own files. Full requirements: `docs/original-prompt.md`; milestones: `docs/roadmap.md`.
+Last update: 2026-11-01. Goal: **a universal Kirikiri runtime/compatibility layer**: any KAG/TJS2
+game folder (plain or repacked) runs unmodified on Switch and PC. ATRI is one PC-repack test fixture,
+not the target. No per-game fixes, game files, keys or conversion; compatibility belongs in the engine,
+`compat/` or kk4s' own files. Full requirements: `docs/original-prompt.md`; milestones:
+`docs/roadmap.md`.
 
 ## Where we are (2026-11-01)
 
-`main` has all work up to now (PR #1 "Switch fixes" merged) plus two local commits not pushed yet:
-`f83404f` (repack detection + `tools/tjsdis.py`) and `4d767de` (`System.addFont` + repack docs).
-The SD card holds a build of `4d767de` (`6D75B284…A608383`, includes `System.addFont`; it does not
-contain the native WIP branch).
+`main` is local and not pushed. The SD holds NRO `8d4bef4`
+(`4101BB85…D02997F`), verified over FTP. User confirms on Switch that Fate/FSN and the other tested
+games work well; **Fate is playable from beginning to end**. The generic XP3-filter threading fix is
+in that build. ATRI still does not reach its title menu on Switch.
 
-New in this session: the ATRI repack was decrypted and **runs in the PC viewer** from an extracted
-plain folder (see `docs/repacks.md`). Native support for the original repack folder is a WIP branch
-(`wip/packinone-native`, local commit `3201fa9`): names and startup work, content decryption stops
-at a CXDEC keystream — details and next steps in `docs/packinone-native.md`.
+The current native repack work is engine-wide: `hnfn` names + generic CXDEC decoder/scheme binding,
+Steam-build argument detection and plugin compatibility. ATRI is used only to exercise that path;
+it is not an acceptance target by itself. The first known remaining Switch issue is the ATRI title
+startup/Win32-dialog path (latest log: `title:xrated, 0`, then `win32dialog.tjs getNumberdId` with
+`void` ID). Investigate the missing generic API/semantics, not ATRI-specific behavior. Full status and
+crash analysis: `docs/handoff-native-cx.md`, `docs/cxdec.md`.
 
 Works on the Switch (user-tested): launcher, exit to the launcher (engine threads stopped,
 detached thread stacks closed), in-game menu on L3 + R3, saves outside the game folder, FSN PC
@@ -67,48 +71,29 @@ Clicking A while a voice line plays (skipping it) gave an audible "tap" on the S
   never flushed). It is silent, so it no longer clicks; a flush would be
   needed for short non-silent 8-bit/lower-rate sounds to play to the last sample.
 
-### Protected repacks / PackinOne (ATRI, tested 2026-11-01)
-`ATRI -My Dear Moments-` (DARKSiDERS Steam repack) does not run from the repack folder: its XP3
-index hides the names and the contents are XOR-encrypted. The full recipe and the one-time
-extraction procedure are in **`docs/repacks.md`**; summary:
-- Real names are in **`hnfn` chunks** (4-byte key, 16-bit length, UTF-16LE name), matching the
-  `File` record's `adlr`; the `info` name is `md5(lowercase name in UTF-16LE)`. GARbro has the same
-  support (`FilenameMap`).
-- `startup.tjs` seen by name is a 316-byte decoy that only calls
-  `System.inform("startup failed: corrupted execution file")` (see `tools/tjsdis.py`). The real one
-  is a hashed entry, 1300 bytes of KiriKiri Z TJS2 bytecode.
-- Contents use a per-file single-byte XOR. The **first byte can use a different key than the rest**
-  (classic XP3 simple crypt); the keys are derived from a known magic (`PNG`, `OggS`, `TLG`,
-  `TJS2100`, `FE FE`, `UKR.5`, ...), not stored in the index.
-- The repack ships `version.dll` = **KirikiriTools / KirikiriUnencryptedArchive**, which extracts
-  decrypted files into `unencrypted/` as the game opens them. That plus a name-list `startup.tjs`
-  extracted ~7258 files; fgimage (Japanese paths the DLL cannot create) was extracted separately
-  with the two-key TLG XOR (2559/2587), and `patch.xp3` (plain, the Russian translation) was
-  overlaid.
-- The extracted folder **runs in the PC viewer** and renders the game. Engine additions needed:
-  `System.addFont(face, storage)` (KiriKiri Z, added in `base/SystemIntf.cpp`); a source
-  `startup.tjs` stub (`kirikiriz/debugWindowEnabled/inXP3archivePacked/convertMode` then
-  `system/Initialize.tjs`). The real KZ `startup.tjs` bytecode crashes the current TJS2 bytecode
-  loader.
-- Remaining: KAGZ `custom.tjs` throws at `reparent(textSpeechMenuItem, ...)`; ignoring
-  `System.exit` during startup lets the game continue. KAGZ menu/controller APIs
-  (`SystemConfig`, pad key state) are still incomplete.
-- **Not done:** running the original repack folder without extraction. A native attempt is on the local
-  branch `wip/packinone-native` (commit `3201fa9`, based on `4d767de`): `hnfn` names,
-  magic-derived per-file XOR and a KiriKiri Z startup shim. It reaches
-  `system/Initialize.tjs`, then stops because the contents are a **CXDEC keystream**, not a constant
-  XOR (e.g. `Initialize.tjs` uses key `0x66` for bytes 0..1131 and `0xe6` after; OGG/PNG have
-  mid-file key runs and single-byte exceptions). Next step: implement `CxEncryption` (GARbro's
-  `KiriKiriCx.cs`) and extract its control block/keys from the game EXE/DLL. The full evidence,
-  key runs, gdb backtrace and reproduction steps are in **`docs/packinone-native.md`**.
-- Detection is already in place: `kk4s::detail::DetectGameIssue` logs at scan time and the launcher
-  shows a warning for Steam/PackinOne markers. It never changes mount order or the project dir.
-- Tried and reverted: mounting every `*.xp3` before startup and making the folder the project dir;
-  the latter **broke FSN's Russian patch** (`rufix.xp3`/`rupatch.xp3`). Never change
-  `ResolveProjectDir`/the global mount order for one game (gotcha below).
-- `patch.xp3` holds the real `Config.tjs` and compiled `*.ks.scn`; the Windows plugin DLLs
-  (`KAGParserEx`, `extNagano`, `textrender`, `layerExDraw`, `AlphaMovie`, ...) still need native
-  replacements as games use them.
+### Universal engine compatibility / repacks
+
+The product goal is **any unmodified Kirikiri/KAG/TJS2 game folder**, not ATRI. ATRI is a single
+PC-Steam-repack test fixture for the generic `hnfn` + CXDEC + Steam-loader path. Do not add ATRI
+paths, keys, offsets, names or behavior. Every compatibility fix must implement a reusable KiriKiri
+API/semantic or a generally detectable plugin/platform behavior; test against the existing game set.
+
+- Generic native repack path is implemented: `hnfn` names, CXDEC decoder, and verified scheme binding.
+  ATRI's original folder reaches title setup on desktop, but **the user reports it still does not
+  reach the title menu on Switch**. Latest Switch log: `title:xrated, 0`, then
+  `win32dialog.tjs getNumberdId` indexes `itemMap` with `void`. Treat this as a missing/incorrect
+  KiriKiri Win32-dialog/log-window compatibility behavior, not an ATRI-specific defect. Investigate
+  the generic wrapper semantics and add a focused stub/API test.
+- Steam detection (`steam_api.dll` plus `steam.tjs`/`steam.xp3`), `-steam=yes`, KZ release
+  `-debugwin=no`, and the `krkrsteam.dll` compatibility object are in the engine layer. Achievements
+  are logged, cloud is unavailable.
+- The current `textrender.dll` replacement is a no-op; it is not a completed renderer and must not be
+  mistaken for a playable-game milestone. Implement text rendering and remaining generally useful
+  KAGZ APIs/plugins (`layerEx*`, `AlphaMovie`, etc.) as needed by more than one game.
+- One-time ATRI extraction is only a diagnostic/reference route (`docs/repacks.md`), never a user
+  requirement or acceptance path.
+- **Never** change `ResolveProjectDir` or global XP3 mount order for one title. FSN Russian depends on
+  `project dir: .../FSN/data.xp3>` and `rupatch.xp3`/`rufix.xp3` overlay precedence (rules above).
 
 ### Other known issues
 - Slow frames on page changes (Switch): 300-900 ms, almost all "other" (game scripts / layer ops
@@ -225,24 +210,23 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 - `rm -rf` on variables is blocked by a safety check; use `"${VAR:?}"/...`.
 - The user wants code reviewed before CI, not trial-and-error pushes.
 
-## Next steps
+## Next steps (universal engine; ATRI is one test fixture)
 
-1. Profile the 300-900 ms slow frames on the Switch (which TJS / layer operations).
-2. Go through more games with input scripts on PC (any KAG game must work unmodified); fix
-   engine differences generically (like `TJSClassVarKeepsProperty`, KAG restore), never per game.
-3. `.tpm` decryptor support (own x86 interpreter + PE loader), so no `xp3filter.tjs` is needed.
-4. Protected repacks: detection + launcher warning is done. One-time extraction with the repack's
-   own `version.dll` + a name-list script works and the extracted folder runs (see
-   `docs/repacks.md`, ATRI). Native support for the original folder is the WIP branch
-   `wip/packinone-native`: `hnfn` names + magic XOR + KZ startup shim are done; the remaining
-   blocker is the **CXDEC keystream** (control block/keys from the game EXE/DLL). Start from
-   `docs/packinone-native.md` (evidence, key runs, gdb backtrace, `KiriKiriCx.cs` blueprint).
-   Also fill the remaining KiriKiri Z APIs (`SystemConfig`, pad keys) that KAGZ menus use. A Steam
-   API stub is not needed for the archive path.
-5. Real extrans transitions; more plugins as games need them (layerExDraw, layerExImage, ...).
-6. Video: sync to the audio clock; check decode speed on the Switch.
-7. Overlay folder and per-game profiles (M2/M3).
-8. Flush the audio converter at end of stream so the last ~20 ms of a short sound is not lost.
+1. Fix the generic KiriKiri Z Win32-dialog/log-window contract exposed by ATRI's Switch startup:
+   latest log reaches `title:xrated, 0`, then `win32dialog.tjs getNumberdId` indexes `itemMap` with
+   `void`. Do not special-case ATRI; make the native `win32dialog.dll` compatibility layer obey the
+   script wrapper's contract, add a focused fixture/test, then retest ATRI and other KAGZ games.
+2. Implement the real generic `TextRenderBase` behavior (current `textrender.dll` is a no-op), then
+   add other KAGZ API/plugin compatibility only when evidence from multiple games supports it.
+3. Broaden the regression suite across unrelated KAG/TJS2 games and language patches. Keep the
+   confirmed Fate/FSN full playthrough and FSN Russian patch as mandatory regressions. All changes
+   belong in engine/compat, never in game files or title-specific branches.
+4. `.tpm` decryptor support (own x86 interpreter + PE loader), so encrypted games do not need an
+   `xp3filter.tjs`; the CXDEC scheme extractor still needs an in-runtime port to remove the PC
+   scheme-generation step.
+5. Profile 300-900 ms Switch slow frames; implement real extrans transitions and remaining plugins
+   as broadly useful. Video audio-clock sync, per-game profiles/overlay folder, and flushing the final
+   ~20 ms from the audio converter remain open.
 
 Rules from the user: test on the Switch before merging; everything must work for any Kirikiri
 game, not just FSN; never commit game files or keys; game folders are never modified.

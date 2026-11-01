@@ -16,7 +16,7 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
 
 | Game | Notes |
 |---|---|
-| Fate/stay night (Realta Nua, Kirikiroid2-ready folder) | `xp3filter.tjs` (cxdec-style XOR), `Override2.tjs` / `AfterInit2.tjs`, game font "Mona" with full-width Cyrillic (substituted) |
+| Fate/stay night (Realta Nua, Kirikiroid2-ready folder) | User-confirmed on Switch: full playthrough from beginning to end; Russian patch, saves/load, `xp3filter.tjs`, `Override2.tjs` / `AfterInit2.tjs`; game font "Mona" Cyrillic substituted |
 | Sharin no Kuni, Himawari no Shoujo | plain archives; saving, touch and gamepad checked |
 | Tsukihime + Plus-Disc | own font (`umineko.ttf`) |
 | The Makings of a Lady – Purity Yours to Defile | `xp3filter.tjs` (`b.xor(0,l,h)`); existing saves from the game folder are migrated |
@@ -112,14 +112,17 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
 - Some plugin replacements are approximations or stubs (extrans transitions fall back to crossfade,
   `firespark` / lens effects missing).
 - `.tpm` decryption plugins (e.g. `cxdec.tpm`) are not run: encrypted games need an `xp3filter.tjs`.
-- Steam/PackinOne repacks (tested with ATRI): **native support now reaches the game's title screen
-  from the original repack folder** - no extraction. `hnfn` names + the CXDEC content filter decrypt
-  the archives; a Steam build is detected from `steam_api.dll` + `steam.tjs`/`steam.xp3` and gets
-  `-steam=yes` + `-debugwin=no`; a `krkrsteam.dll` stub provides the `Steam` object (achievements
-  logged, cloud off). `textrender.dll` is a no-op stub, so text/effects are incomplete and the
-  scenario after the title is not fully playable yet. The one-time extraction path still works too
-  (see [repacks.md](repacks.md)); implementation notes in [cxdec.md](cxdec.md) and
+- Universal runtime is the goal; ATRI is only the PC Steam-repack test fixture, not a product target.
+  Generic `hnfn` name mapping + CXDEC decoding and Steam compatibility are implemented. Desktop
+  ATRI reaches title setup, but the user confirms it still does **not** reach its title menu on
+  Switch; latest log reaches `title:xrated, 0` then fails in the KAGZ Win32-dialog wrapper
+  (`getNumberdId` receives `void`). `textrender.dll` remains a no-op, so this is not a playable-game
+  milestone. Next work is the generic KiriKiri Z dialog/text compatibility layer, validated across
+  multiple games—not an ATRI-specific workaround. Details: [cxdec.md](cxdec.md),
   [handoff-native-cx.md](handoff-native-cx.md).
+- XP3 script filters are **not thread-safe**. `8d4bef4` routes filtered game graphics/touchimages
+  through synchronous main-thread loading. User-confirmed: Fate/FSN now plays through to the end and
+  other tested games work well. This hardware regression is mandatory for further filter changes.
 - The game picture is stretched to the whole screen (no aspect-correct scaling / letterbox yet).
 - Overlay folder and per-game profiles (M2/M3) are not implemented.
 - Album (applet) mode memory limits not tested; docked ↔ handheld switching not tested.
