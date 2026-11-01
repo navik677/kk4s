@@ -93,8 +93,11 @@ The resulting folder is a normal plain-file project: copy it to
   `System.terminate`; the startup stub above ignores it and the game keeps
   running (confirmed: the process stays up for minutes and renders the
   title/prologue).
-- Not yet: runtime decryption of the original repack folder (no extraction).
-  That would need `hnfn` names + the magic-derived XOR in `XP3Archive.cpp`.
+- Native runtime support for the original repack folder is WIP on the local
+  branch `wip/packinone-native`: `hnfn` names + magic-derived XOR + a KiriKiri Z
+  startup shim are in place; the contents are a **CXDEC keystream** (keys change
+  mid-file), so the CXDEC filter and its control block/keys from the game
+  EXE/DLL are still missing. See `docs/packinone-native.md`.
 - A few files are not extracted (28 TLG, 10 `.sinfo`, 7 `.stand`); they are
   metadata/animation pieces, not needed to start.
 

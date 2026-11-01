@@ -1,12 +1,20 @@
 # Handoff — read this first in a new session
 
-Last update: 2026-10-31 (end of session). Goal: **any Kirikiri (KAG/TJS2) game folder runs unmodified** on the
+Last update: 2026-11-01 (end of session). Goal: **any Kirikiri (KAG/TJS2) game folder runs unmodified** on the
 Switch (and on PC via the viewer). Game files are never changed; fixes live in the engine,
 `compat/` or kk4s' own files. Full requirements: `docs/original-prompt.md`; milestones: `docs/roadmap.md`.
 
 ## Where we are (2026-11-01)
 
-`main` has all work up to now (PR #1 "Switch fixes" merged). The SD card holds the latest build.
+`main` has all work up to now (PR #1 "Switch fixes" merged) plus two local commits not pushed yet:
+`f83404f` (repack detection + `tools/tjsdis.py`) and `4d767de` (`System.addFont` + repack docs).
+The SD card holds a build of `4d767de` (`6D75B284…A608383`, includes `System.addFont`; it does not
+contain the native WIP branch).
+
+New in this session: the ATRI repack was decrypted and **runs in the PC viewer** from an extracted
+plain folder (see `docs/repacks.md`). Native support for the original repack folder is a WIP branch
+(`wip/packinone-native`, local commit `3201fa9`): names and startup work, content decryption stops
+at a CXDEC keystream — details and next steps in `docs/packinone-native.md`.
 
 Works on the Switch (user-tested): launcher, exit to the launcher (engine threads stopped,
 detached thread stacks closed), in-game menu on L3 + R3, saves outside the game folder, FSN PC
@@ -55,9 +63,14 @@ extraction procedure are in **`docs/repacks.md`**; summary:
 - Remaining: KAGZ `custom.tjs` throws at `reparent(textSpeechMenuItem, ...)`; ignoring
   `System.exit` during startup lets the game continue. KAGZ menu/controller APIs
   (`SystemConfig`, pad key state) are still incomplete.
-- **Not done:** running the original repack folder without extraction. That needs `hnfn` names +
-  the magic-derived XOR inside `XP3Archive.cpp` (a generic "protected XP3" feature), not a
-  per-game hack.
+- **Not done:** running the original repack folder without extraction. A native attempt is on the local
+  branch `wip/packinone-native` (commit `3201fa9`, based on `4d767de`): `hnfn` names,
+  magic-derived per-file XOR and a KiriKiri Z startup shim. It reaches
+  `system/Initialize.tjs`, then stops because the contents are a **CXDEC keystream**, not a constant
+  XOR (e.g. `Initialize.tjs` uses key `0x66` for bytes 0..1131 and `0xe6` after; OGG/PNG have
+  mid-file key runs and single-byte exceptions). Next step: implement `CxEncryption` (GARbro's
+  `KiriKiriCx.cs`) and extract its control block/keys from the game EXE/DLL. The full evidence,
+  key runs, gdb backtrace and reproduction steps are in **`docs/packinone-native.md`**.
 - Detection is already in place: `kk4s::detail::DetectGameIssue` logs at scan time and the launcher
   shows a warning for Steam/PackinOne markers. It never changes mount order or the project dir.
 - Tried and reverted: mounting every `*.xp3` before startup and making the folder the project dir;
@@ -99,6 +112,8 @@ after loading), video player + anti-hang, audio resampling and fade-out, 8-bit P
 | `platform/common/kk4s_common.cpp` | logger (background writer), game scan, project dir, pad mapping |
 | `platform/switch/`, `platform/desktop/` | platform layer: paths, fonts, pad (libnx on Switch), battery, keyboard, exit to launcher |
 | `tests/tjs/` | `hello` (smoke test), `input` (shows key/mouse events) |
+| `docs/repacks.md` | protected/repacked games: `hnfn` names, the XOR layers, the verified one-time extraction procedure |
+| `docs/packinone-native.md` | native PackinOne support: WIP branch, CXDEC evidence/key runs, where it stopped, next steps |
 | `tools/` | `build-switch.sh`, `build-desktop.sh`, `run-linux.sh`, `ci-report.sh`, `resolve-crash.py`, `xp3ls.cpp`, `tjsdis.py` (TJS2 bytecode disassembler) |
 
 Engine hook points (all `kk4s:`): `sdl2/stubs.cpp` (main, window, launcher call, input, in-game
@@ -188,10 +203,12 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 3. `.tpm` decryptor support (own x86 interpreter + PE loader), so no `xp3filter.tjs` is needed.
 4. Protected repacks: detection + launcher warning is done. One-time extraction with the repack's
    own `version.dll` + a name-list script works and the extracted folder runs (see
-   `docs/repacks.md`, ATRI). Next: (a) implement `hnfn` names + magic-derived per-file XOR in
-   `XP3Archive.cpp`, so the original repack folder runs directly (no extraction); (b) fill the
-   remaining KiriKiri Z APIs (`SystemConfig`, pad keys) that KAGZ menus use. A Steam API stub is
-   not needed for the archive path.
+   `docs/repacks.md`, ATRI). Native support for the original folder is the WIP branch
+   `wip/packinone-native`: `hnfn` names + magic XOR + KZ startup shim are done; the remaining
+   blocker is the **CXDEC keystream** (control block/keys from the game EXE/DLL). Start from
+   `docs/packinone-native.md` (evidence, key runs, gdb backtrace, `KiriKiriCx.cs` blueprint).
+   Also fill the remaining KiriKiri Z APIs (`SystemConfig`, pad keys) that KAGZ menus use. A Steam
+   API stub is not needed for the archive path.
 5. Real extrans transitions; more plugins as games need them (layerExDraw, layerExImage, ...).
 6. Video: sync to the audio clock; check decode speed on the Switch.
 7. Overlay folder and per-game profiles (M2/M3).
