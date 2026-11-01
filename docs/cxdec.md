@@ -1,89 +1,119 @@
-# CXDEC (KiriKiri "Cx" XP3 filter) — findings and architecture
+# CXDEC (KiriKiri "Cx" XP3 filter)
 
-Status (2026-11-01, branch `wip/packinone-native`): the algorithm is identified and a
-reference decoder is verified on a real game (ATRI -My Dear Moments-, PackinOne repack).
-**Not integrated into the runtime yet.** The open problem is how kk4s obtains a game's
-parameters automatically (layer 2/3 below).
+Status (2026-11-01, branch `wip/packinone-native`, not on `main`):
 
-## Layer 1 — generic CXDEC (shared by every Cx game)
+- Generic decoder in the runtime (`compat/cxdec`), verified byte-exact.
+- Scheme recovery **without running the game** works for ATRI (PC tool).
+- The runtime decrypts the original ATRI folder transparently; the game now fails
+  later, on KiriKiri Z plugin APIs (not on encryption). See "ATRI status".
+- FSN Russian patch: no change against `main` `4d767de` (title screen, logs).
 
-Same as GARbro `CxEncryption` (`ArcFormats/KiriKiri/KiriKiriCx.cs`). Reference port:
-`tools/cxdec_ref.py` (no game data inside).
+## Three layers
 
-- Per file key = `adlr` (adler32 of the plaintext; this also gives a free integrity check).
-- Two regions: `base = (adlr & mask) + offset`. Bytes `< base` use key `h`, bytes
-  `>= base` use `h ^ (h >> 16)`.
-- `Decode(key)`: seed = `key & 0x7f` selects one of 128 generated programs; `ret1 =
-  P(key >> 7)`, `ret2 = P(~(key >> 7))`. Every byte of the region is XORed with
-  `key3 = ret1 & 0xff` (0 → 1); two single bytes get an extra XOR: position
-  `ret2 >> 16` with `ret1 >> 8`, position `ret2 & 0xffff` (+1 if equal) with
-  `ret1 >> 16` (positions are absolute file offsets, so only the first 64 KiB).
-  This is exactly the "constant run, switch at ~1000, single-byte exceptions" pattern
-  measured earlier — the observed XOR values are outputs, not keys.
-- Program generator: LCG `s = 1103515245*s + 12345`, `r = s ^ (old<<16) ^ (old>>16)`;
-  recursive body with stages 5..1, 128-byte length limit; the RNG is **not** reset
-  between stages. The ordering matters: the opcode is checked first and the random
-  immediate is drawn only after the opcode fitted (`Emit(op) && EmitRandom()`); a port
-  that draws first produces wrong programs for the seeds that overflow (here 114/125).
-- Control block: 1024 little-endian uint32, read directly by the generated code
-  (`mov eax,[esi+eax*4]`). GARbro stores `~raw` and executes `~ControlBlock[i]`, i.e.
-  the raw values.
+| layer | what | where | game data? |
+|---|---|---|---|
+| 1 generic | generator + interpreter + decrypt | `compat/cxdec/cxdec.{h,cpp}` | none |
+| 2 per game | a *scheme*: mask, offset, 3 branch orders, 4 KiB control block | `<root>/profiles/cx/<name>.cxscheme` + `.cb` (user data, never in the repo) | yes |
+| 3 detection | which archive is Cx, which scheme fits | `compat/kk4s_cx.cpp`, hook in `XP3Archive` | none |
 
-## Layer 2 — per-game scheme (data, not code)
+### Layer 1 — algorithm (shared by every Cx game)
 
-A scheme is `{mask, offset, PrologOrder[3], OddBranchOrder[6], EvenBranchOrder[8],
-control_block[4096]}` — the same fields as GARbro's `CxScheme`. Variants seen in GARbro
-(Senren/Cabbage/Nana/Riddle) change the PRNG (`CxProgramNana`) or the name table, not
-the decode math; they fit as flags on the same scheme.
+Same as GARbro `CxEncryption` (`ArcFormats/KiriKiri/KiriKiriCx.cs`).
 
-ATRI values: `mask 0x1A7`, `offset 0x369`, `prolog [0,1,2]`, `odd [0,4,3,1,2,5]`,
-`even [2,7,4,0,3,5,1,6]`, control block sha256 `76b332a6…5d70c821`. Not committed (it is
-game data); it was taken from the running game for verification only.
+- Key = entry `adlr` (adler32 of the plaintext — also a free integrity check).
+- Two regions: bytes `< (adlr & mask) + offset` use key `h`, the rest use
+  `h ^ (h >> 16)`.
+- Per region: program `P = programs[key & 0x7f]`, `r1 = P(key >> 7)`,
+  `r2 = P(~(key >> 7))`. Every byte is XORed with `r1 & 0xff` (0 → 1). Two single
+  bytes get an extra XOR: the one at file offset `r2 >> 16` gets `r1 >> 8`, and the one at
+  `r2 & 0xffff` (+1 if the two offsets are equal) gets `r1 >> 16`.
+- Program generator: LCG `s' = 1103515245*s + 12345`, `r = s' ^ (s<<16) ^ (s>>16)`;
+  recursive body, stages 5..1, 128-byte x86 length limit, the RNG is not reset between
+  stages. **Order matters**: an opcode is length-checked first and its random
+  immediate is drawn only afterwards (`Emit(op) && EmitRandom()`). Drawing first
+  produces wrong programs for the seeds that overflow (ATRI: 114, 125).
+- Control block: 1024 LE uint32 used raw (`mov eax,[esi+eax*4]`).
+- kk4s interprets the programs (no JIT), so it is the same code on Switch, Linux and Windows.
 
-How they were obtained (ATRI):
-1. The game's process holds a **manually mapped, unlisted PE image** at `0x10000000`
-   (private memory; not in the module list) containing the Cx generator (LCG
-   constants, `and 0x1A7`, `add 0x369`) and the control block at `0x10014628`.
-2. A 128 × 128-byte RWX region holds the generated programs (prolog
-   `57 56 53 51 52 8B 7C 24 18`); `mov esi, imm32` in them gives the control block
-   address.
-3. The branch orders were solved by regenerating programs and matching the bytes:
-   with the exact emit order, **100/100** dumped programs are reproduced.
+Tests: `tests/cxdec/cxdec_test.cpp` — 384 synthetic vectors from the Python reference
+(`tools/cxdec_ref.py`, `tests/cxdec/gen_vectors.py`), incl. chunked reads; plus
+`--archive` mode for a real game (adler32 of every entry).
 
-Verification: decrypting **every** entry of `data/bgimage/fgimage/voice/vol1/steam.xp3`
-gives `adler32 == adlr` for 10 808 entries; all 128 seeds of both keys are covered.
-Exceptions: one decoy entry per archive (`$$$ This is a protected archive. $$$ …txt`,
-not real content) and `main/imagedressmap.txt` (zlib error while reading — to check).
+### Layer 2 — where schemes come from
 
-## Layer 3 — detection and initialization (open)
+The Cx filter lives in a **TPM plugin** (`cxdec_tpm.dll`/`*.tpm`, a KiriKiri plugin
+exporting `V2Link`). It contains the generator code, `and r, mask; add r, offset`, the
+branch switches and the control block.
 
-- Detection is easy and safe: an XP3 index with `hnfn` records (Cx name table) → the
-  archive is Cx-encrypted; `adlr` lets kk4s verify any candidate scheme on the first
-  file it opens before enabling it. Archives without `hnfn` are not touched (FSN).
-- **Blocker: the scheme is not stored in plain form on disk.** Neither the control
-  block, nor the hidden module's code/rdata, nor its constants appear in the EXE, the
-  plugins, `.cf`, `.sig` or `.index` files (also not XOR/NOT-ed). The hidden image is
-  unpacked at runtime by the EXE or `PackinOne.dll` (EXE `.rsrc` has entropy 7.17 —
-  first candidate). Until that unpacking is understood, kk4s on Switch has no way to
-  get the parameters from the original folder by itself.
+How the TPM is shipped:
 
-Options, in order of preference:
-1. Reverse the unpacker (EXE/`PackinOne.dll` → hidden image) and extract the scheme
-   statically from the original files on first launch. Fully automatic, works on
-   Switch. Unknown effort; the unpacker may be shared by other PackinOne/Steam KiriKiri
-   titles, so it is reusable infrastructure.
-2. Read the scheme from the EXE when it *is* in plain form (older Cx games / TPM
-   plugins: GARbro's `" Encryption control block"` signature scan). Generic, cheap,
-   but does not cover ATRI.
-3. One-time scheme capture on a PC (run the game, dump as above) stored as a small
-   scheme file next to the game. Works for any Cx game, but is a preparation step.
+1. Classic: a `*.tpm` file next to the EXE. The control block may start with GARbro's
+   `" Encryption control block"` signature.
+2. **Embedded "internal module"** (ATRI): the EXE holds
+   `"internal module\0"` + 8 bytes + `u32 raw_size` + `u32 zlib_size` + zlib data;
+   it inflates to the TPM DLL, which the EXE maps by hand at run time (private memory,
+   not in the module list — that is why nothing was visible on disk at first).
+   This is a container format, not ATRI data; it is parsed generically.
 
-## Runtime integration plan (after the blocker)
+`tools/cx_scheme_extract.py GAME_DIR OUT.cxscheme` (PC, needs `capstone`, `pefile`):
 
-- `CxFilter` (pure C++, no platform code): scheme struct, generator + interpreter
-  (no JIT; portable to Switch/Linux/Windows), 128 programs cached per archive set.
-- Hook in `tTVPXP3ArchiveStream::Read` where the WIP magic-XOR is now, enabled only
-  for archives flagged by `hnfn` **and** a scheme that passes the `adlr` check;
-  remove the magic-XOR guesser.
-- Regression gate: FSN Russian patch (`rufix.xp3`/`rupatch.xp3`, no `hnfn`) must take
-  none of the new paths; compare against `4d767de`.
+- finds TPMs (files or internal modules that contain the LCG constant);
+- control block candidates: the signature, or 4-KiB data blocks returned by tiny
+  getters (`mov eax, imm32; ret`);
+- mask/offset candidates: `and r32, imm32; add r32, imm32` on one register;
+- branch orders: the `div 6` / `and 7` jump tables and the `div 3` compare chain of
+  the generator; each case is classified by the x86 bytes it emits
+  (`01 D8` add, `29 D8` sub, `0F AF C3` imul, `B8` mov imm, `BE` control block …);
+- every candidate is **validated on real entries** (decrypted adler32 == adlr); the
+  best one that explains ≥80 % of the samples wins (protectors add decoy entries).
+
+Result for ATRI: the scheme from the original folder alone is identical to the one
+captured from the running game (control block byte-identical, 100/100 generated
+programs reproduced). No ATRI constant is in the tool.
+
+### Layer 3 — detection in the runtime
+
+- An XP3 index with `hnfn` records ⇒ Cx archive (names come from `hnfn`; entries
+  without a name are decoys and are dropped). Other archives are untouched.
+- `BindCxDecoder()` tries every `*.cxscheme` on ≤12 small entries and binds the best
+  one with ≥80 % verified; otherwise logs how to create a scheme. A scheme is never
+  applied unverified.
+- The KiriKiri Z startup shim runs only after a verified Cx binding (positive
+  detection). The earlier folder-marker gate also matched FSN and broke it.
+
+## When automatic recovery is not possible
+
+| case | what to do |
+|---|---|
+| Generator variant with another PRNG (GARbro `CxProgramNana`: Nana/Cabbage/Riddle) | add the variant to layer 1 as a scheme flag; the extractor must detect it |
+| Compiler shape the extractor's switch parser does not know | extractor reports "could not read all branch orders"; fix the parser or provide a scheme by hand |
+| TPM packed/encrypted by something other than the zlib internal-module container | unknown loader ⇒ scheme must be provided (profile) or captured once on a PC |
+| Archives with `hnfn` but a non-Cx cipher | no scheme validates ⇒ nothing is applied; needs its own filter |
+| Non-Cx TPM (FSN's `cxdec.tpm` is FateCrypt; no generator) | extractor finds no TPM ⇒ correct; such games keep using `xp3filter.tjs` |
+
+Not done yet: running the extractor **inside** kk4s. It needs a small x86 decoder
+for the switch parsing (capstone is a PC-only dependency). Until then a scheme is
+produced once with the PC tool and copied to `<root>/profiles/cx/`. This is the
+remaining manual step for "folder → play" on Switch.
+
+## ATRI status (original folder, desktop build)
+
+- All six Cx archives bind automatically (`12/12` sample entries verified);
+  `patch.xp3` (no `hnfn`, a Russian translation by CreativeCorner) loads as usual;
+  the window title is Cyrillic.
+- C++ decoder over every entry: 10 789 entries with adler32 == adlr; failures are the
+  decoy entry per archive and `main/imagedressmap.txt` (its zlib segment does not
+  inflate; to investigate).
+- The game loads the KAG system scripts, then stops at a black screen: its
+  `win32dialog.tjs` needs `WIN32Dialog.Header` (KiriKiri Z `win32dialog` plugin API,
+  missing in kk4s' stub). Same class of problem as the extracted copy had
+  (`textSpeechMenuItem`), now earlier in the order. Next work is plugin
+  compatibility, not encryption.
+
+## FSN regression check (2026-11-01)
+
+`main` `4d767de` and this branch, same folder, `profiles/Fate-stay_night/xp3filter.tjs`:
+identical title screen (Russian), `project dir: …/data.xp3>`, same mount order
+(`rupatch.xp3`, `rufix.xp3`), 0 script exceptions, no `cxdec`/shim lines. Logs differ
+only in timings and pointers. Not yet re-checked: in-game scenario, save/load,
+Switch build.
