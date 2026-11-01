@@ -5,9 +5,15 @@ Repo: `C:\Users\navik\gits\kk4s`; MSYS2: `C:\msys64`.
 
 ## Switch build (NRO)
 
+In PowerShell, put the whole bash command in **single quotes** so `$?`/`$PATH`
+are expanded by bash, not by PowerShell:
+
 ```powershell
-C:\msys64\usr\bin\bash.exe -lc "cd /c/Users/navik/gits/kk4s && SKIP_DEPS=1 bash tools/build-switch.sh > /tmp/kk4s-switch-build.log 2>&1; echo EXIT=$?; grep -n -i -E 'error:|undefined reference' /tmp/kk4s-switch-build.log | tail -10; tail -4 /tmp/kk4s-switch-build.log"
+C:\msys64\usr\bin\bash.exe -lc 'cd /c/Users/navik/gits/kk4s && SKIP_DEPS=1 bash tools/build-switch.sh > /tmp/kk4s-switch-build.log 2>&1; echo EXIT=$?; grep -n -i -E "error:|undefined reference" /tmp/kk4s-switch-build.log | tail -10; tail -4 /tmp/kk4s-switch-build.log'
 ```
+
+(The previous variants with double quotes printed `EXIT=True`: PowerShell was
+expanding `$?` before bash saw it. The build itself was fine.)
 
 - Works because devkitPro is installed at `/opt/devkitpro` (MSYS path) and the
   build script defaults `DEVKITPRO=/opt/devkitpro`; the toolchain cmake is
@@ -49,7 +55,7 @@ C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm --needed \
 Build:
 
 ```powershell
-C:\msys64\usr\bin\bash.exe -lc "export MSYSTEM=UCRT64; export PATH=/ucrt64/bin:/usr/bin:`$PATH; cd /c/Users/navik/gits/kk4s && bash tools/build-desktop.sh > /tmp/kk4s-desktop-build.log 2>&1; echo EXIT=`$?; tail -20 /tmp/kk4s-desktop-build.log"
+C:\msys64\usr\bin\bash.exe -lc 'export MSYSTEM=UCRT64; export PATH=/ucrt64/bin:/usr/bin:$PATH; cd /c/Users/navik/gits/kk4s && bash tools/build-desktop.sh > /tmp/kk4s-desktop-build.log 2>&1; echo EXIT=$?; tail -20 /tmp/kk4s-desktop-build.log'
 ```
 
 - Use the **UCRT64** cmake (`/ucrt64/bin/cmake.exe`), not the MSYS
@@ -105,6 +111,36 @@ curl.exe -sS --max-time 600 -o $tmp ftp://192.168.1.135:5000/switch/kk4s/kk4s.nr
 - After this session the SD holds an NRO built from `main` `4d767de` (with
   `System.addFont`), SHA-256 `6D75B284969C02270EF55162DD6196F1F5C542F4AA2185DB0BD477459A608383`.
   The native WIP branch (`wip/packinone-native`) is **not** in that NRO.
+
+## Common failure modes (why "it does not build")
+
+- **`dkp-pacman: command not found`** on the Switch build: this MSYS2 has no
+  devkitPro package manager in `PATH`. Use `SKIP_DEPS=1` (the portlibs are
+  already installed under `/opt/devkitpro/portlibs/switch`). Do not run the
+  script without it here.
+- **`SDL.h: No such file or directory`** on the desktop build: MSYS cmake
+  (`/usr/bin/cmake`) was used. Put `/ucrt64/bin` first in `PATH` (or call
+  `/ucrt64/bin/cmake.exe` directly) so the UCRT64 cmake/pkg-config are used.
+- **`Package 'opusfile'/'oniguruma' not found`**: install the UCRT64 packages
+  (`pacman -S mingw-w64-ucrt-x86_64-opusfile mingw-w64-ucrt-x86_64-oniguruma`
+  etc., see the dependency block above).
+- **Desktop viewer exits with `-1073741515` / `0xC0000135`**: the UCRT64 DLLs
+  are not on `PATH`. Start it with
+  `$env:PATH = 'C:\msys64\ucrt64\bin;' + $env:PATH`.
+- **Viewer shows the launcher with 0 games**: the game path was split on
+  spaces. Quote it: `-ArgumentList '"E:\ATRI -My Dear Moments-"'`.
+- **Switch build fails at an assembly step with "access denied"/"app cannot
+  run"**: Windows Smart App Control / antivirus blocked a devkitA64 binary
+  (seen with `aarch64-none-elf-as.exe`). Reinstall the devkitA64 gcc package
+  and/or allow the binary; a reinstall fixed it before (old binary renamed
+  `*.blocked`).
+- **Stale objects/old banner**: `rm -rf build-switch` (or `build-desktop`) and
+  rebuild; the git hash is baked at configure time, so commit before building.
+- **Incremental desktop build does not update `out-desktop`**: the script
+  copies at the end; a bare `cmake --build build-desktop` does not. Copy
+  `build-desktop/kk4s.exe` yourself.
+- **Not on this Windows box?** Use the Docker/CI path below; the same
+  `tools/build-switch.sh` installs its own deps there.
 
 ## Alternative: CI / Docker
 
