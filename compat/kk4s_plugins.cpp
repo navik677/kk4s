@@ -9,6 +9,8 @@
 // Add a plugin: write a Link function and add it to kPlugins below.
 #include "kk4s_compat.h"
 
+extern bool TVPKAGParserExMode; // engine/source/core/utils/KAGParser.cpp
+
 #include "CharacterSet.h"
 #include "StorageIntf.h"
 #include "TextStream.h"
@@ -354,6 +356,10 @@ void LinkDrawerDll();
 void LinkSlideOpenDll();
 void LinkFireSparkDll();
 
+// KAGParserEx.dll replaces the KAG parser: the engine's own parser does the work; the one
+// visible difference games rely on is "taglist" in tag elements (KAGParser.cpp).
+static void LinkKAGParserExDll() { ::TVPKAGParserExMode = true; }
+
 // The engine already does what these DLLs did (ogg decoding, video).
 static void ProvidedByEngine() {}
 
@@ -364,6 +370,7 @@ struct PluginEntry {
 
 static const PluginEntry kPlugins[] = {
     {"util.dll", LinkUtilDllAll},
+    {"kagparserex.dll", LinkKAGParserExDll},
     {"fstat.dll", LinkFstatDll},
     {"p.dll", LinkPDll},
     {"filter.dll", LinkFilterDll},

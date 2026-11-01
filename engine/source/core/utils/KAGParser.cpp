@@ -9,6 +9,7 @@
 // KAG Parser Utility Class
 //---------------------------------------------------------------------------
 
+#include <algorithm>
 #include <string>
 #include "KAGParser.h"
 #include "EventIntf.h"
@@ -1400,6 +1401,49 @@ void tTJSNI_KAGParser::ClearCallStack()
 	PopMacroArgsTo(MacroArgStackBase = 0); // macro arguments are also cleared
 }
 //---------------------------------------------------------------------------
+// kk4s: KAGParserEx.dll emulation. A game that links that plugin gets "taglist" in every tag
+// element: the attribute names in the order they were written (plus attributes that came from
+// a macro argument list). KAG scripts use it instead of enumerating the element, which would
+// also list members added later by the script itself (runCount, runLine ...).
+bool TVPKAGParserExMode = false;
+namespace {
+class tKk4sMemberCollector : public tTJSDispatch
+{
+public:
+	std::vector<ttstr> names;
+	tjs_error TJS_INTF_METHOD FuncCall(tjs_uint32, const tjs_char*, tjs_uint32*, tTJSVariant *result,
+		tjs_int numparams, tTJSVariant **param, iTJSDispatch2*)
+	{
+		if(numparams >= 3 && !((tjs_int)*param[1] & TJS_HIDDENMEMBER)) names.push_back(ttstr(*param[0]));
+		if(result) *result = (tjs_int)1;
+		return TJS_S_OK;
+	}
+};
+}
+static void kk4sAddTagList(iTJSDispatch2 *dic, const std::vector<ttstr> &order)
+{
+	std::vector<ttstr> list;
+	for(size_t i = 0; i < order.size(); i++)
+		if(std::find(list.begin(), list.end(), order[i]) == list.end()) list.push_back(order[i]);
+	tKk4sMemberCollector *c = new tKk4sMemberCollector;
+	tTJSVariantClosure clo(c);
+	dic->EnumMembers(TJS_IGNOREPROP, &clo, dic);
+	for(size_t i = 0; i < c->names.size(); i++)
+		if(std::find(list.begin(), list.end(), c->names[i]) == list.end()) list.push_back(c->names[i]);
+	clo.Release();
+	iTJSDispatch2 *arr = TJSCreateArrayObject();
+	tTJSVariant av(arr, arr);
+	arr->Release();
+	tjs_int n = 0;
+	for(size_t i = 0; i < list.size(); i++)
+	{
+		if(list[i] == TJS_W("tagname") || list[i] == TJS_W("taglist")) continue;
+		tTJSVariant nv(list[i]);
+		arr->PropSetByNum(TJS_MEMBERENSURE, n++, &nv, arr);
+	}
+	dic->PropSet(TJS_MEMBERENSURE, TJS_W("taglist"), NULL, &av, dic);
+}
+//---------------------------------------------------------------------------
 iTJSDispatch2 * tTJSNI_KAGParser::_GetNextTag()
 {
 	// get next tag and return information dictionary object.
@@ -1417,6 +1461,7 @@ parse_start:
 	if(!Lines) return NULL;
 
 
+	std::vector<ttstr> kk4s_attr_order; // kk4s: attribute names of the current tag, in order
 	static ttstr __tag_name(TJSMapGlobalStringMap(TJS_W("tagname")));
 	static ttstr __eol_name(TJSMapGlobalStringMap(TJS_W("eol")));
 	static ttstr __storage_name(TJSMapGlobalStringMap(TJS_W("storage")));
@@ -1427,6 +1472,7 @@ parse_start:
 	{
 		DicClear->FuncCall(0, NULL, NULL, NULL, 0, NULL, DicObj);
 			// clear dictionary object
+		kk4s_attr_order.clear();
 
 		if(Interrupted)
 		{
@@ -1727,6 +1773,7 @@ parse_start:
 
 					if(condition && ExcludeLevel == -1)
 					{
+						if(TVPKAGParserExMode) kk4sAddTagList(DicObj, kk4s_attr_order);
 						DicObj->AddRef();
 						return DicObj;
 					}
@@ -1853,6 +1900,21 @@ parse_start:
 							TVPExecuteExpression(exp, Owner, &val);
 							exp = val;
 
+							// kk4s: [emb escape=false ...] (KAGParserEx.dll) embeds the string as
+							// KAG source: tags inside it run. The default still escapes '['.
+							bool escape_bracket = true;
+							{
+								tTJSVariant escval;
+								if(TJS_SUCCEEDED(DicObj->PropGet(0, TJS_W("escape"), NULL, &escval, DicObj)) &&
+									escval.Type() != tvtVoid)
+								{
+									ttstr es = escval;
+									es.ToLowerCase();
+									if(es == TJS_W("false") || es == TJS_W("0") || es == TJS_W("no"))
+										escape_bracket = false;
+								}
+							}
+
 							// count '['
 							const tjs_char *p = exp.c_str();
 							tjs_int r_count = 0;
@@ -1879,7 +1941,7 @@ parse_start:
 							p = exp.c_str();
 							while(*p)
 							{
-								if(*p == TJS_W('['))
+								if(*p == TJS_W('[') && escape_bracket)
 								{
 									*d = TJS_W('['); d++;
 									*d = TJS_W('['); d++;
@@ -2251,8 +2313,11 @@ parse_start:
 
 			// store value into the dictionary object
 			if(store)
+			{
 				DicObj->PropSetByVS(TJS_MEMBERENSURE,
 					attribname.AsVariantStringNoAddRef(), &ValueVariant, DicObj);
+				if(TVPKAGParserExMode) kk4s_attr_order.push_back(attribname);
+			}
 		}
 	}
 
