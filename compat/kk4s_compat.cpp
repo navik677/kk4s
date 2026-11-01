@@ -503,6 +503,7 @@ const tjs_char* StartupScriptShim() {
     // Positive identification only: a Cx (hnfn) archive with a verified CXDEC
     // scheme was mounted in this run. Folder markers are not enough (FSN's
     // folder has version.dll/KrkrExtract and must keep its own startup.tjs).
+    if (getenv("KK4S_NO_SHIM")) return NULL; // test the game's own startup.tjs
     if (!kk4s::compat::AnyCxArchiveBound()) return NULL;
     if (!TVPIsExistentStorage(ttstr(TJS_W("system/Initialize.tjs")))) return NULL;
     return TJS_W(
