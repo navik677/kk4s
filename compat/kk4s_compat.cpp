@@ -541,6 +541,15 @@ void AfterStartup() {
     }
     if (g_filter_calls)
         kk4s::Log("compat: xp3 filter called %u times so far", g_filter_calls.load());
+    // debugging aid for KAG games: KK4S_KAG_TRACE=1 (simple) or 2 (verbose) logs every tag
+    if (const char* trace = getenv("KK4S_KAG_TRACE")) {
+        try {
+            TVPExecuteExpression(TJS_W("kag.conductor.debugLevel = ") + ttstr((tjs_int)atoi(trace)));
+            kk4s::Log("compat: KAG tag trace level %d", atoi(trace));
+        } catch (...) {
+            kk4s::Log("compat: KK4S_KAG_TRACE: no kag.conductor in this game");
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

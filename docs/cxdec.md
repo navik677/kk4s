@@ -4,8 +4,8 @@ Status (2026-11-01, branch `wip/packinone-native`, not on `main`):
 
 - Generic decoder in the runtime (`compat/cxdec`), verified byte-exact.
 - Scheme recovery **without running the game** works for ATRI (PC tool).
-- The runtime decrypts the original ATRI folder transparently; the game now fails
-  later, on KiriKiri Z plugin APIs (not on encryption). See "ATRI status".
+- The runtime decrypts the original ATRI folder transparently; the game runs to its title
+  scenario but draws nothing yet (not an encryption problem). See "ATRI status".
 - FSN Russian patch: no change against `main` `4d767de` (title screen, logs).
 
 ## Three layers
@@ -105,13 +105,17 @@ remaining manual step for "folder → play" on Switch.
   decoy entry per archive and `main/imagedressmap.txt` (its zlib segment does not
   inflate; to investigate).
 - Verified on Switch too (original folder on the SD card): all Cx archives bind, `patch.xp3` loads.
-- Startup now gets past the KAG environment init. Plugin/API gaps fixed on the way:
-  `win32dialog.dll` stub (class members, real Win32 constants, `getBaseUnits`, ...), and the
-  KiriKiri 2/Z APIs `Scripts.foreach` and `Scripts.getObjectKeys` (compat, only added when missing).
-- **Next blocker:** the UI loader needs `PSBFile` (`psbfile.dll`, reader of PSB/`.pimg` files:
-  `Member "PSBFile" does not exist`). That is a real plugin to implement, not a stub. After the
-  first exception the game's handler tries to open its error console, which needs a
-  `WIN32Dialog.Header` *class* (binary dialog templates) and ends in `TVPExitApplication`.
+- Startup runs through KAG init, `first.ks`, and reaches `title.ks` line 35 (`[s]`, waiting for a
+  choice) with no script exceptions. General gaps fixed on the way (none ATRI specific):
+  `win32dialog.dll` stub, `psbfile.dll` (`PSBFile` + `psb://` media, parser in `compat/psb`,
+  tests in `tests/psb`), `Scripts.foreach/getObjectKeys/getObjectCount/clone`, custom storage
+  media names (`psb://`, `var://`) that the engine turned into file paths, and the temp
+  directory (`sdmc:/tmp` -> `<data>/tmp`).
+- **Open:** the window stays black. The title UI is created by `[syshook name="title.*"]` ->
+  `SystemManager.kagExec` -> `pending("_exec", ...)` (delayed). Layers exist (`fore.base` 1280x960
+  visible, two small visible children) but nothing full-screen is visible, so the hooks that
+  build the title screen did not draw. Next step: trace `_exec`/`pending` and the hook table
+  (`addsyshook`), see "Debugging aids" in `docs/debugging.md`.
 
 ## FSN regression check (2026-11-01)
 
