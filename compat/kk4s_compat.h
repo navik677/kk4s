@@ -15,6 +15,9 @@ namespace compat {
 // xp3filter.tjs from the game folder (Kirikiroid2 convention).
 void BeforeStartup();
 
+// kk4s_scripts.cpp: KiriKiri 2/Z Scripts.* APIs missing in this engine (foreach, getObjectKeys, clone).
+void InstallScriptsCompat();
+
 // After startup.tjs returned.
 void AfterStartup();
 

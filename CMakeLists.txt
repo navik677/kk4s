@@ -129,7 +129,9 @@ set(SOURCES
     platform/common/kk4s_ui.cpp
     compat/kk4s_compat.cpp
     compat/kk4s_cx.cpp
+    compat/kk4s_scripts.cpp
     compat/cxdec/cxdec.cpp
+    compat/psb/psb.cpp
     compat/kk4s_plugins.cpp
     compat/kk4s_layerfx.cpp
     platform/${KK4S_PLATFORM}/kk4s_platform.cpp
@@ -290,6 +292,7 @@ set(SOURCES
     engine/source/plugins/layerExPerspective.cpp
     engine/source/plugins/ncbind/ncbind.cpp
     engine/source/plugins/saveStruct.cpp
+    engine/source/plugins/psbfile.cpp
     engine/source/plugins/varfile.cpp
     engine/source/plugins/win32dialog.cpp
     engine/source/plugins/wutcwf.cpp

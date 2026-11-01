@@ -478,12 +478,7 @@ void BeforeStartup() {
     RegisterFonts();
     RegisterStoragesExtensions();
     ApplyExeOptions();
-    // KiriKiri 2/Z API missing in this engine: Scripts.foreach(obj, func) enumerates
-    // members like Dictionary.forEach (KAG's kagenvironment.tjs uses it). Only added when absent.
-    TVPExecuteScript(ttstr(TJS_W("if(typeof Scripts.foreach == \"undefined\") Scripts.foreach = Dictionary.forEach;")));
-    // Scripts.getObjectKeys(obj) returns the member names as an array.
-    TVPExecuteScript(ttstr(TJS_W("if(typeof Scripts.getObjectKeys == \"undefined\") Scripts.getObjectKeys = function(obj) {"
-                                 " var r = []; Dictionary.forEach(obj, function(name, value) { r.add(name); }); return r; };")));
+    InstallScriptsCompat(); // Scripts.foreach/getObjectKeys/clone when the engine lacks them
     if (!RunGameScript("xp3filter.tjs")) {
         // A .tpm plugin decrypts the archives on Windows; kk4s cannot run it yet.
         std::string dir = kk4s::GameDir();
