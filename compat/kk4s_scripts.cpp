@@ -1,8 +1,10 @@
 // kk4s: KiriKiri 2/Z `Scripts` APIs that this engine lacks and KAG-based games call.
 //
-//   Scripts.foreach(obj, func)   func(name, value, extra...) for each member
+//   Scripts.foreach(obj, func)   func(name, value, extra...) for each member; the first non-void
+//                                return value of func stops the loop and is returned
 //   Scripts.getObjectKeys(obj)   member names (Array) of a Dictionary / Array
 //   Scripts.getObjectCount(obj)  number of members (Dictionary) or elements (Array)
+//   Scripts.equalStruct(a, b)    structural equality of Dictionary/Array trees
 //   Scripts.clone(obj)           recursive copy of Dictionary / Array trees; other values as is
 //
 // Each is only added when the engine has no such member. Implemented natively because
@@ -94,6 +96,44 @@ tTJSVariant Clone(const tTJSVariant& v, int depth) {
     return v;
 }
 
+// Structural equality: Dictionary/Array trees are compared member by member, everything else
+// by type and value (strings, numbers, octets); other objects must be the same object.
+bool EqualStruct(const tTJSVariant& a, const tTJSVariant& b, int depth) {
+    if (a.Type() != tvtObject || b.Type() != tvtObject) return a.Type() != tvtObject && b.Type() != tvtObject && a.DiscernCompare(b);
+    iTJSDispatch2* oa = a.AsObjectNoAddRef();
+    iTJSDispatch2* ob = b.AsObjectNoAddRef();
+    if (oa == ob) return true;
+    if (!oa || !ob || depth > 64) return false;
+    if (IsInstance(oa, TJS_W("Array"))) {
+        if (!IsInstance(ob, TJS_W("Array"))) return false;
+        tTJSVariant ca, cb;
+        oa->PropGet(0, TJS_W("count"), nullptr, &ca, oa);
+        ob->PropGet(0, TJS_W("count"), nullptr, &cb, ob);
+        if ((tjs_int)ca != (tjs_int)cb) return false;
+        for (tjs_int i = 0; i < (tjs_int)ca; i++) {
+            tTJSVariant ea, eb;
+            oa->PropGetByNum(0, i, &ea, oa);
+            ob->PropGetByNum(0, i, &eb, ob);
+            if (!EqualStruct(ea, eb, depth + 1)) return false;
+        }
+        return true;
+    }
+    if (IsInstance(oa, TJS_W("Dictionary"))) {
+        if (!IsInstance(ob, TJS_W("Dictionary"))) return false;
+        std::vector<std::pair<ttstr, tTJSVariant>> ma, mb;
+        Enumerate(oa, ma);
+        Enumerate(ob, mb);
+        if (ma.size() != mb.size()) return false;
+        for (auto& kv : ma) {
+            tTJSVariant other;
+            if (TJS_FAILED(ob->PropGet(TJS_MEMBERMUSTEXIST, kv.first.c_str(), nullptr, &other, ob))) return false;
+            if (!EqualStruct(kv.second, other, depth + 1)) return false;
+        }
+        return true;
+    }
+    return false;
+}
+
 void Define(iTJSDispatch2* scripts, const tjs_char* name, NativeFn fn) {
     tTJSVariant existing;
     if (TJS_SUCCEEDED(scripts->PropGet(0, name, nullptr, &existing, scripts)) && existing.Type() != tvtVoid) return;
@@ -114,7 +154,8 @@ void InstallScriptsCompat() {
 
     // Scripts.foreach(obj, func, extra...): func(name, value, extra...) for every member of a
     // Dictionary (index, value for an Array). Note Dictionary.forEach of this engine passes
-    // (value, name), the opposite order. Enumeration stops when func returns a non-zero integer.
+    // (value, name), the opposite order. The first non-void value func returns stops the
+    // loop and is the result (KAG uses it to look things up); otherwise the result is void.
     Define(scripts, TJS_W("foreach"), [global](tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2* objthis) -> tjs_error {
         if (n < 2) return TJS_E_BADPARAMCOUNT;
         if (p[0]->Type() != tvtObject || !p[0]->AsObjectNoAddRef() || p[1]->Type() != tvtObject) return TJS_E_INVALIDPARAM;
@@ -145,10 +186,12 @@ void InstallScriptsCompat() {
             tTJSVariant res;
             tjs_error hr = fn.FuncCall(0, nullptr, nullptr, &res, 2 + extra, args.data(), fthis);
             if (TJS_FAILED(hr)) return hr;
-            if (res.Type() == tvtInteger && (tjs_int64)res != 0) break;
+            if (res.Type() != tvtVoid) {  // a value stops the loop and becomes the result
+                if (r) *r = res;
+                return TJS_S_OK;
+            }
         }
-        if (r) *r = (tjs_int)1;
-        return TJS_S_OK;
+        return TJS_S_OK;  // result stays void
     });
 
     Define(scripts, TJS_W("getObjectKeys"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2*) -> tjs_error {
@@ -184,6 +227,12 @@ void InstallScriptsCompat() {
             }
         }
         if (r) *r = count;
+        return TJS_S_OK;
+    });
+
+    Define(scripts, TJS_W("equalStruct"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2*) -> tjs_error {
+        if (n < 2) return TJS_E_BADPARAMCOUNT;
+        if (r) *r = (tjs_int)(EqualStruct(*p[0], *p[1], 0) ? 1 : 0);
         return TJS_S_OK;
     });
 

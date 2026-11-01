@@ -546,6 +546,14 @@ void AfterStartup() {
         try {
             TVPExecuteExpression(TJS_W("kag.conductor.debugLevel = ") + ttstr((tjs_int)atoi(trace)));
             kk4s::Log("compat: KAG tag trace level %d", atoi(trace));
+            // also log what KAG reports through errorCmd/errorLine (the game then tries to open
+            // a Windows log window and the text is lost)
+            TVPExecuteScript(TJS_W(
+                "if(typeof kag != \"undefined\" && typeof global.__kk4s_ec == \"undefined\") {"
+                " global.__kk4s_ec = kag.errorCmd; global.__kk4s_el = kag.errorLine;"
+                " if(typeof global.__kk4s_ec == \"Object\") kag.errorCmd = function(a, b, c) { Debug.message(\"kag errorCmd: [\" + a + \"] [\" + b + \"] [\" + c + \"]\"); return global.__kk4s_ec.apply(kag, [a, b, c]); };"
+                " if(typeof global.__kk4s_el == \"Object\") kag.errorLine = function(a, b, c) { Debug.message(\"kag errorLine: [\" + a + \"] [\" + b + \"] [\" + c + \"]\"); return global.__kk4s_el.apply(kag, [a, b, c]); };"
+                "}"));
         } catch (...) {
             kk4s::Log("compat: KK4S_KAG_TRACE: no kag.conductor in this game");
         }
