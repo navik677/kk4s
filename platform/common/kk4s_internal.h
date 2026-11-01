@@ -20,6 +20,10 @@ void LogBanner(const char* platform_name);
 std::vector<std::string> ScanGames();
 bool IsGameFolder(const std::string& dir);
 
+// "" for a plain KiriKiri folder, else a short reason why it cannot start as
+// one (Steam/PackinOne repack markers). Shown in the launcher and the log.
+std::string DetectGameIssue(const std::string& dir);
+
 std::string ReadLastPlayed();
 void WriteLastPlayed(const std::string& name);
 

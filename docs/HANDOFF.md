@@ -35,29 +35,40 @@ ATRI -My Dear Moments- PC (Russian repack, DARKSiDERS Steam emu) does not start.
   `*.xp3.index`; `plugin/PackinOne.dll`. `data.xp3`'s index is a **PackinOne** blob (`hnfn`) that
   still contains the standard `File` chunks; the engine parses it and reports 2303 files.
   `patch.xp3` is a normal XP3 (`Config.tjs`, `*.ks.scn`, no `startup.tjs`).
-- The engine runs `startup.tjs` (316-byte **TJS2 bytecode**; its only strings are `global`,
-  `System`, `inform`, `startup failed: corrupted execution file`). It calls `System.inform` and
-  ends; the engine then exits with `TVPExitApplication(0)` and no script error. This is a native
-  loader/protection stub, not a KAG startup script.
+- The engine runs `startup.tjs` (316-byte **TJS2 bytecode**). `tools/tjsdis.py` (added for exactly
+  this) shows it is one statement, with no branches:
+  ```
+  global.System.inform("startup failed: corrupted execution file");  // then return
+  ```
+  It is a **decoy**: a plain engine gets this file, prints the message and the startup script ends
+  (then `TVPExitApplication(0)`), while on Windows `PackinOne.dll` serves the real `startup.tjs`
+  through its native file hooks. `data.xp3.index` is not a key store either: it is byte-identical
+  to the decompressed XP3 index (same MD5), i.e. a cache of the very file the engine already reads.
+  So there is no engine-side information that could reconstruct the real startup.
 - Tried and reverted:
   - mounting every `*.xp3` before startup (`MountAllArchives` in `compat`) — ATRI still exits.
   - returning the folder as project dir when there is more than one `.xp3` — ATRI still exits and
     it **broke FSN's Russian patch**: `rufix.xp3`/`rupatch.xp3` stopped overriding, game English.
   - Both reverted; FSN Russian works again. Lesson below.
 - Plan for "drop it in and it works":
-  1. **Detect and report** (safe, generic): if the folder has `steam_api.dll` + (`ds.ini` /
-     `SteamEmu/` / `*.sig` / `PackinOne.dll` / `*.xp3.index`), log a clear line (and later show it
-     in the launcher): "Steam/PackinOne repack; needs a DRM-free release or Steam/PackinOne
-     support". Do not change mount order.
-  2. Prefer/test **DRM-free releases** (GOG/JAST): they normally have a plain KiriKiri layout.
+  1. **Detect and report** (done, safe, generic): `kk4s::detail::DetectGameIssue` looks for
+     `steam_api.dll`/`steam_api64.dll` plus `ds.ini` / `steam_emu.ini` / `SteamEmu/` /
+     `PackinOne.dll` / `*.xp3.index`. The log gets a `launcher: ...` line at scan time and the
+     selected game shows a warning line in the launcher ("Protected repack (Steam/PackinOne) — a
+     clean release is needed"). It never changes mount order or the project dir.
+  2. Prefer/test **DRM-free releases** (GOG/JAST/clean Steam files): they normally have a plain
+     KiriKiri layout and no wrapper, so they run unmodified.
   3. Only if it is worth the effort: a **Steam API stub** for the few interfaces the wrapper uses
      (`SteamAPI_Init`, `SteamUser`, `SteamApps`, `SteamRemoteStorage`, `SteamUtils`) and
-     **PackinOne** index/data decryption. This is DRM circumvention: decide the project policy
-     and legal risk before writing it; it is not a normal engine-compat feature.
-  4. To understand the stub exactly, dump the TJS2 bytecode (`tTJSScriptBlock::Dump` / a small
-     disassembler) and see which global/native call it expects. Do not add per-game hacks to
-     `compat/`; a loose `startup.tjs` in the game folder is a diagnostic only (we never modify
-     game folders).
+     **PackinOne** support. The latter is not a file-format parser: the real startup comes out of
+     the native Windows DLL, so it needs an x86 emulator + PE loader (the same machinery `.tpm`
+     decryption needs, next-steps item 3), not just a new XP3 chunk reader. This is DRM
+     circumvention: decide the project policy and legal risk before writing it; it is not a
+     normal engine-compat feature.
+  4. The bytecode is now readable with `python tools/tjsdis.py <file.tjs>` (it prints the data
+     strings and the VM instructions, e.g. the disassembly quoted above). Use it if another game
+     quits in a compiled `startup.tjs`. Do not add per-game hacks to `compat/`; a loose
+     `startup.tjs` in the game folder is a diagnostic only (we never modify game folders).
   5. `patch.xp3` holds the real `Config.tjs` and compiled `*.ks.scn`; if the wrapper can be
      satisfied, `KAGParserEx`/`extNagano`/`textrender`/`layerExDraw`/`AlphaMovie` etc. from
      `plugin/` will be the next missing pieces (all Windows DLLs; need native replacements).
@@ -94,7 +105,7 @@ after loading), video player + anti-hang, audio resampling and fade-out, 8-bit P
 | `platform/common/kk4s_common.cpp` | logger (background writer), game scan, project dir, pad mapping |
 | `platform/switch/`, `platform/desktop/` | platform layer: paths, fonts, pad (libnx on Switch), battery, keyboard, exit to launcher |
 | `tests/tjs/` | `hello` (smoke test), `input` (shows key/mouse events) |
-| `tools/` | `build-switch.sh`, `build-desktop.sh`, `run-linux.sh`, `ci-report.sh`, `resolve-crash.py`, `xp3ls.cpp` |
+| `tools/` | `build-switch.sh`, `build-desktop.sh`, `run-linux.sh`, `ci-report.sh`, `resolve-crash.py`, `xp3ls.cpp`, `tjsdis.py` (TJS2 bytecode disassembler) |
 
 Engine hook points (all `kk4s:`): `sdl2/stubs.cpp` (main, window, launcher call, input, in-game
 menu, exit), `base/win32/SysInitImpl.cpp` (project dir, data path redirect),
@@ -181,9 +192,10 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 2. Go through more games with input scripts on PC (any KAG game must work unmodified); fix
    engine differences generically (like `TJSClassVarKeepsProperty`, KAG restore), never per game.
 3. `.tpm` decryptor support (own x86 interpreter + PE loader), so no `xp3filter.tjs` is needed.
-4. Steam/PackinOne repacks: detect and report them (do not reorder archives); support DRM-free
-   GOG/JAST releases first. A Steam API stub + PackinOne decryption is a separate, DRM-related
-   decision (see the ATRI section above).
+4. Steam/PackinOne repacks: detection + launcher warning/log is done; never reorder archives.
+   Support DRM-free GOG/JAST/clean Steam releases first. A Steam API stub + PackinOne support
+   is a separate, DRM-related decision that needs the x86/PE machinery from item 3 (see the ATRI
+   section above). `tools/tjsdis.py` reads compiled `startup.tjs` stubs.
 5. Real extrans transitions; more plugins as games need them (layerExDraw, layerExImage, ...).
 6. Video: sync to the audio clock; check decode speed on the Switch.
 7. Overlay folder and per-game profiles (M2/M3).

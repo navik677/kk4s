@@ -112,9 +112,11 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
 - Some plugin replacements are approximations or stubs (extrans transitions fall back to crossfade,
   `firespark` / lens effects missing).
 - `.tpm` decryption plugins (e.g. `cxdec.tpm`) are not run: encrypted games need an `xp3filter.tjs`.
-- Steam/PackinOne repacks (tested with ATRI) do not start: a protection stub in `data.xp3` exits
-  before KAG. Needs a DRM-free GOG/JAST release, or separate Steam API/PackinOne support; see
-  `docs/HANDOFF.md`.
+- Steam/PackinOne repacks (tested with ATRI) do not start: the archive's `startup.tjs` is a decoy
+  bytecode stub (`tools/tjsdis.py` shows it only calls `System.inform` and returns), and the real
+  one is served by the native protection DLL. kk4s now detects such folders at scan time (log) and
+  shows a warning in the launcher; it does not reorder archives. Needs a DRM-free GOG/JAST/clean
+  Steam release, or separate Steam API + PackinOne (x86/PE) support; see `docs/HANDOFF.md`.
 - The game picture is stretched to the whole screen (no aspect-correct scaling / letterbox yet).
 - Overlay folder and per-game profiles (M2/M3) are not implemented.
 - Album (applet) mode memory limits not tested; docked ↔ handheld switching not tested.

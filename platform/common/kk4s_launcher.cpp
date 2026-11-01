@@ -73,6 +73,7 @@ float Approach(float cur, float target, float dt, float speed = 12) { return cur
 struct Game {
     std::string folder; // name inside GamesDir()
     std::string title;
+    std::string issue; // DetectGameIssue(): non-empty = may not start (repack/DRM)
     SDL_Texture* cover = nullptr; // full cover art
     SDL_Texture* blur = nullptr;  // tiny blurred cover for the background
     SDL_Texture* icon = nullptr;  // icon for generated cards
@@ -162,6 +163,7 @@ void LoadGame(SDL_Renderer* r, Game& g) {
     FreeGame(g);
     std::string dir = GamesDir() + "/" + g.folder;
     g.title = ReadTitle(dir, g.folder);
+    g.issue = detail::DetectGameIssue(dir);
     g.tint = TintFor(g.folder);
     std::string cover = FindCover(dir, g.folder);
     if (!cover.empty()) {
@@ -1359,6 +1361,10 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             for (size_t c = 0; c < chips.size(); ++c) total += ChipWidth(v, fonts, chips[c], c == 0 && dot) + 8;
             float cx = 640 - (total - 8) / 2;
             for (size_t c = 0; c < chips.size(); ++c) Chip(v, fonts, cx, 540, chips[c], c == 0 && dot);
+            // A game that cannot start is the worst surprise after "drop the folder in":
+            // say so before it is launched. Detection never changes how it starts.
+            if (!g.issue.empty())
+                DrawText(v, fonts, T(i18n::kProtectedGame), 640, 584, 16, kWarn, kCenter, 1080);
         } else {
             SDL_FRect clipf = v.Map(0, 92, 1280, 548);
             SDL_Rect clip{(int)clipf.x, (int)clipf.y, (int)clipf.w, (int)clipf.h};

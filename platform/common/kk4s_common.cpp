@@ -222,6 +222,59 @@ bool IsGameFolder(const std::string& dir) {
     return ok;
 }
 
+// True if <dir>/<name> exists (case-insensitive); want_dir also requires a
+// directory. Cheap: only reads the directory entry names.
+static bool HasEntry(const std::string& dir, const char* name, bool want_dir) {
+    DIR* d = opendir(dir.c_str());
+    if (!d) return false;
+    bool found = false;
+    while (struct dirent* e = readdir(d)) {
+        if (strcasecmp(e->d_name, name) != 0) continue;
+        if (want_dir) {
+            struct stat st;
+            if (stat((dir + "/" + e->d_name).c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) continue;
+        }
+        found = true;
+        break;
+    }
+    closedir(d);
+    return found;
+}
+
+// A short marker when a folder cannot run as a plain KiriKiri game, "" if
+// nothing stands out. This never changes how the game is started; it only
+// explains the failure in the log and in the launcher.
+//
+// Steam emulator repacks and "protected" XP3 packers (PackinOne) replace the
+// real startup.tjs with a decoy and serve the game from a native Windows
+// protection DLL. A vanilla engine gets the decoy, so the game quits before
+// KAG starts. Such folders need a DRM-free (GOG/JAST/Steam) release; see
+// docs/HANDOFF.md. Detection is by well-known wrapper files, not game names.
+std::string DetectGameIssue(const std::string& game_dir) {
+    bool steam = HasEntry(game_dir, "steam_api.dll", false) ||
+                 HasEntry(game_dir, "steam_api64.dll", false);
+    bool emu = HasEntry(game_dir, "ds.ini", false) ||
+               HasEntry(game_dir, "steam_emu.ini", false) ||
+               HasEntry(game_dir, "SteamEmu", true) ||
+               HasEntry(game_dir, "PackinOne.dll", false) ||
+               HasEntry(game_dir + "/plugin", "PackinOne.dll", false);
+    bool index = false;
+    if (DIR* d = opendir(game_dir.c_str())) {
+        while (struct dirent* e = readdir(d)) {
+            const char* n = e->d_name;
+            size_t len = strlen(n);
+            if (len > 10 && strcasecmp(n + len - 10, ".xp3.index") == 0) {
+                index = true;
+                break;
+            }
+        }
+        closedir(d);
+    }
+    if (steam && (emu || index)) return "Steam/PackinOne repack";
+    if (index) return "XP3 with external .index (protected repack)";
+    return "";
+}
+
 std::vector<std::string> ScanGames() {
     std::vector<std::string> games;
     std::string root = GamesDir();
@@ -232,7 +285,13 @@ std::vector<std::string> ScanGames() {
         std::string full = root + "/" + e->d_name;
         struct stat st;
         if (stat(full.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) continue;
-        if (IsGameFolder(full)) games.push_back(e->d_name);
+        if (IsGameFolder(full)) {
+            games.push_back(e->d_name);
+            std::string issue = DetectGameIssue(full);
+            if (!issue.empty())
+                Log("launcher: %s: %s (a plain Kirikiri game has no native protection; "
+                    "a clean DRM-free release is needed, see docs/HANDOFF.md)", e->d_name, issue.c_str());
+        }
     }
     closedir(d);
     std::sort(games.begin(), games.end(),

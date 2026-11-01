@@ -125,6 +125,7 @@ const Entry kTable[kCount] = {
     {{"L3 + R3 (обидва стіки разом) — меню kk4s", "L3 + R3 (both sticks together) — kk4s menu", "L3 + R3 (оба стика вместе) — меню kk4s", "L3 + R3（両スティック同時押し）で kk4s メニュー"}},
     {{"Прискорення процесора", "CPU boost", "Ускорение процессора", "CPU ブースト"}},
     {{"1785 МГц у грі замість 1020: менше фрізів, швидше сідає батарея", "1785 MHz in games instead of 1020: fewer stutters, more battery use", "1785 МГц в игре вместо 1020: меньше фризов, быстрее садится батарея", "ゲーム中 1785 MHz（通常 1020）: カクつき減、電池消費増"}},
+    {{"Захищений репак (Steam/PackinOne) — потрібна чиста версія гри", "Protected repack (Steam/PackinOne) — a clean release is needed", "Защищённый репак (Steam/PackinOne) — нужна чистая версия игры", "保護されたリパック（Steam/PackinOne）— クリーンな版が必要です"}},
 };
 
 Lang g_lang = kEn;

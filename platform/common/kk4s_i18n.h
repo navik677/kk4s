@@ -19,6 +19,7 @@ enum Str {
     kSeparateSaves, kSeparateSavesHint, kReturnToLauncher, kAutostart, kAutostartIn, kCancel, kControls, kControlsHint, kResetControls, kActNone, kActEnter, kActRightClick, kActCtrl, kActSpace, kActPageUp, kActPageDown, kActShift, kActEsc, kActTab, kGameOptions, kOptions, kSaves, kNoSaves, kBackupSaves, kRestoreSaves, kLatestBackup, kNoBackups, kDeleteSaves, kDeleteSavesHint, kDeleteCover, kPressAgain, kBackupDone, kRestoreDone, kDeleteDone, kCoverRemoved, kFailed, kSavedAt,
     kMenu, kResume, kQuickSave, kQuickSaveHint, kQuickLoad, kVolume, kExitToLauncher, kExitApp, kSaved, kLoaded, kCannotSaveNow, kNoQuickSave, kNotSupported, kActOverlay, kOpenMenuHint,
     kCpuBoost, kCpuBoostHint,
+    kProtectedGame,
     kCount
 };
 

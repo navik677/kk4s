@@ -44,6 +44,19 @@
   less memory.
 - `tests/tjs/input` (copy to `games/kk4s-input-test/`) shows every key / mouse event the game gets.
 
+## Compiled TJS2 scripts (`tools/tjsdis.py`)
+
+A `startup.tjs` (or any `.tjs`/`.scn`) can be TJS2 **bytecode** instead of text. If a game quits
+before KAG starts, disassemble it:
+
+```bash
+python tools/tjsdis.py path/to/startup.tjs
+```
+
+It prints the data-area strings and the VM instructions (opcodes are from
+`engine/source/core/tjs2/tjsInterCodeGen.h`). A repack protection stub looks like a single
+`System.inform("...")` call with no branches; see the ATRI section in `docs/HANDOFF.md`.
+
 ## Input scripts (PC)
 
 `KK4S_INPUT_SCRIPT=<file>` plays gamepad presses, touches and screenshots through the same code as
