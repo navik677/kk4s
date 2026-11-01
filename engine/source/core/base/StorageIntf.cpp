@@ -214,6 +214,9 @@ public:
 
 	static ttstr ExtractMediaName(const ttstr &name);
 
+	bool IsRegistered(const ttstr &medianame) // kk4s
+	{ return HashTable.Find(*(tMediaNameString*)&medianame) != NULL; }
+
 	bool CheckExistentStorage(const ttstr & name);
 	tTJSBinaryStream * Open(const ttstr & name, tjs_uint32 flags);
 	void GetListAt(const ttstr &name, iTVPStorageLister *lister);
@@ -558,6 +561,21 @@ void TVPRegisterStorageMedia(iTVPStorageMedia *media)
 void TVPUnregisterStorageMedia(iTVPStorageMedia *media)
 {
 	TVPStorageMediaManager.Unregister(media);
+}
+//---------------------------------------------------------------------------
+// kk4s: true when `name` is "media://..." of a registered media other than "file"
+// (plugins such as psbfile/varfile add "psb"/"var"). TVPPreNormalizeStorageName
+// uses it to leave such names alone instead of turning them into file paths.
+bool TVPIsCustomStorageMediaName(const ttstr &name)
+{
+	const tjs_char *p = name.c_str();
+	const tjs_char *q = p;
+	while((*q >= TJS_W('A') && *q <= TJS_W('Z')) || (*q >= TJS_W('a') && *q <= TJS_W('z'))) q++;
+	if(q == p || q[0] != TJS_W(':') || q[1] != TJS_W('/') || q[2] != TJS_W('/')) return false;
+	ttstr media(p, (tjs_int)(q - p));
+	media.ToLowerCase();
+	if(media == TJS_W("file")) return false;
+	return TVPStorageMediaManager.IsRegistered(media);
 }
 //---------------------------------------------------------------------------
 

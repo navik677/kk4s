@@ -38,6 +38,7 @@ std::string LogsDir()     { return RootDir() + "/logs"; }
 std::string SavesDir()    { return RootDir() + "/saves"; }
 std::string OverlayDir()  { return RootDir() + "/overlay"; }
 std::string ProfilesDir() { return RootDir() + "/profiles"; }
+std::string TempDir()     { return RootDir() + "/tmp"; }
 
 static FILE* g_log = nullptr;
 static std::string g_game_dir;
@@ -161,6 +162,7 @@ void InitDataDirsAndLog() {
     MakeDir(SavesDir());
     MakeDir(OverlayDir());
     MakeDir(ProfilesDir());
+    MakeDir(TempDir());
     MakeDir(RootDir() + "/fonts");
 
     time_t now = time(nullptr);

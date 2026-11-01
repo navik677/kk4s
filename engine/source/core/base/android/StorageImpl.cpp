@@ -22,6 +22,7 @@
 
 #include "Application.h"
 #include "kk4s_fs.h" // kk4s
+#include "CharacterSet.h" // kk4s: TVPUtf8ToUtf16
 #include "kk4s_compat.h" // kk4s
 #include "kk4s_platform.h" // kk4s: frame stats
 #include <SDL.h> // kk4s: SDL_GetTicks
@@ -365,6 +366,7 @@ static bool kk4sIsNativeAbsolutePath(const tjs_char *p)
 //---------------------------------------------------------------------------
 // TVPPreNormalizeStorageName
 //---------------------------------------------------------------------------
+extern bool TVPIsCustomStorageMediaName(const ttstr &name); // kk4s: StorageIntf.cpp
 void TVPPreNormalizeStorageName(ttstr &name)
 {
 	// if the name is an OS's native expression, change it according with the
@@ -373,6 +375,9 @@ void TVPPreNormalizeStorageName(ttstr &name)
 	if(namelen == 0) return;
 
 	tjs_char lastchar = name.GetLastChar();
+
+	// kk4s: "psb://x", "var://x"... belong to a registered storage media: keep them as they are.
+	if(TVPIsCustomStorageMediaName(name)) return;
 
 	// kk4s: only native absolute paths ("/x", "C:/x", "sdmc:/x", "romfs:/x")
 	// become "file:/..." names. Relative names ("startup.tjs",
@@ -470,7 +475,15 @@ ttstr TVPGetTemporaryName()
 			//tjs_char tmp[MAX_PATH+1];
 			//TVPUtf8ToWideCharString( Application->GetCachePath()->c_str(), static_cast<tjs_char*>(tmp) );
 			// TVPTempPath = ttstr( Application->GetCachePath()->c_str() );
-			TVPTempPath = ttstr( "sdmc:/tmp/" );
+			// kk4s: <data folder>/tmp (exists and is writable on every platform; the
+			// original "sdmc:/tmp/" does not exist on the PC and may not on the SD card)
+			{
+				std::string tmp = kk4s::TempDir();
+				for(size_t i = 0; i < tmp.size(); i++) if(tmp[i] == (char)92) tmp[i] = '/';
+				tjs_string w;
+				if(TVPUtf8ToUtf16(w, tmp)) TVPTempPath = ttstr(w.c_str());
+				else TVPTempPath = ttstr( "sdmc:/tmp/" );
+			}
 
 			if(TVPTempPath.GetLastChar() != TJS_W('/')) TVPTempPath += TJS_W("/");
 			TVPProcessID = static_cast<tjs_int>( getpid() );
