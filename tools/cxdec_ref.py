@@ -2,12 +2,12 @@
 
 Python port of GARbro's CxEncryption (ArcFormats/KiriKiri/KiriKiriCx.cs) with the
 exact Emit/GetRandom ordering of the original generator. Used to verify the C++
-runtime filter; it carries no game data. A scheme is a JSON file:
+runtime filter; it carries no game data. A scheme is a small text file:
 
-  {"mask": 423, "offset": 873, "prolog": [0,1,2], "odd": [...6], "even": [...8],
-   "control_block": "path/to/4096-byte-file"}
+  mask=0x1a7 / offset=0x369 / prolog=0,1,2 / odd=<6> / even=<8> / control_block=<file>.cb
+  (one key=value per line; .cxscheme)
 
-Usage: python tools/cxdec_ref.py SCHEME.json ADLR_HEX IN OUT  (decrypt one file)
+Usage: python tools/cxdec_ref.py SCHEME.cxscheme ADLR_HEX IN OUT  (decrypt one file)
 See docs/cxdec.md.
 """
 import os
@@ -136,10 +136,28 @@ class Cx:
 
 
 def load_scheme(path):
-    import json
-    s = json.load(open(path))
-    cb = open(os.path.join(os.path.dirname(os.path.abspath(path)), s["control_block"]), "rb").read()
-    return Cx(s["mask"], s["offset"], s["prolog"], s["odd"], s["even"], cb)
+    """Reads the .cxscheme text form (key=value; same parser rules as the runtime)."""
+    kv = {}
+    for line in open(path, encoding="utf-8"):
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            kv[k.strip()] = v.strip()
+    lst = lambda k: [int(x, 0) for x in kv[k].split(",")]
+    cb = open(os.path.join(os.path.dirname(os.path.abspath(path)), kv["control_block"]), "rb").read()
+    return Cx(int(kv["mask"], 0), int(kv["offset"], 0), lst("prolog"), lst("odd"), lst("even"), cb)
+
+
+def write_scheme(path, mask, offset, prolog, odd, even, cb, source=""):
+    cb_name = os.path.splitext(os.path.basename(path))[0] + ".cb"
+    open(os.path.join(os.path.dirname(os.path.abspath(path)), cb_name), "wb").write(cb)
+    lines = ["# kk4s CXDEC scheme" + ((" (from %s)" % source) if source else ""),
+             "mask=%#x" % mask, "offset=%#x" % offset]
+    for k, v in (("prolog", prolog), ("odd", odd), ("even", even)):
+        lines.append("%s=%s" % (k, ",".join(str(x) for x in v)))
+    lines.append("control_block=%s" % cb_name)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
 
 if __name__ == "__main__":
     import sys, os
