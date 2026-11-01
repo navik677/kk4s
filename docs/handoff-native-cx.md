@@ -151,3 +151,23 @@ Uncommitted: only the `KK4S_NO_SHIM` env line in `compat/kk4s_compat.cpp` (to be
 - Before merging anything to `main`: re-run the regression list the user gave (FSN Russian text and
   fonts, sprites/backgrounds, music, transitions, save/load, other translated games), preferably on the
   Switch too. Follow the existing rule in `docs/HANDOFF.md` about FSN precedence.
+
+## FSN hangs on Switch (reported after the 20:20 build, unresolved)
+
+Log `kk4s-20261101-202113.log` (Switch, FSN, scenario `セイバールート十一日目-14.ks`): the game plays
+normally, then `@fadein file=A23e time=200 rule=円形(中から外へ) vague=64` is followed by
+`(exception) The object is already invalidated` in `kaglayer.tjs(87) onTransitionCompleted`, then
+`Script exception raised`. The log then stops (no `shutdown`), so the game is stuck, not crashed.
+
+Suspicion (not verified): a transition's completion callback fires for a layer that was already
+invalidated (cleared or removed by the scene change while the fade was running). The engine's
+transition/event path delivers the callback after `Invalidate` and the TJS exception escapes into the
+event loop, which does not return. Check in this order:
+1. Does the same happen on `main` (4d767de) for the same scene? If not, the cause is in our changes
+   (candidates: `Scripts.foreach` returning values, the `[emb]` escape change, `taglist`), so bisect
+   those commits on the PC with `KK4S_KAG_TRACE`.
+2. Which layer is `onTransitionCompleted` invoked on, and what cleared it (`clearlayers`/`@allimage`
+   right before the fade). Dump with `KK4S_DUMP_BYTECODE=kaglayer.tjs`.
+3. The C++ side: the transition object (`tTVPTransition`/`LayerIntf` transition completion) should
+   check the owner is still valid before calling back.
+Do not "fix" it by swallowing the exception in TJS without knowing the cause.
