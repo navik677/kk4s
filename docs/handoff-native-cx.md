@@ -61,8 +61,12 @@ What made it pass the old blockers (all in this commit):
   "no value" and otherwise indexes the value; a null object crashed `restore()` ("Accessing to null
   object"). This one change took the game from `start.ks` to `title.ks`.
 - **`textrender.dll` built-in**: KAGZ `system/textrender.tjs` declares `class TextRender extends
-  TextRenderBase`; without the class the script fails to load. The stub provides the class and its
-  methods with no-op drawing (text/effects will be incomplete until the real renderer is ported).
+  TextRenderBase`; without the class the script fails to load. The stub provides the class, the
+  `TextRenderBase` API surface KAGZ scripts call (`fontScale`, `resetFont`, `done`,
+  `getCharacters`, `getLinkCharacters`, `getLinkNames`, `getKeyWait`, `onGetTextHeight`,
+  `calcLineOffset`, `calcShowCount`, `resetStyle`, `setStyle`, and the `renderLeft/Top/Right/Bottom`,
+  `renderCount/Lines/Text/Delay/Over`, `kinsoku_max` results) with no-op drawing (text/effects stay
+  invisible until the real renderer is ported).
 
 Next blocks after the title (in order seen so far): the real text renderer (currently no-op), then the
 scenario/`layerEx*`/`AlphaMovie` plugins as they are used. `k2compat.tjs makeDummyProperty` throws
@@ -145,6 +149,8 @@ paths (`TVPIsCustomStorageMediaName`), temp dir `<data>/tmp` (`kk4s::TempDir`), 
 stub (real Win32 constants), `Scripts.foreach/getObjectKeys/getObjectCount/clone/equalStruct`
 (`compat/kk4s_scripts.cpp`; `foreach` calls `func(name, value, extra...)` with the caller's `this` and
 returns the first non-void callback value — the engine's `Dictionary.forEach` passes `(value, name)`),
+`Scripts.isNullContext`/`getObjectContext` (the `tTJSVariantClosure.ObjThis` of a function, used by
+KAG's `Action.tjs` completion callbacks),
 `[emb escape=false]` and `taglist` for games that link `KAGParserEx.dll` (`KAGParser.cpp`, flag
 `TVPKAGParserExMode` set from the compat plugin table), exception messages in the log, debugging aids
 (`KK4S_DUMP_BYTECODE`, `KK4S_KAG_TRACE`, `KK4S_ARGS`). The desktop runtime now also contains
@@ -158,8 +164,10 @@ returns the first non-void callback value — the engine's `Dictionary.forEach` 
 - The `win32dialog.dll` base classes/constants exist, but the wrapper/log-window contract is incomplete:
   ATRI Switch logs `getNumberdId` indexing `itemMap` with `void`. Fix the general KAGZ dialog semantics,
   not a game-specific callback.
-- KAGZ PC support also lacks a real `AlphaMovie.dll` and a `TextRenderBase.fontScale` property; the
-  text renderer itself is still no-op. Implement from the plugin contracts and verify another KAGZ game.
+- KAGZ PC support still lacks a real `AlphaMovie.dll` (AJPM/`.amv` video), `Scripts.loadDataPack`/
+  `saveDataPack` (the `.pbd` `UKR.5r1` data packs), and the drawing half of `textrender.dll`; the
+  `TextRenderBase` API surface now exists but draws nothing. Implement from the plugin contracts and
+  verify another KAGZ game.
 - Memory: `PSBFile.root` is built eagerly (largest ATRI `.scn` ~126k nodes); fine so far, untested on
   Switch with many files loaded.
 - `E:\atri-cx-probe` (hard-link mirror of ATRI used to dump memory) can be deleted.

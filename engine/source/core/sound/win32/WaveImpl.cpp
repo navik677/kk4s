@@ -3641,7 +3641,9 @@ TJS_BEGIN_NATIVE_METHOD_DECL(/*func. name*/getVisBuffer)
 		/*var. type*/tTJSNI_WaveSoundBuffer);
 
 	if(numparams < 3) return TJS_E_BADPARAMCOUNT;
-	tjs_int16 *dest = (tjs_int16*)(tjs_int)(*param[0]);
+	// kk4s: the pointer travels as a TJS integer (64-bit on this build). Casting
+	// through tjs_int (32-bit) truncated it and crashed getSample/visBuffer.
+	tjs_int16 *dest = (tjs_int16*)(tjs_int64)(*param[0]);
 
 	tjs_int ahead = 0;
 	if(numparams >= 4) ahead = (tjs_int)*param[3];

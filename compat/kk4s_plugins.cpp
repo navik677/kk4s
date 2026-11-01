@@ -438,9 +438,21 @@ static void LinkTextRenderDll() {
     class TextRenderBase {
         function TextRenderBase(owner) {}
         function finalize() {}
+        // KiriKiri Z's langrender.tjs sets this on TextRender instances while
+        // selecting main/sub-language font sizes. It is a per-renderer scale,
+        // not a game-specific setting.
+        var fontScale = 1.0;
+        // Layout results the native renderer publishes after render()/drawText();
+        // textrender.tjs getRect() reads them (renderRight - renderLeft etc.).
+        var renderLeft = 0, renderTop = 0, renderRight = 0, renderBottom = 0;
+        var renderCount = 0, renderLines = 0, renderText = "";
+        var renderDelay = 0, renderOver = 0, kinsoku_max = 0;
         function setDefault(options) {}
         function setOption(name, value) {}
         function setFont(face, size, bold, italic, vertical, angle) {}
+        // langrender.tjs calls this after applying kag.getLanguageFont() to defaultFace;
+        // the native renderer rebuilds its font from the current settings here.
+        function resetFont() {}
         function setBase(base) {}
         function onEval(text) { return text; }
         function onLabel(text) { return text; }
@@ -465,6 +477,18 @@ static void LinkTextRenderDll() {
         function drawText(layer, x, y) { return 0; }
         function internalDrawText(layer, x, y) { return 0; }
         function drawCh(layer, x, y, ch) { return 0; }
+        // Called after render() to finish the pass; textrender.tjs and rendermsgwin.tjs
+        // call it unconditionally.
+        function done() {}
+        function getCharacters(text, count) { return []; }
+        function getLinkCharacters(text, count) { return []; }
+        function getLinkNames() { return []; }
+        function getKeyWait() { return 0; }
+        function onGetTextHeight(text) { return 0; }
+        function calcLineOffset(text, line) { return 0; }
+        function calcShowCount(text, count) { return 0; }
+        function resetStyle() {}
+        function setStyle(style) {}
     }
     TextRenderBase.render = function(text, mode, a, b, c) { return 0; };
     TextRenderBase.drawAllMode = 0;

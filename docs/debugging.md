@@ -82,5 +82,10 @@ relative.
 - `KK4S_KAG_TRACE=1|2` sets `kag.conductor.debugLevel` once after startup (a game may reset it,
   ATRI does in `first.ks`). For state at a given moment use `KK4S_INPUT_SCRIPT` with `eval`, e.g.
   `25000 eval kag.conductor.curStorage + " line " + kag.conductor.curLine`.
+- A pointer passed to TJS as an integer must be cast through `tjs_int64`, never `tjs_int`: on the
+  64-bit builds `tjs_int` is 32-bit and silently truncates it. This was a real engine crash:
+  `WaveSoundBuffer.getVisBuffer` turned the caller's `short*` into a wild address, so every
+  `getSample`/voice-meter call hit `0xC0000005`. Search for `(tjs_int)(*param` when a plugin takes
+  an address from script.
 - Scratch test games: any folder with a `startup.tjs` runs as a game; useful to test one plugin
   or API in isolation (see `tests/tjs/hello`).

@@ -6,6 +6,8 @@
 //   Scripts.getObjectCount(obj)  number of members (Dictionary) or elements (Array)
 //   Scripts.equalStruct(a, b)    structural equality of Dictionary/Array trees
 //   Scripts.clone(obj)           recursive copy of Dictionary / Array trees; other values as is
+//   Scripts.isNullContext(obj)   true when obj is a closure with no object context
+//   Scripts.getObjectContext(obj) the object context a closure is bound to, or void
 //
 // Each is only added when the engine has no such member. Implemented natively because
 // TJS function expressions here cannot see the locals of the function around them.
@@ -239,6 +241,33 @@ void InstallScriptsCompat() {
     Define(scripts, TJS_W("clone"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2*) -> tjs_error {
         if (n < 1) return TJS_E_BADPARAMCOUNT;
         if (r) *r = Clone(*p[0], 0);
+        return TJS_S_OK;
+    });
+
+    // Scripts.isNullContext(obj): true when obj is a closure (function) that is not bound to
+    // any object context. KAG's action code (Action.tjs getCompleteFunc) uses this to decide
+    // whether a stored completion callback has to be bound with `chgthis` before it is called.
+    // A plain function expression has ObjThis == null; a function taken from an instance
+    // (`this.callback`) carries that instance. Non-function values have no context either.
+    Define(scripts, TJS_W("isNullContext"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2*) -> tjs_error {
+        if (n < 1) return TJS_E_BADPARAMCOUNT;
+        bool isnull = true;
+        if (p[0]->Type() == tvtObject) {
+            tTJSVariantClosure c = p[0]->AsObjectClosureNoAddRef();
+            isnull = (c.ObjThis == nullptr);
+        }
+        if (r) *r = (tjs_int)(isnull ? 1 : 0);
+        return TJS_S_OK;
+    });
+
+    // Scripts.getObjectContext(obj): the object a closure is bound to, or void when it has no
+    // context (Action.tjs copyCompleteFunc compares this with the context it wants to replace).
+    Define(scripts, TJS_W("getObjectContext"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2*) -> tjs_error {
+        if (n < 1) return TJS_E_BADPARAMCOUNT;
+        if (p[0]->Type() == tvtObject) {
+            tTJSVariantClosure c = p[0]->AsObjectClosureNoAddRef();
+            if (c.ObjThis && r) *r = tTJSVariant(c.ObjThis, c.ObjThis);
+        }
         return TJS_S_OK;
     });
 }
