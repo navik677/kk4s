@@ -112,11 +112,11 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
 - Some plugin replacements are approximations or stubs (extrans transitions fall back to crossfade,
   `firespark` / lens effects missing).
 - `.tpm` decryption plugins (e.g. `cxdec.tpm`) are not run: encrypted games need an `xp3filter.tjs`.
-- Steam/PackinOne repacks (tested with ATRI) do not start: the archive's `startup.tjs` is a decoy
-  bytecode stub (`tools/tjsdis.py` shows it only calls `System.inform` and returns), and the real
-  one is served by the native protection DLL. kk4s now detects such folders at scan time (log) and
-  shows a warning in the launcher; it does not reorder archives. Needs a DRM-free GOG/JAST/clean
-  Steam release, or separate Steam API + PackinOne (x86/PE) support; see `docs/HANDOFF.md`.
+- Steam/PackinOne repacks (tested with ATRI) do not start from the repack folder: names are hidden in
+  `hnfn` chunks and contents are XOR-encrypted. The repack can be extracted once on a PC with its
+  own `version.dll` (KirikiriTools) plus a name-list script; the resulting plain folder runs in kk4s
+  (confirmed in the PC viewer). Runtime support for the original folder is not implemented yet.
+  `System.addFont` (KiriKiri Z) was added for the KAGZ startup. See [repacks.md](repacks.md).
 - The game picture is stretched to the whole screen (no aspect-correct scaling / letterbox yet).
 - Overlay folder and per-game profiles (M2/M3) are not implemented.
 - Album (applet) mode memory limits not tested; docked ↔ handheld switching not tested.

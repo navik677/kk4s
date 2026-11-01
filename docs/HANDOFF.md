@@ -29,49 +29,43 @@ Clicking A while a voice line plays (skipping it) gave an audible "tap" on the S
   never flushed). It is silent, so it no longer clicks; a flush would be
   needed for short non-silent 8-bit/lower-rate sounds to play to the last sample.
 
-### Steam repacks / DRM-protected games (ATRI, tested 2026-11-01)
-ATRI -My Dear Moments- PC (Russian repack, DARKSiDERS Steam emu) does not start. Findings:
-- The folder is a Steam/DRM repack: `steam_api.dll`, `ds.ini`, `SteamEmu/`, `plugin/*.dll` + `.sig`,
-  `*.xp3.index`; `plugin/PackinOne.dll`. `data.xp3`'s index is a **PackinOne** blob (`hnfn`) that
-  still contains the standard `File` chunks; the engine parses it and reports 2303 files.
-  `patch.xp3` is a normal XP3 (`Config.tjs`, `*.ks.scn`, no `startup.tjs`).
-- The engine runs `startup.tjs` (316-byte **TJS2 bytecode**). `tools/tjsdis.py` (added for exactly
-  this) shows it is one statement, with no branches:
-  ```
-  global.System.inform("startup failed: corrupted execution file");  // then return
-  ```
-  It is a **decoy**: a plain engine gets this file, prints the message and the startup script ends
-  (then `TVPExitApplication(0)`), while on Windows `PackinOne.dll` serves the real `startup.tjs`
-  through its native file hooks. `data.xp3.index` is not a key store either: it is byte-identical
-  to the decompressed XP3 index (same MD5), i.e. a cache of the very file the engine already reads.
-  So there is no engine-side information that could reconstruct the real startup.
-- Tried and reverted:
-  - mounting every `*.xp3` before startup (`MountAllArchives` in `compat`) — ATRI still exits.
-  - returning the folder as project dir when there is more than one `.xp3` — ATRI still exits and
-    it **broke FSN's Russian patch**: `rufix.xp3`/`rupatch.xp3` stopped overriding, game English.
-  - Both reverted; FSN Russian works again. Lesson below.
-- Plan for "drop it in and it works":
-  1. **Detect and report** (done, safe, generic): `kk4s::detail::DetectGameIssue` looks for
-     `steam_api.dll`/`steam_api64.dll` plus `ds.ini` / `steam_emu.ini` / `SteamEmu/` /
-     `PackinOne.dll` / `*.xp3.index`. The log gets a `launcher: ...` line at scan time and the
-     selected game shows a warning line in the launcher ("Protected repack (Steam/PackinOne) — a
-     clean release is needed"). It never changes mount order or the project dir.
-  2. Prefer/test **DRM-free releases** (GOG/JAST/clean Steam files): they normally have a plain
-     KiriKiri layout and no wrapper, so they run unmodified.
-  3. Only if it is worth the effort: a **Steam API stub** for the few interfaces the wrapper uses
-     (`SteamAPI_Init`, `SteamUser`, `SteamApps`, `SteamRemoteStorage`, `SteamUtils`) and
-     **PackinOne** support. The latter is not a file-format parser: the real startup comes out of
-     the native Windows DLL, so it needs an x86 emulator + PE loader (the same machinery `.tpm`
-     decryption needs, next-steps item 3), not just a new XP3 chunk reader. This is DRM
-     circumvention: decide the project policy and legal risk before writing it; it is not a
-     normal engine-compat feature.
-  4. The bytecode is now readable with `python tools/tjsdis.py <file.tjs>` (it prints the data
-     strings and the VM instructions, e.g. the disassembly quoted above). Use it if another game
-     quits in a compiled `startup.tjs`. Do not add per-game hacks to `compat/`; a loose
-     `startup.tjs` in the game folder is a diagnostic only (we never modify game folders).
-  5. `patch.xp3` holds the real `Config.tjs` and compiled `*.ks.scn`; if the wrapper can be
-     satisfied, `KAGParserEx`/`extNagano`/`textrender`/`layerExDraw`/`AlphaMovie` etc. from
-     `plugin/` will be the next missing pieces (all Windows DLLs; need native replacements).
+### Protected repacks / PackinOne (ATRI, tested 2026-11-01)
+`ATRI -My Dear Moments-` (DARKSiDERS Steam repack) does not run from the repack folder: its XP3
+index hides the names and the contents are XOR-encrypted. The full recipe and the one-time
+extraction procedure are in **`docs/repacks.md`**; summary:
+- Real names are in **`hnfn` chunks** (4-byte key, 16-bit length, UTF-16LE name), matching the
+  `File` record's `adlr`; the `info` name is `md5(lowercase name in UTF-16LE)`. GARbro has the same
+  support (`FilenameMap`).
+- `startup.tjs` seen by name is a 316-byte decoy that only calls
+  `System.inform("startup failed: corrupted execution file")` (see `tools/tjsdis.py`). The real one
+  is a hashed entry, 1300 bytes of KiriKiri Z TJS2 bytecode.
+- Contents use a per-file single-byte XOR. The **first byte can use a different key than the rest**
+  (classic XP3 simple crypt); the keys are derived from a known magic (`PNG`, `OggS`, `TLG`,
+  `TJS2100`, `FE FE`, `UKR.5`, ...), not stored in the index.
+- The repack ships `version.dll` = **KirikiriTools / KirikiriUnencryptedArchive**, which extracts
+  decrypted files into `unencrypted/` as the game opens them. That plus a name-list `startup.tjs`
+  extracted ~7258 files; fgimage (Japanese paths the DLL cannot create) was extracted separately
+  with the two-key TLG XOR (2559/2587), and `patch.xp3` (plain, the Russian translation) was
+  overlaid.
+- The extracted folder **runs in the PC viewer** and renders the game. Engine additions needed:
+  `System.addFont(face, storage)` (KiriKiri Z, added in `base/SystemIntf.cpp`); a source
+  `startup.tjs` stub (`kirikiriz/debugWindowEnabled/inXP3archivePacked/convertMode` then
+  `system/Initialize.tjs`). The real KZ `startup.tjs` bytecode crashes the current TJS2 bytecode
+  loader.
+- Remaining: KAGZ `custom.tjs` throws at `reparent(textSpeechMenuItem, ...)`; ignoring
+  `System.exit` during startup lets the game continue. KAGZ menu/controller APIs
+  (`SystemConfig`, pad key state) are still incomplete.
+- **Not done:** running the original repack folder without extraction. That needs `hnfn` names +
+  the magic-derived XOR inside `XP3Archive.cpp` (a generic "protected XP3" feature), not a
+  per-game hack.
+- Detection is already in place: `kk4s::detail::DetectGameIssue` logs at scan time and the launcher
+  shows a warning for Steam/PackinOne markers. It never changes mount order or the project dir.
+- Tried and reverted: mounting every `*.xp3` before startup and making the folder the project dir;
+  the latter **broke FSN's Russian patch** (`rufix.xp3`/`rupatch.xp3`). Never change
+  `ResolveProjectDir`/the global mount order for one game (gotcha below).
+- `patch.xp3` holds the real `Config.tjs` and compiled `*.ks.scn`; the Windows plugin DLLs
+  (`KAGParserEx`, `extNagano`, `textrender`, `layerExDraw`, `AlphaMovie`, ...) still need native
+  replacements as games use them.
 
 ### Other known issues
 - Slow frames on page changes (Switch): 300-900 ms, almost all "other" (game scripts / layer ops
@@ -192,10 +186,12 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 2. Go through more games with input scripts on PC (any KAG game must work unmodified); fix
    engine differences generically (like `TJSClassVarKeepsProperty`, KAG restore), never per game.
 3. `.tpm` decryptor support (own x86 interpreter + PE loader), so no `xp3filter.tjs` is needed.
-4. Steam/PackinOne repacks: detection + launcher warning/log is done; never reorder archives.
-   Support DRM-free GOG/JAST/clean Steam releases first. A Steam API stub + PackinOne support
-   is a separate, DRM-related decision that needs the x86/PE machinery from item 3 (see the ATRI
-   section above). `tools/tjsdis.py` reads compiled `startup.tjs` stubs.
+4. Protected repacks: detection + launcher warning is done. One-time extraction with the repack's
+   own `version.dll` + a name-list script works and the extracted folder runs (see
+   `docs/repacks.md`, ATRI). Next: (a) implement `hnfn` names + magic-derived per-file XOR in
+   `XP3Archive.cpp`, so the original repack folder runs directly (no extraction); (b) fill the
+   remaining KiriKiri Z APIs (`SystemConfig`, pad keys) that KAGZ menus use. A Steam API stub is
+   not needed for the archive path.
 5. Real extrans transitions; more plugins as games need them (layerExDraw, layerExImage, ...).
 6. Video: sync to the audio clock; check decode speed on the Switch.
 7. Overlay folder and per-game profiles (M2/M3).

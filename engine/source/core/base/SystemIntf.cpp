@@ -22,6 +22,8 @@
 #include "Random.h"
 #include "ScriptMgnIntf.h"
 #include "DebugIntf.h"
+#include "FontSystem.h"
+#include "tjsArray.h"
 
 //---------------------------------------------------------------------------
 // TVPFireOnApplicationActivateEvent
@@ -119,6 +121,38 @@ TJS_BEGIN_NATIVE_METHOD_DECL(/*func. name*/exit)
 	return TJS_S_OK;
 }
 TJS_END_NATIVE_STATIC_METHOD_DECL(/*func. name*/exit)
+//---------------------------------------------------------------------------
+// Kirikiri Z: System.addFont(face, storage) loads a font file from the game.
+// Kirikiri 2 only has Font.addFont(storage); KAGZ's PreRenderFontEx throws
+// when System.addFont is missing, so register the file and return its faces.
+// The "face" alias is accepted and ignored: the file's own family names are
+// what the rasterizer matches.
+extern FontSystem* TVPFontSystem;
+TJS_BEGIN_NATIVE_METHOD_DECL(/*func. name*/addFont)
+{
+	if(numparams < 1) return TJS_E_BADPARAMCOUNT;
+
+	ttstr storage = numparams >= 2 ? ttstr(*param[1]) : ttstr(*param[0]);
+
+	std::vector<ttstr> faces;
+	if(TVPFontSystem) TVPFontSystem->AddExtraFont(storage.AsStdString(), &faces);
+
+	if(result)
+	{
+		iTJSDispatch2 *dsp = TJSCreateArrayObject();
+		tTJSVariant tmp(dsp, dsp);
+		*result = tmp;
+		dsp->Release();
+		for(tjs_uint i = 0; i < faces.size(); i++)
+		{
+			tmp = faces[i];
+			dsp->PropSetByNum(TJS_MEMBERENSURE, i, &tmp, dsp);
+		}
+	}
+
+	return TJS_S_OK;
+}
+TJS_END_NATIVE_STATIC_METHOD_DECL(/*func. name*/addFont)
 //---------------------------------------------------------------------------
 TJS_BEGIN_NATIVE_METHOD_DECL(/*func. name*/addContinuousHandler)
 {
