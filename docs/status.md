@@ -113,13 +113,14 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
   `firespark` / lens effects missing).
 - `.tpm` decryption plugins (e.g. `cxdec.tpm`) are not run: encrypted games need an `xp3filter.tjs`.
 - Universal runtime is the goal; ATRI is only the PC Steam-repack test fixture, not a product target.
-  Generic `hnfn` name mapping + CXDEC decoding and Steam compatibility are implemented. Desktop
-  ATRI reaches title setup, but the user confirms it still does **not** reach its title menu on
-  Switch; latest log reaches `title:xrated, 0` then fails in the KAGZ Win32-dialog wrapper
-  (`getNumberdId` receives `void`). `textrender.dll` remains a no-op, so this is not a playable-game
-  milestone. Next work is the generic KiriKiri Z dialog/text compatibility layer, validated across
-  multiple games—not an ATRI-specific workaround. Details: [cxdec.md](cxdec.md),
-  [handoff-native-cx.md](handoff-native-cx.md).
+  Generic `hnfn` mapping, CXDEC decoding, and Steam compatibility are implemented. **Desktop now
+  recovers supported CX schemes at runtime** from PE/TPM data and validates them against XP3 adlr
+  samples; the test ATRI folder auto-recovered 12/12 without a prebuilt scheme profile. Switch still
+  requires a CX profile until the portable x86/PE analyzer is implemented. ATRI's later KAGZ
+  `AlphaMovie` and `fontScale` APIs are not implemented; on Switch it reaches `title:xrated, 0` and
+  fails in the generic Win32-dialog wrapper (`getNumberdId` gets `void`). This does not make ATRI a
+  product target: implement reusable KiriKiri Z APIs/plugins and test across unrelated games.
+  Details: [cxdec.md](cxdec.md), [handoff-native-cx.md](handoff-native-cx.md).
 - XP3 script filters are **not thread-safe**. `8d4bef4` routes filtered game graphics/touchimages
   through synchronous main-thread loading. User-confirmed: Fate/FSN now plays through to the end and
   other tested games work well. This hardware regression is mandatory for further filter changes.

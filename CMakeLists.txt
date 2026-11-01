@@ -134,6 +134,7 @@ set(SOURCES
     compat/psb/psb.cpp
     compat/kk4s_plugins.cpp
     compat/kk4s_layerfx.cpp
+    compat/cxdec/scheme_recover.cpp
     platform/${KK4S_PLATFORM}/kk4s_platform.cpp
     engine/source/core/base/BinaryStream.cpp
     engine/source/core/base/CharacterSet.cpp
@@ -304,6 +305,17 @@ set(KK4S_PKG_MODULES
     oniguruma sdl2 zlib libcurl
 )
 pkg_check_modules(KK4S_DEPS REQUIRED ${KK4S_PKG_MODULES})
+if(KK4S_PLATFORM STREQUAL "desktop")
+    # PC can recover a CX scheme directly from the game's PE/TPM. Keep
+    # Capstone's include directory out of the global include path: on Windows
+    # its lowercase platform.h collides with the engine's Platform.h.
+    pkg_check_modules(KK4S_CAPSTONE REQUIRED capstone)
+    # Prefer static linking so the Linux viewer artifact does not need a
+    # separately installed libcapstone at runtime. Fall back to pkg-config's
+    # shared library when the platform package has no static archive.
+    find_file(KK4S_CAPSTONE_STATIC_LIBRARY NAMES libcapstone.a
+        PATHS ${KK4S_CAPSTONE_LIBRARY_DIRS} NO_DEFAULT_PATH)
+endif()
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
@@ -324,6 +336,14 @@ else()
     target_link_libraries(${PROJECT_NAME} ${KK4S_DEPS_LIBRARIES} ${KK4S_DEPS_LDFLAGS_OTHER})
     find_package(Threads REQUIRED)
     target_link_libraries(${PROJECT_NAME} Threads::Threads)
+    if(KK4S_CAPSTONE_STATIC_LIBRARY)
+        target_link_libraries(${PROJECT_NAME} "${KK4S_CAPSTONE_STATIC_LIBRARY}")
+    else()
+        target_link_directories(${PROJECT_NAME} PRIVATE ${KK4S_CAPSTONE_LIBRARY_DIRS})
+        target_link_libraries(${PROJECT_NAME} ${KK4S_CAPSTONE_LIBRARIES} ${KK4S_CAPSTONE_LDFLAGS_OTHER})
+    endif()
+    target_compile_options(${PROJECT_NAME} PRIVATE ${KK4S_CAPSTONE_CFLAGS_OTHER})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE KK4S_DESKTOP=1)
 endif()
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${INCLUDES})

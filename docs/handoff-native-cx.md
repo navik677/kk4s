@@ -1,27 +1,35 @@
-# Handoff: native Cx/PackinOne support (ATRI as the test case)
+# Handoff: universal KiriKiri compatibility and native PC repacks
 
-Written 2026-11-01 for the next model. Branch **`wip/packinone-native`** (not on `main`, nothing pushed).
-Read `docs/cxdec.md` (design, status), `docs/debugging.md` (debugging aids), `docs/build-deploy.md`
-(exact build/FTP commands for this dev PC) first. This file is the "what to do next".
+Updated 2026-11-01. The CXDEC implementation was merged and pushed to `main`; current PC work adds
+generic automatic scheme recovery. Read `docs/cxdec.md` (design/status), `docs/debugging.md`, and
+`docs/build-deploy.md` first.
 
 ## The goal (user's words, repeated several times)
 
 kk4s must run **any** PC KiriKiri game from its original folder (repack or original), with **no
 extraction, patching or conversion** by the user. **ATRI is only a test case**, not the product:
 every fix must be generic or gated on positive detection. Do not hardcode ATRI offsets, keys or names.
-Do not break existing games: **FSN with the Russian patch** (`rufix.xp3` + `rupatch.xp3`) and
-Tsukihime Russian must keep working; regression-test them after any shared runtime change. Never
-change `ResolveProjectDir`, the global XP3 mount order, or mount all `*.xp3` for all games. Keep
-changes local and do not push/trigger CI until the user reviews. The user writes Ukrainian; keep
-answers short, outcome first.
+Do not break existing games: **Fate/FSN with the Russian patch**, Tsukihime Russian, Sharin no Kuni,
+and The Makings of a Lady. The user confirms Fate/FSN and the other tested games work on Switch, and
+Fate has a full playthrough. Never change `ResolveProjectDir`, the global XP3 mount order, or mount
+all `*.xp3` for all games. ATRI is only a test fixture; no ATRI-specific keys, offsets, names or
+branches. Keep new changes local for review unless the user explicitly asks to push. The user writes
+Ukrainian; keep answers short, outcome first.
 
 ## State (ATRI is only a test fixture; universal engine is the goal) - updated 2026-11-01 22:20
 
 ATRI is the PC Steam-repack test fixture only; it is not the product or acceptance target. The
-generic CXDEC/Steam path reaches title setup on desktop, but the user reports the Switch build still
-does not show the title menu. Latest Switch log reaches `title:xrated, 0`, then
-`win32dialog.tjs getNumberdId` tries to index `itemMap` with `void`. Fix the generic KiriKiri Z
-Win32-dialog/log-window compatibility contract; do not add ATRI-specific behavior.
+generic CXDEC/Steam path now recovers its scheme automatically on desktop from the embedded PE TPM
+(12/12 real-entry validation, with no `profiles/cx` scheme present) and reaches title setup. The
+desktop run then encounters general KAGZ gaps (`AlphaMovie` plugin and `TextRenderBase.fontScale`;
+the renderer is still a no-op). On Switch the user reports ATRI still does not show its title menu.
+The latest Switch log reaches `title:xrated, 0`, then `win32dialog.tjs getNumberdId` indexes
+`itemMap` with `void`. Fix reusable KiriKiri Z plugin/dialog semantics, not ATRI-specific behavior.
+
+Desktop automatic CX scheme recovery is implemented in `compat/cxdec/scheme_recover.cpp` with
+Capstone, invoked by `BindCxDecoder()` only for positive `hnfn` detection and only after existing
+profile schemes fail. Switch still requires a user-data scheme profile; the portable x86/PE analyzer
+is a future step. No scheme/key is written to the repo or game folder.
 
 **Regression status:** the user confirms Fate/FSN and the other tested games work well on Switch;
 Fate is playable from beginning to end. The XP3-filter/background-thread crash fix is in NRO
@@ -64,75 +72,43 @@ scenario/`layerEx*`/`AlphaMovie` plugins as they are used. `k2compat.tjs makeDum
 - Latest NRO on the SD: `8d4bef4`, SHA-256
   `4101BB85B3B2AE8E98CAE0D0350B873C281DA34B35EEB277E7FDBE914D02997F`.
 
-## Key discovery of the last session (do this first)
+## Startup and Steam chain (resolved)
 
-The **real `startup.tjs` is NOT obfuscated and NOT Steam related**. It is the standard KiriKiri Z start
-(`kirikiriz`, `-debugwin`, `inXP3archivePacked`, `convertMode`, `debugWindowEnabled`,
-`Scripts.exec("@set(PACKED=1)@set(DEBUG=..)")`, `Scripts.execStorage("system/Initialize.tjs")`), 1300
-bytes. The old "XOR 0x61 / obfuscated bytecode" conclusion came from the wrong magic-XOR decryption.
-With correct CXDEC the engine loads it fine. Verified: with env `KK4S_NO_SHIM=1` ATRI starts through
-its own `startup.tjs` and behaves exactly like with the shim (same flow, same achievement error).
+The real `startup.tjs` is the standard KiriKiri Z bootstrap (`kirikiriz`, `-debugwin`,
+`inXP3archivePacked`, `convertMode`, `debugWindowEnabled`, then `system/Initialize.tjs`). The old
+"XOR 0x61 / obfuscated bytecode" conclusion came from the abandoned magic-XOR attempt. Current ATRI
+logs show the real startup runs; `StartupScriptShim()` checks `AnyCxArchiveBound()` before the Cx
+archive is bound, so it is not selected. Do not spend time on the shim unless a different protected
+title proves it is needed.
 
-**Therefore the KiriKiri Z startup shim is unnecessary: remove it.** (It is in fact never used for
-ATRI now: `StartupScriptShim()` is called before `data.xp3` is mounted, so `AnyCxArchiveBound()` is
-false; the log has no "protected repack" line and the game's own `startup.tjs` runs.)
-- `compat/kk4s_compat.{h,cpp}`: delete `StartupScriptShim()` (and the uncommitted `KK4S_NO_SHIM` line).
-- `engine/source/core/base/ScriptMgnIntf.cpp` (`TVPExecuteStartupScript`): restore the plain
-  `TVPExecuteStorage(TVPStartupScriptName)` (see `git show 4d767de:...` for the original).
-- `kk4s::compat::AnyCxArchiveBound()` becomes unused (keep or remove; it was only the shim's gate).
-- The shim also overrode `System.inform` (blocking message box) and `System.terminate`. Check that
-  without it a game calling `System.inform` does not block on PC/Switch (the ATRI run did not hang).
-- Update `docs/repacks.md`, `docs/cxdec.md`, `docs/packinone-native.md` (that one only exists on `main`).
+Steam support is implemented generically: detect `steam_api.dll` plus `steam.tjs`/`steam.xp3`, add
+`-steam=yes`, disable the release debug window by default, and provide the `krkrsteam.dll` Steam
+object (achievements logged, cloud disabled). This lets the game-side `steam.tjs` intercept
+`kag.errorCmd` for `[実績]`. It is not the remaining PC repack blocker.
 
-## Next blocker: the Steam chain (generic design)
+## Current PC-repack compatibility blockers (general KAGZ APIs/plugins)
 
-How `steam.tjs` gets run (found in `main/custom.tjs`, readable via the unscrambled text):
-
-```
-switch (System.getArgument("-steam")) {
-case "yes":
-	if (Storages.isExistentStorage('steam.tjs')) KAGLoadScript('steam.tjs');
-	else { System.inform("Internal error: steam.tjs not found."); System.exit(1); }
-```
-
-So the **Steam build starts the engine with `-steam=yes`** (the Windows EXE/PackinOne adds it; kk4s
-does not). `Config.tjs` itself treats a folder as a Steam build when
-`inXP3archivePacked && (isExistentStorage('steam.tjs') || isExistentStorage(exePath+"steam_api.dll"))`.
-Suggested generic rule: when `steam.tjs` exists in the mounted storage **and** `steam_api.dll` is in the
-game folder, add `-steam=yes` to the program arguments (there is `KK4S_ARGS="-steam=yes"` already for
-testing: `engine/source/core/base/win32/SysInitImpl.cpp`, `PushAllCommandlineArguments`). Keep the rule
-in the compat layer, logged, and gated on both markers.
-
-`steam.tjs` then does `Plugins.link("krkrsteam.dll")` and needs a **`Steam` object**. kk4s has no such
-plugin: add a **`krkrsteam.dll` compat stub** in `compat/kk4s_plugins.cpp` (table `kPlugins`, see
-`LinkKAGParserExDll`/`LinkUtilDll` for the pattern; remember anything in that file lives in
-`namespace kk4s::compat`). Methods seen in `steam.tjs` (from `KK4S_DUMP_BYTECODE=steam.tjs`, dump saved
-by the previous run at `%TEMP%\claude\steam.dis` if it still exists): `setAchievement`,
-`clearAchievement`, `loadAchievementList`?, cloud: `getCloudFileInfo`, `cloudFileCount`,
-`deleteCloudFile`, `copyCloudFile`, `cloudEnabled`; also `SteamPlugin`, `SteamDrawDevice.dll`
-(`CanLoadPlugin`; draw device plugin `plugin/SteamDrawDevice.dll`, `DualDrawDevice_` fallback).
-**Read `steam.tjs` properly before stubbing** (re-dump it with `KK4S_ARGS=-steam=yes
-KK4S_DUMP_BYTECODE=steam.tjs`, no shim). A stub should report "Steam not running / not initialized"
-and make every call a no-op returning a sane value; achievements can be logged only. Then check the
-override of `kag.errorCmd` really catches `実績:...`.
-
-Other plugins the game links and kk4s ignores (see log lines `compat: plugin not available, ignored`):
-`PackinOne.dll`, `layerExImage/Raster/Draw/BtoA`, `textrender`, `windowEx`, `k2compat`, `AlphaMovie`,
-`scriptsEx`, `wuopus`, `extNagano`… Implement only what a run actually needs; look for the first
-exception each time. AlphaMovie/krmovie matter for the opening movie.
+Latest desktop no-profile ATRI test: auto-CX scheme recovery succeeds, then the game hits missing
+generic KAGZ components: `AlphaMovie` is not registered and `langrender.tjs` assigns `fontScale`,
+which is absent from the current `TextRenderBase` no-op. `AlphaMovie.dll` is a plugin replacement
+candidate; inspect its wrapper contract and implement reusable behavior, not ATRI assets or story
+logic. The `fontScale` property belongs in the shared text-render compatibility interface. The same
+renderer/plugin APIs should be tested with additional KAGZ titles before claiming broad support.
 
 ## Tools and methods that worked (use them)
 
 - Build desktop (PowerShell): `$env:PATH="C:\msys64\ucrt64\bin;C:\msys64\usr\bin;"+$env:PATH;
-  cmake --build build-desktop -j 12`. Run long things with `run_in_background` and wait for the
+  cmake --build build-desktop -j 4`. Run long things with `run_in_background` and wait for the
   notification (a foreground `sleep` is blocked; a 2-minute foreground limit kills long builds).
 - Build Switch NRO: `/c/msys64/usr/bin/bash.exe -lc 'cd /c/Users/navik/gits/kk4s && SKIP_DEPS=1 bash
   tools/build-switch.sh'` -> `out/kk4s.nro`. Upload: `curl.exe -T out/kk4s.nro
   ftp://192.168.1.135:5000/switch/kk4s/kk4s.nro` (console must be awake; verify sha256 by
   downloading back; the user asked for each upload explicitly, ask first). Logs:
   `ftp://192.168.1.135:5000/switch/kk4s/logs/` (game must be closed).
-- Run ATRI on PC: `KK4S_ROOT=E:\kk4s-pc`, argument `"E:\ATRI -My Dear Moments-"` (quote the path).
-  Scheme for ATRI is in `E:\kk4s-pc\profiles\cx\atri.cxscheme` + `atri.cb` (user data, never commit).
+- Run ATRI on PC: `KK4S_ROOT=<empty temp data root>`, argument `"E:\ATRI -My Dear Moments-"`
+  (quote the path). To test desktop auto-scheme recovery, ensure `<root>/profiles/cx/` contains no
+  scheme. The runtime should log `cxdec: recovered scheme auto:... (12/12 samples verified)`. Any
+  old `atri.cxscheme`/`.cb` under `E:\kk4s-pc` is user data; never commit it.
   FSN needs `E:\kk4s-pc\profiles\Fate-stay_night\xp3filter.tjs`; game at `E:\kk4s-pc\games\Fate-stay_night`.
 - Logs: `E:\kk4s-pc\logs\kk4s-*.log`. Every script exception is now logged as `(exception) <message>`.
 - **Engine disassembly of any bytecode script**: `KK4S_DUMP_BYTECODE=<part of the name>` (e.g.
@@ -171,24 +147,26 @@ stub (real Win32 constants), `Scripts.foreach/getObjectKeys/getObjectCount/clone
 returns the first non-void callback value — the engine's `Dictionary.forEach` passes `(value, name)`),
 `[emb escape=false]` and `taglist` for games that link `KAGParserEx.dll` (`KAGParser.cpp`, flag
 `TVPKAGParserExMode` set from the compat plugin table), exception messages in the log, debugging aids
-(`KK4S_DUMP_BYTECODE`, `KK4S_KAG_TRACE`, `KK4S_ARGS`).
-Uncommitted: only the `KK4S_NO_SHIM` env line in `compat/kk4s_compat.cpp` (to be removed with the shim).
+(`KK4S_DUMP_BYTECODE`, `KK4S_KAG_TRACE`, `KK4S_ARGS`). The desktop runtime now also contains
+`compat/cxdec/scheme_recover.cpp` for data-validated automatic PC scheme recovery.
 
 ## Other open items
 
 - `main/imagedressmap.txt` in `data.xp3`: its zlib segment does not inflate (all other entries verify).
-- The extractor `tools/cx_scheme_extract.py` is a PC Python tool (needs `capstone`, `pefile`). For
-  "folder -> play" on Switch without a manual step it must be ported into kk4s (a small x86 decoder for the
-  generator's switch tables) or the scheme file must be produced once on a PC. This is the remaining
-  manual step; see "When automatic recovery is not possible" in `docs/cxdec.md`.
-- `win32dialog.dll` stub has no `WIN32Dialog.Header`/`Items` *classes* (only dictionaries), so the game's
-  Windows log window path (`initLogPad`) still throws "Not a function"; harmless unless an error occurs.
+- Desktop runtime scheme recovery is automatic for supported PE32/TPM shapes and validates on archive
+  adlr samples. Switch still needs a supplied profile scheme; port the generic x86/PE analyzer there.
+- The `win32dialog.dll` base classes/constants exist, but the wrapper/log-window contract is incomplete:
+  ATRI Switch logs `getNumberdId` indexing `itemMap` with `void`. Fix the general KAGZ dialog semantics,
+  not a game-specific callback.
+- KAGZ PC support also lacks a real `AlphaMovie.dll` and a `TextRenderBase.fontScale` property; the
+  text renderer itself is still no-op. Implement from the plugin contracts and verify another KAGZ game.
 - Memory: `PSBFile.root` is built eagerly (largest ATRI `.scn` ~126k nodes); fine so far, untested on
   Switch with many files loaded.
 - `E:\atri-cx-probe` (hard-link mirror of ATRI used to dump memory) can be deleted.
-- Before merging anything to `main`: re-run the regression list the user gave (FSN Russian text and
-  fonts, sprites/backgrounds, music, transitions, save/load, other translated games), preferably on the
-  Switch too. Follow the existing rule in `docs/HANDOFF.md` about FSN precedence.
+- User-confirmed regression: Fate/FSN and the other tested titles work on Switch; Fate is playable
+  from beginning to end. Before future shared changes, retain that complete-playthrough check plus
+  Russian text/fonts, sprites/backgrounds, music, transitions, save/load, and the other compatibility
+  titles. Follow `docs/HANDOFF.md`'s FSN precedence rule.
 
 ## FSN crash on Switch (crash report received after 22:00 run)
 

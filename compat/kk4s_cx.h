@@ -14,7 +14,7 @@
 #include <vector>
 
 namespace kk4s {
-namespace cxdec { class CxDecoder; }
+namespace cxdec { class CxDecoder; struct CxScheme; }
 namespace compat {
 
 struct CxSample {
@@ -26,6 +26,12 @@ struct CxSample {
 // nullptr when no known scheme fits. `samples` are a few small entries of it.
 // Decoders are shared between archives of the same game and live until exit.
 cxdec::CxDecoder* BindCxDecoder(const std::string& archive_name, const std::vector<CxSample>& samples);
+
+// Desktop-only generic recovery from the game's TPM (or an embedded internal
+// module). The recovered scheme is accepted only after every candidate is
+// checked against archive samples; it is never persisted into the game folder.
+bool RecoverCxSchemeFromGame(const std::string& game_dir,
+    const std::vector<CxSample>& samples, cxdec::CxScheme& scheme, std::string& error);
 
 // True once any archive of this run got a verified scheme (positive detection
 // of a Cx-protected game; used to gate Cx-specific startup handling).

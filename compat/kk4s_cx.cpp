@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <memory>
 #include <mutex>
+#include <set>
 
 namespace kk4s {
 namespace compat {
@@ -39,6 +40,7 @@ struct Registry {
     std::mutex mutex;
     bool loaded = false;
     std::vector<std::unique_ptr<cxdec::CxDecoder>> decoders;  // one per scheme file
+    std::set<std::string> auto_attempted_archives;
 
     void LoadOnce() {
         if (loaded) return;
@@ -107,6 +109,39 @@ cxdec::CxDecoder* BindCxDecoder(const std::string& archive_name, const std::vect
         g_any_bound = true;
         return best;
     }
+
+#if defined(KK4S_DESKTOP)
+    // PC "drop the game folder and play": if no saved profile scheme fits,
+    // recover a generic CX scheme from the game's TPM/embedded internal module.
+    // This is data-driven and validated against this archive's adlr samples;
+    // never apply an unverified candidate and never write into the game folder.
+    const std::string game_dir = GameDir();
+    // Different archives in one title can use different CX schemes, and an
+    // archive's sample set can be dominated by decoys. Retry recovery for each
+    // archive that no existing decoder validates, but never repeat it for the
+    // same archive.
+    if (!game_dir.empty() && r.auto_attempted_archives.insert(archive_name).second) {
+        cxdec::CxScheme recovered;
+        std::string why;
+        if (RecoverCxSchemeFromGame(game_dir, samples, recovered, why)) {
+            auto decoder = std::unique_ptr<cxdec::CxDecoder>(new cxdec::CxDecoder(recovered));
+            int verified = CountValid(*decoder, samples);
+            if (verified >= need) {
+                cxdec::CxDecoder* result = decoder.get();
+                r.decoders.emplace_back(std::move(decoder));
+                Log("cxdec: recovered scheme %s from game files (%d/%u samples verified)",
+                    result->Scheme().name.c_str(), verified, (unsigned)samples.size());
+                g_any_bound = true;
+                return result;
+            }
+            Log("cxdec: recovered candidate for %s failed runtime validation (%d/%u)",
+                game_dir.c_str(), verified, (unsigned)samples.size());
+        } else {
+            Log("cxdec: automatic scheme recovery for %s: %s", game_dir.c_str(), why.c_str());
+        }
+    }
+#endif
+
     Log("cxdec: %s is a Cx-encrypted archive (hnfn) but no scheme fits (%u known, best %d/%u). "
         "Create one with tools/cx_scheme_extract.py <game folder> %s/cx/<name>.cxscheme",
         archive_name.c_str(), (unsigned)r.decoders.size(), best_ok, (unsigned)samples.size(), ProfilesDir().c_str());

@@ -8,7 +8,8 @@ not the target. No per-game fixes, game files, keys or conversion; compatibility
 
 ## Where we are (2026-11-01)
 
-`main` is local and not pushed. The SD holds NRO `8d4bef4`
+`origin/main` is `c0d7705` (pushed at the user's request). Local `main` has an unpushed desktop
+CX scheme-recovery change (generic Capstone-backed PE/TPM analysis). The SD holds NRO `8d4bef4`
 (`4101BB85…D02997F`), verified over FTP. User confirms on Switch that Fate/FSN and the other tested
 games work well; **Fate is playable from beginning to end**. The generic XP3-filter threading fix is
 in that build. ATRI still does not reach its title menu on Switch.
@@ -222,8 +223,8 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
    confirmed Fate/FSN full playthrough and FSN Russian patch as mandatory regressions. All changes
    belong in engine/compat, never in game files or title-specific branches.
 4. `.tpm` decryptor support (own x86 interpreter + PE loader), so encrypted games do not need an
-   `xp3filter.tjs`; the CXDEC scheme extractor still needs an in-runtime port to remove the PC
-   scheme-generation step.
+   `xp3filter.tjs`. Desktop CX schemes now recover at runtime from supported PE/TPM formats; Switch
+   still needs the portable x86/PE recovery path (until then a scheme profile is required there).
 5. Profile 300-900 ms Switch slow frames; implement real extrans transitions and remaining plugins
    as broadly useful. Video audio-clock sync, per-game profiles/overlay folder, and flushing the final
    ~20 ms from the audio converter remain open.
@@ -233,14 +234,14 @@ game, not just FSN; never commit game files or keys; game folders are never modi
 
 ## Native Cx/PackinOne work (merged from `wip/packinone-native`, 2026-11-01)
 
-The CXDEC decryption, PSB/psbfile, KAG/Scripts compat and debugging aids are on `main` now. The
-current state, the blockers and the next steps are in **`docs/handoff-native-cx.md`** and
-`docs/cxdec.md`. Short version (2026-11-01 21:40): **the original ATRI repack folder now reaches
-its title screen** - CXDEC, `hnfn` names, Steam detection (`-steam=yes`), a `krkrsteam.dll` Steam
-stub, release `-debugwin=no`, win32dialog classes, the `PSBFile(storage)` constructor and PSB
-`null`->void got it past all earlier blockers; the next gap is the real `textrender.dll` (no-op stub)
-and the other KAGZ plugins. FSN (Russian patch) still runs on the PC (Рус-moon logo + `TitleMenu.ks`,
-`project dir: .../data.xp3>`). The later FSN Switch run actually **crashed kk4s**: the Atmosphere
-report symbolicates to `ScriptExtractionFilter` called by the async TLG/image loader, i.e. TJS
-XP3-filter code ran on a background thread. See `docs/handoff-native-cx.md`; the previous
-global-object/idle-loop theory was incorrect for that crash. The FSN rules above still apply.
+CXDEC decoding, Steam compatibility, PSB/psbfile, KAG/Scripts APIs and debugging aids are in `main`.
+Desktop now auto-recovers supported CX schemes from generic PE/TPM structures without a pre-made
+scheme profile (ATRI test: 12/12 validation); Switch still needs a profile pending the portable x86
+analyzer. ATRI confirms the PC scheme recovery path but remains only a test fixture: on Switch it
+still fails in the generic
+`win32dialog.tjs`/KAGZ title setup, and on PC this fixture exposes missing generic KAGZ plugins.
+User-confirmed regressions: Fate/FSN and the other tested games work on Switch; Fate has a complete
+beginning-to-end playthrough. The FSN TJS-filter crash was traced to running its XP3 filter on the
+async image thread; `8d4bef4` routes filtered graphic loading through the main thread. Full details,
+known limits and remaining generic compatibility gaps are in `docs/handoff-native-cx.md` and
+`docs/cxdec.md`. Never optimize for ATRI at the expense of the universal compatibility goal.

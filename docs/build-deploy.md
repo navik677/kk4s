@@ -49,7 +49,7 @@ C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm --needed \
  mingw-w64-ucrt-x86_64-ffmpeg mingw-w64-ucrt-x86_64-libpng mingw-w64-ucrt-x86_64-libjpeg-turbo \
  mingw-w64-ucrt-x86_64-libwebp mingw-w64-ucrt-x86_64-libogg mingw-w64-ucrt-x86_64-libvorbis \
  mingw-w64-ucrt-x86_64-opus mingw-w64-ucrt-x86_64-opusfile mingw-w64-ucrt-x86_64-zlib \
- mingw-w64-ucrt-x86_64-oniguruma mingw-w64-ucrt-x86_64-curl"
+ mingw-w64-ucrt-x86_64-oniguruma mingw-w64-ucrt-x86_64-curl mingw-w64-ucrt-x86_64-capstone"
 ```
 
 Build:
@@ -61,6 +61,11 @@ C:\msys64\usr\bin\bash.exe -lc 'export MSYSTEM=UCRT64; export PATH=/ucrt64/bin:/
 - Use the **UCRT64** cmake (`/ucrt64/bin/cmake.exe`), not the MSYS
   (`/usr/bin/cmake.exe`): the MSYS one emits POSIX include paths and the build
   fails with `SDL.h: No such file or directory`.
+- Capstone is a desktop build dependency for generic CX scheme recovery from
+  PE/TPM data. CMake prefers the static archive (no runtime DLL/.so); it falls
+  back to pkg-config's library if the static archive is unavailable. The Switch
+  build does not link Capstone and still needs a portable x86 analyzer before
+  CX recovery can be automatic there.
 - `tools/build-desktop.sh` copies `build-desktop/kk4s.exe` to `out-desktop/`.
   An incremental `cmake --build build-desktop` does **not** copy; copy it
   yourself:
