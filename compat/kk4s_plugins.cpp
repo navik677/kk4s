@@ -1072,6 +1072,7 @@ static const PluginEntry kPlugins[] = {
     {"firespark.dll", LinkFireSparkDll},
     {"wuvorbis.dll", ProvidedByEngine},
     {"krmovie.dll", ProvidedByEngine},
+    {"alphamovie.dll", ProvidedByEngine},
     // extrans transitions (wave, ripple, mosaic, rotate*...) fall back to
     // crossfade in the engine until they are implemented.
     {"extrans.dll", ProvidedByEngine},

@@ -286,6 +286,7 @@ set(SOURCES
     engine/source/core/visual/win32/WindowImpl.cpp
     engine/source/plugins/InternalPlugins.cpp
     engine/source/plugins/LayerExBase.cpp
+    engine/source/plugins/AlphaMovie.cpp
     engine/source/plugins/csvParser.cpp
     engine/source/plugins/dirlist.cpp
     engine/source/plugins/fftgraph.cpp

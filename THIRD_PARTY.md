@@ -16,5 +16,6 @@
 | opus, opusfile | linked | BSD-3 |
 | zlib | linked | zlib |
 | Oniguruma | linked (built from source if not in portlibs) | BSD-2 |
+| AlphaMovie plugin (T.Imoto, wamsoft/AlphaMovie) | `engine/source/plugins/AlphaMovie.cpp` | same as Kirikiri, see `engine/LICENSE` |
 
 Fonts: none bundled yet. M6 will add a free CJK font (Noto Sans CJK, SIL OFL 1.1).
