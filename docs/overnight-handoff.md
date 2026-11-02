@@ -170,6 +170,9 @@ Overnight commits so far:
 - `e5be02b` — fix XP3v2 header parsing in `tools/xp3ls`.
 - `cecb5c8` — implement the headless `WIN32Dialog.setItemText` result and TJS fixture.
 - `6adc443` — map XP3v2 `eliF` names generically and add the synthetic end-to-end test.
+- `ee6e8f2` — add TextRenderBase layout/drawing and its synthetic contract test (the stored subject is
+  only `compat:`; the follow-up documentation commit records the task clearly).
+- `e12fb32` — record verified TextRenderBase/ATRI/FSN and latest Switch build status.
 - `ee6e8f2` — add the generic TextRenderBase layout/draw path and synthetic contract test.
 
 Append new commits, exact validation outcomes, regressions, blockers, and changed files here. Do not
