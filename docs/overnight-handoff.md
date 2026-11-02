@@ -53,16 +53,16 @@ desktop gameplay, Switch build, Switch hardware startup, and Switch gameplay, us
 
 ## Next actions
 
-1. Investigate the generic `Scripts.loadDataPack`/`saveDataPack` PBD contract exposed after
-   `start.ks:24`; use the `loadPBD` bytecode and format references, not game-specific shortcuts.
-2. Investigate the NekoPara `.tpm`/`CxFilterFS` implementation and why the generic desktop scheme
-   analyzer validates 0/12 samples. Do not extract, embed, or commit game-specific keys; add support
-   only for a generic TPM/CX shape. Keep test data in a separate `KK4S_ROOT` and hash the original.
-3. Continue through subsequent ATRI startup blockers; no title/menu success claim based only on the
-   absence of an exception.
-4. Run targeted tests/builds incrementally, max `-j4`, one full build at a time. Update this handoff
-   and create a focused commit after each verified task.
-5. Do not push to `main`; if pushing reviewed work, use only
+1. Integrate/port a generic AlphaMovie AJPM decoder from the official KiriKiri plugin source, with
+   its license notice and synthetic packet vectors; then test an original ATRI archive-backed movie.
+2. Keep PBD `Scripts.loadDataPack`/`saveDataPack` marked BLOCKED until its binary/crypto contract or
+   reusable source is available. Do not add a fake empty API or bake in ATRI's `PSDInfo` values.
+3. Investigate NekoPara `.tpm`/`CxFilterFS` only for a generic decoder shape/source; scheme validation
+   remains 0/12. Do not add a game-specific key; preserve the separate `KK4S_ROOT` and game hashes.
+4. Continue through ATRI startup blockers; do not call it playable based on the opening line.
+5. Run targeted tests/builds incrementally, max `-j4`, one full build at a time; update this handoff
+   and commit verified logical tasks separately.
+6. Do not push to `main`; if pushing reviewed work, use only
    `work/overnight-2026-11-02`.
 
 ## Findings since branch start
@@ -161,6 +161,21 @@ tracked fixture `tests/tjs/win32dialog/startup.tjs` links the plugin and asserts
   frame decode experimental; no test sample is committed. Its license is MPL-2.0. Treat it as a
   format reference, not a complete or verified decoder; any kk4s implementation needs independent
   synthetic vectors and must not import a game's `.amv` into Git.
+
+### PBD / Scripts DataPack reconnaissance (BLOCKED)
+
+- ATRI `psdlayer.tjs` calls `Scripts.loadDataPack(storage, options)` from `loadPBD`; when its optional
+  IV is absent it passes a dictionary containing `outeriv: PSDInfo.PBDOuterIV`, then passes the
+  returned object to `loadDATA`. That consumer expects a pack object with `count` and layer/group
+  dictionaries (`layer_type`, dimensions, names, ids, etc.).
+- The original `PackinOne.dll` string table names an internal `tjsDataPack.dll` module and exposes
+  `Scripts.loadDataPack`, `saveDataPack`, `makeDataPackThumb`, and `makeDataPackDigest`, plus an
+  `unknown thumboct format` error. No standalone module/source is present in the install or the
+  public `krkrz_dev` tree. Read-only extracted PBD samples begin `UKR.5r1\x01`; the payload format and
+  serialization/encryption are not established by this header alone.
+- The errors in kk4s are caught by KAG; there is no runtime crash, but PBD-backed content will not
+  load. No no-op `Scripts.loadDataPack` was added, and no PBD, IV, or game asset was placed in Git.
+  Status: **BLOCKED** pending a reusable format/source reference and synthetic vectors.
 
 ## Commits and unresolved items
 
