@@ -38,7 +38,7 @@ desktop gameplay, Switch build, Switch hardware startup, and Switch gameplay, us
 | XP3 v2 header parsing in `xp3ls` | PASS on six NekoPara XP3 archives; data archive lists 1201 entries | `e5be02b` |
 | XP3v2 `eliF` name mapping in runtime | Synthetic smoke PASS; ATRI and FSN desktop regressions PASS | `6adc443` |
 | Nekopara identification and isolated desktop probe | KiriKiri Z/KAG-compatible; scheme validation FAIL; original files hash-identical | `6adc443` |
-| TextRenderBase generic layout/draw implementation | Synthetic TJS PASS; ATRI opening text visibly renders; FSN regression PASS; Switch build PASS | pending |
+| TextRenderBase generic layout/draw implementation | Synthetic TJS PASS; ATRI opening text visibly renders; FSN regression PASS; Switch build PASS | `ee6e8f2` |
 
 ## Current test matrix
 
@@ -53,20 +53,16 @@ desktop gameplay, Switch build, Switch hardware startup, and Switch gameplay, us
 
 ## Next actions
 
-1. Review and commit the verified TextRenderBase task separately. Synthetic test and ATRI screenshot
-   confirm actual glyph drawing; ATRI is not playable yet.
-2. Rebuild Switch at max `-j4` after this shared runtime change; hardware retest remains
-   unavailable unless a new NRO is actually uploaded and run.
-3. Implement/investigate the generic `Scripts.loadDataPack`/`saveDataPack` PBD contract exposed after
+1. Investigate the generic `Scripts.loadDataPack`/`saveDataPack` PBD contract exposed after
    `start.ks:24`; use the `loadPBD` bytecode and format references, not game-specific shortcuts.
-4. Investigate the NekoPara `.tpm`/`CxFilterFS` implementation and why the generic desktop scheme
+2. Investigate the NekoPara `.tpm`/`CxFilterFS` implementation and why the generic desktop scheme
    analyzer validates 0/12 samples. Do not extract, embed, or commit game-specific keys; add support
    only for a generic TPM/CX shape. Keep test data in a separate `KK4S_ROOT` and hash the original.
-5. Continue through subsequent ATRI startup blockers; no title/menu success claim based only on the
+3. Continue through subsequent ATRI startup blockers; no title/menu success claim based only on the
    absence of an exception.
-6. Run targeted tests/builds incrementally, max `-j4`, one full build at a time. Update this handoff
+4. Run targeted tests/builds incrementally, max `-j4`, one full build at a time. Update this handoff
    and create a focused commit after each verified task.
-7. Do not push to `main`; if pushing reviewed work, use only
+5. Do not push to `main`; if pushing reviewed work, use only
    `work/overnight-2026-11-02`.
 
 ## Findings since branch start
@@ -174,6 +170,7 @@ Overnight commits so far:
 - `e5be02b` — fix XP3v2 header parsing in `tools/xp3ls`.
 - `cecb5c8` — implement the headless `WIN32Dialog.setItemText` result and TJS fixture.
 - `6adc443` — map XP3v2 `eliF` names generically and add the synthetic end-to-end test.
+- `ee6e8f2` — add the generic TextRenderBase layout/draw path and synthetic contract test.
 
 Append new commits, exact validation outcomes, regressions, blockers, and changed files here. Do not
 include game files, keys, profiles, saves, build outputs, or patched game content in Git.
