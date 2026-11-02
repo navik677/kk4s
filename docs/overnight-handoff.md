@@ -6,6 +6,8 @@
 - Starting HEAD: `1f649e0cbca0fc4a1e3021df39ff066f5b2785ac` (`origin/main` at session start).
 - Working branch: `work/overnight-2026-11-02`; do not commit to or push `main`.
 - Safety ref: `backup/overnight-start-2026-11-02` points to the starting HEAD.
+- The branch is published to `origin` as `work/overnight-2026-11-02` with a normal fast-forward
+  push; history is not rewritten and `main`/`origin/main` stay at the starting commit.
 - The starting worktree already had hundreds of modified tracked files. They were not staged,
   reverted, or included in the overnight branch's commits. A binary diff snapshot is saved outside
   the repo at `%TEMP%\kk4s-overnight-start-2026-11-02\tracked-working-tree.patch`, with the initial
@@ -39,13 +41,13 @@ desktop gameplay, Switch build, Switch hardware startup, and Switch gameplay, us
 | XP3v2 `eliF` name mapping in runtime | Synthetic smoke PASS; ATRI and FSN desktop regressions PASS | `6adc443` |
 | Nekopara identification and isolated desktop probe | KiriKiri Z/KAG-compatible; scheme validation FAIL; original files hash-identical | `6adc443` |
 | TextRenderBase generic layout/draw implementation | Synthetic TJS PASS; ATRI opening text visibly renders; FSN regression PASS; Switch build PASS | `ee6e8f2` |
-| AlphaMovie AJPM replacement | Desktop build and generated zlib-alpha AJPM smoke PASS; Switch build PASS; NRO uploaded, hardware NOT TESTED | `a448c2e` |
+| AlphaMovie AJPM replacement | Desktop build and generated zlib-alpha AJPM smoke PASS; Switch build PASS; on hardware ATRI starts and advances, then crashes during Skip | `a448c2e` |
 
 ## Current test matrix
 
 | Game | Desktop startup | Desktop gameplay | Switch build | Switch hardware startup | Switch gameplay |
 |---|---|---|---|---|---|
-| ATRI | PASS to `start.ks:24`; opening Russian line renders; AlphaMovie member resolves; later PBD `loadDataPack` missing | NOT TESTED (opening scene only) | PASS (latest NRO built) | NOT TESTED on latest NRO (older hardware build FAIL at `setItemText`) | NOT TESTED |
+| ATRI | PASS to `start.ks:24`; opening Russian line renders; AlphaMovie member resolves; later PBD `loadDataPack` missing | NOT TESTED (opening scene only) | PASS (latest NRO built) | PASS: starts and advances past the previous `setItemText` failure | FAIL: crash during Skip; not full compatibility |
 | Nekopara Vol. 1 | FAIL: startup TJS resolves, CX recovery 0/12; narrow-string conversion error | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED |
 | Fate/stay night, Russian patch | PASS: `data.xp3>` project path, `rupatch`/`rufix` mounted, 0 script exceptions after renderer changes | NOT TESTED this session | NOT TESTED | PASS, user-confirmed full playthrough on earlier build; not re-tested | NOT TESTED this session |
 | Sharin no Kuni | NOT TESTED this session | NOT TESTED | NOT TESTED | PASS, previously user-tested; not re-tested | NOT TESTED this session |
@@ -54,8 +56,9 @@ desktop gameplay, Switch build, Switch hardware startup, and Switch gameplay, us
 
 ## Next actions
 
-1. AlphaMovie is integrated and committed (`a448c2e`); run the uploaded NRO on hardware before
-   calling Switch PASS, then test an original ATRI archive-backed movie.
+1. AlphaMovie is integrated and committed (`a448c2e`); ATRI now starts and advances on physical
+   Switch, but crashes during Skip. Treat this as partial startup progress, not compatibility:
+   capture the crash log and fix it before calling Switch gameplay PASS.
 2. Keep PBD `Scripts.loadDataPack`/`saveDataPack` marked BLOCKED until its binary/crypto contract or
    reusable source is available. Do not add a fake empty API or bake in ATRI's `PSDInfo` values.
 3. Investigate NekoPara `.tpm`/`CxFilterFS` only for a generic decoder shape/source; scheme validation
@@ -175,12 +178,16 @@ tracked fixture `tests/tjs/win32dialog/startup.tjs` links the plugin and asserts
   Layer draw dispatch, and play/stop. Result: **PASS** on desktop; no original media is included.
 - ATRI was launched after integration: its `AlphaMovie` missing-member exception is gone and the
   script requests `tatinoboruawa.amv`. The opening text renders; the screenshot is not sufficient to
-  prove decoded-video pixels. PBD `loadDataPack` remains the scene-progression blocker.
-- Desktop build and synthetic smoke: **PASS**. Switch build: **PASS** (max `-j4`).
-  `out/kk4s.nro`: 27,534,757 bytes, SHA-256
-  `B8A33D09EA65837C2E9BE2DC2A5665B4B3633DB5BFC9C0AA1F7C218B8A0030C9`. Uploaded to
-  `ftp://192.168.1.135:5000/switch/kk4s/kk4s.nro`; a re-download from the server hashes identically.
-  Switch hardware remains **NOT TESTED** because the NRO has not been run on a console.
+  prove decoded-video pixels. PBD `loadDataPack` remains the scene-progression blocker on desktop.
+- Physical Switch (2026-11-02): the game starts and advances further into the story than the
+  previous build, confirming the `setItemText`/TextRenderBase work on hardware. It then crashes while
+  **Skip** is active. Switch gameplay is **FAIL** and full compatibility is **not** claimed; no crash
+  log has been captured yet.
+- Desktop build, synthetic AlphaMovie smoke, TextRenderBase, `Win32Dialog.setItemText`, and XP3v2
+  `eliF` tests: **PASS**. Switch build: **PASS** (max `-j4`). Latest `out/kk4s.nro`: 27,534,757
+  bytes, SHA-256 `7DC6C1E4AC19A7720E9D634AE6B7A4A7030628FBE26DE95442994A71C391C95E`, re-uploaded to
+  `ftp://192.168.1.135:5000/switch/kk4s/kk4s.nro`; a server re-download hashes identically. The NRO is
+  reproducible in behaviour but not byte-identical across rebuilds.
 
 ### PBD / Scripts DataPack reconnaissance (BLOCKED)
 
