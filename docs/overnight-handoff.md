@@ -36,8 +36,8 @@ desktop gameplay, Switch build, Switch hardware startup, and Switch gameplay, us
 | Session bootstrap, start snapshot and work branch | Done; snapshot preserved; started on isolated branch | `06f137e` |
 | Headless `WIN32Dialog.setItemText` contract + TJS probe | Desktop build and fixture passed; Switch build passed; hardware pending | `cecb5c8` |
 | XP3 v2 header parsing in `xp3ls` | PASS on six NekoPara XP3 archives; data archive lists 1201 entries | `e5be02b` |
-| XP3v2 `eliF` name mapping in runtime | Synthetic XP3v2 smoke test PASS; ATRI and FSN desktop regressions PASS | pending |
-| Nekopara identification and isolated desktop probe | KiriKiri Z/KAG-compatible; scheme validation FAIL; original files hash-identical | pending |
+| XP3v2 `eliF` name mapping in runtime | Synthetic smoke PASS; ATRI and FSN desktop regressions PASS | `6adc443` |
+| Nekopara identification and isolated desktop probe | KiriKiri Z/KAG-compatible; scheme validation FAIL; original files hash-identical | `6adc443` |
 
 ## Current test matrix
 
@@ -96,7 +96,7 @@ tracked fixture `tests/tjs/win32dialog/startup.tjs` links the plugin and asserts
 - Switch build: **PASS** with `SKIP_DEPS=1`, max `-j4`, in `build-switch-overnight-msys/`. The first
   attempt reused an MSYS-path cache from a UCRT shell and failed path validation; the separate MSYS
   build directory avoided modifying that cache. `out/kk4s.nro` SHA-256:
-  `67FE0CFB56D6B79DAAFA5E9245FA23C3910D3E9070639E1E5A4F69E92227EE3C`. It was not uploaded; no
+  `80C258DA0AFF106FA8CF6151552187793BABBD2F9C3E2471191E0726EDB7E346`. It was not uploaded; no
   Switch hardware result for this source exists.
 
 ### Nekopara Vol. 1
@@ -121,6 +121,13 @@ tracked fixture `tests/tjs/win32dialog/startup.tjs` links the plugin and asserts
   generic analyzer. No game-specific key will be embedded. No game resources or saves are in Git.
 
 ## Commits and unresolved items
+
+Overnight commits so far:
+
+- `06f137e` — bootstrap this handoff and record the clean base/backup state.
+- `e5be02b` — fix XP3v2 header parsing in `tools/xp3ls`.
+- `cecb5c8` — implement the headless `WIN32Dialog.setItemText` result and TJS fixture.
+- `6adc443` — map XP3v2 `eliF` names generically and add the synthetic end-to-end test.
 
 Append new commits, exact validation outcomes, regressions, blockers, and changed files here. Do not
 include game files, keys, profiles, saves, build outputs, or patched game content in Git.
