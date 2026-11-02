@@ -142,7 +142,8 @@ cxdec::CxDecoder* BindCxDecoder(const std::string& archive_name, const std::vect
     }
 #endif
 
-    Log("cxdec: %s is a Cx-encrypted archive (hnfn) but no scheme fits (%u known, best %d/%u). "
+    Log("cxdec: %s has hashed-name records (hnfn/eliF), but no CX scheme validates "
+        "(%u known, best %d/%u). "
         "Create one with tools/cx_scheme_extract.py <game folder> %s/cx/<name>.cxscheme",
         archive_name.c_str(), (unsigned)r.decoders.size(), best_ok, (unsigned)samples.size(), ProfilesDir().c_str());
     return nullptr;

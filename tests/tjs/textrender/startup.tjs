@@ -1,0 +1,77 @@
+// Synthetic contract test for the generic TextRenderBase layout and draw path.
+Plugins.link("textrender.dll");
+
+var renderer = new TextRenderBase();
+renderer.setOption(%[vertical:false, marginRCh:1]);
+renderer.setDefault(%[size:10, linespacing:2, pitch:0, linesize:0, color:0xFFFFFF, shadow:false]);
+if (renderer.marginRCh != 1 || renderer.defaultFontSize != 10 || renderer.defaultLineSpacing != 2)
+    throw new Exception("TextRenderBase options/defaults were not applied");
+renderer.setFont(void);
+renderer.setRenderSize(25, 32);
+renderer.clear();
+
+var fits = TextRenderBase.render("AB\nC", 1, 0, 0, 0);
+var chars = renderer.getCharacters(0, 0);
+if (!fits || chars.count != 3 || renderer.renderCount != 3 || renderer.renderLines != 2)
+    throw new Exception("TextRenderBase basic layout counts are wrong");
+if (chars[0].text != "A" || chars[0].x != 0 || chars[0].y != -10)
+    throw new Exception("TextRenderBase first glyph layout is wrong");
+if (chars[1].text != "B" || chars[1].x != 10 || chars[1].y != -10)
+    throw new Exception("TextRenderBase second glyph layout is wrong");
+if (chars[2].text != "C" || chars[2].x != 0 || chars[2].y != 2)
+    throw new Exception("TextRenderBase line break layout is wrong");
+if (renderer.calcLineOffset("AB\nC", 1) != 2 || renderer.calcShowCount(8) != 3 || renderer.calcShowCount(0) != 0)
+    throw new Exception("TextRenderBase line/count helpers are wrong");
+chars[0].link = "";
+renderer.setLinkColor(0x00FF00, "");
+if (renderer.getTextColor(chars[0]) != 0x00FF00)
+    throw new Exception("TextRenderBase link color lookup is wrong");
+renderer.clearLinkColor();
+
+class ProbeFont {
+    var height = 10, bold = false, italic = false;
+    function ProbeFont() {}
+    function getTextWidth(text) { return height * text.length + (text == "A" ? 2 : 0); }
+}
+
+var measureFont = new ProbeFont();
+renderer.setFont(measureFont);
+renderer.setRenderSize(25, 32);
+renderer.clear();
+TextRenderBase.render("%bA%rB", 1, 0, 0, 0);
+var styled = renderer.getCharacters(0, 0);
+if (styled.count != 2 || styled[0].cw != 12 || styled[1].x != 12 || !styled[0].bold || styled[1].bold)
+    throw new Exception("TextRenderBase font measurement/style parsing is wrong");
+
+renderer.setFont(void);
+renderer.clear();
+TextRenderBase.render("[ruby]X", 1, 0, 0, 0);
+var ruby = renderer.getCharacters(0, 0);
+if (ruby.count != 1 || ruby[0].ruby.text != "ruby" || ruby[0].ruby.size != 10)
+    throw new Exception("TextRenderBase ruby layout is wrong");
+
+class ProbeLayer {
+    var font;
+    var calls = [];
+    function ProbeLayer() { font = new ProbeFont(); }
+    function drawText(x, y, text, color, opa, aa, shadowLevel, shadowColor, shadowWidth, shadowX, shadowY) {
+        calls.add(%[x:x, y:y, text:text, color:color]);
+    }
+}
+var target = new ProbeLayer();
+renderer.drawCh(target, 3, 4, chars[0]);
+if (target.calls.count != 1 || target.calls[0].text != "A" || target.calls[0].x != 3 || target.calls[0].y != -6)
+    throw new Exception("TextRenderBase draw dispatch is wrong");
+if (target.font.height != 10 || target.font.bold || target.font.italic)
+    throw new Exception("TextRenderBase did not restore the layer font");
+renderer.drawAll(target, 3, 4);
+if (target.calls.count != 3 || target.calls[1].text != "X" || target.calls[2].text != "ruby")
+    throw new Exception("TextRenderBase drawAll/ruby dispatch is wrong");
+
+renderer.clear();
+renderer.setRenderSize(10, 10);
+var clipped = TextRenderBase.render("AB", 1, 0, 0, 0);
+if (clipped || renderer.renderOver != 1 || renderer.renderCount != 1)
+    throw new Exception("TextRenderBase overflow result is wrong");
+
+Debug.message("TextRenderBase synthetic layout/draw: PASS");

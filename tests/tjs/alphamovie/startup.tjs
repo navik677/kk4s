@@ -1,0 +1,22 @@
+// Contract test for a synthetic AJPM movie created by smoke.py.
+Plugins.link("AlphaMovie.dll");
+
+var movie = new AlphaMovie();
+movie.open("probe.amv");
+if (movie.numOfFrame != 1 || movie.screenWidth != 16 || movie.screenHeight != 16)
+    throw new Exception("AlphaMovie header properties are wrong");
+if (movie.FPSScale != 30 || movie.FPSRate != 1)
+    throw new Exception("AlphaMovie frame-rate properties are wrong");
+
+var tree = new BitmapLayerTreeOwner();
+var layer = new Layer(tree, null);
+layer.setImageSize(16, 16);
+var frame = movie.showNextImage(layer);
+if (frame != 0 || layer.imageWidth != 16 || layer.imageHeight != 16)
+    throw new Exception("AlphaMovie failed to decode/draw the synthetic frame");
+movie.play();
+if (!movie.isPlaying()) throw new Exception("AlphaMovie play state did not start");
+movie.stop();
+if (movie.isPlaying()) throw new Exception("AlphaMovie play state did not stop");
+
+Debug.message("AlphaMovie AJPM synthetic decode: PASS");

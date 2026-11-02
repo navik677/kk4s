@@ -16,7 +16,7 @@ all `*.xp3` for all games. ATRI is only a test fixture; no ATRI-specific keys, o
 branches. Keep new changes local for review unless the user explicitly asks to push. The user writes
 Ukrainian; keep answers short, outcome first.
 
-## State (ATRI is only a test fixture; universal engine is the goal) - updated 2026-11-02 02:11
+## State (ATRI is only a test fixture; universal engine is the goal) - updated 2026-11-02 03:20
 
 ATRI is the PC Steam-repack test fixture only; it is not the product or acceptance target. The
 generic CXDEC/Steam path recovers its scheme automatically on desktop from the embedded PE TPM
@@ -26,9 +26,10 @@ logs a missing `WIN32Dialog.setItemText` member immediately after `title:xrated,
 logs and test record below. Implement reusable KiriKiri Z APIs, not ATRI-specific behavior.
 
 Desktop automatic CX scheme recovery is implemented in `compat/cxdec/scheme_recover.cpp` with
-Capstone, invoked by `BindCxDecoder()` only for positive `hnfn` detection and only after existing
-profile schemes fail. Switch still requires a user-data scheme profile; the portable x86/PE analyzer
-is a future step. No scheme/key is written to the repo or game folder.
+Capstone, invoked by `BindCxDecoder()` only for positive hashed-name detection (`hnfn` or XP3v2
+`eliF`) and only after existing profile schemes fail. Switch still requires a user-data scheme
+profile; the portable x86/PE analyzer is a future step. No scheme/key is written to the repo or
+game folder.
 
 **Regression status:** the user confirms Fate/FSN and the other tested games work well on Switch;
 Fate is playable from beginning to end. The XP3-filter/background-thread crash fix is in NRO
@@ -162,8 +163,8 @@ KAG's `Action.tjs` completion callbacks),
   adlr samples. Switch still needs a supplied profile scheme; port the generic x86/PE analyzer there.
 - The `win32dialog.dll` base classes/constants exist. The headless stub wraps the game-side
   `getNumberdId`: void IDs return Win32's invalid-control ID (`0`), while other IDs call the original
-  method. The latest Switch run passes that earlier failure but then reports missing
-  `WIN32Dialog.setItemText`; the headless dialog contract remains incomplete.
+  method. It now also exposes `setItemText`; with no dialog HWND, it returns Win32's false result.
+  Desktop fixture passes; Switch rebuild/hardware retest is still pending.
 - KAGZ PC support still lacks a real `AlphaMovie.dll` (AJPM/`.amv` video), `Scripts.loadDataPack`/
   `saveDataPack` (the `.pbd` `UKR.5r1` data packs), and the drawing half of `textrender.dll`; the
   `TextRenderBase` API surface now exists but draws nothing. Implement from the plugin contracts and
@@ -206,8 +207,11 @@ Validation and deployment:
   [`kk4s-20261102-021122.log`](test-logs/kk4s-20261102-021122.log) and
   [`kk4s-20261102-021153.log`](test-logs/kk4s-20261102-021153.log).
 
-No follow-up code fix has been made for the new `setItemText` failure. Keep it as the next generic
-dialog-compatibility investigation; do not substitute an ATRI-specific callback.
+The `WIN32Dialog.setItemText(id, text)` base method is implemented in the headless stub with the
+`SetDlgItemTextW` failure result (`false`) because `open()` cancels and no HWND/control exists. The
+focused desktop TJS fixture passes; this only prevents a missing-member exception and does not
+provide a native dialog UI. Rebuild and retest on Switch; investigate any subsequent generic dialog
+contract failure rather than adding an ATRI-specific callback.
 
 ## FSN crash on Switch (crash report received after 22:00 run)
 

@@ -447,10 +447,9 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 			}
 
 
-			// kk4s: "hnfn" records carry the real file names for hashed-name
-			// archives (PackinOne). They sit at the top level of the index, in
-			// the same order as the File entries; the key is the File's adlr.
-			std::map<tjs_uint32, std::vector<ttstr> > hnfn_names;
+			// kk4s: `hnfn` and XP3v2 `eliF` records map a File's adlr key to its
+			// real UTF-16 name. They are top-level index chunks.
+			std::map<tjs_uint32, std::vector<ttstr> > hashed_names;
 			{
 				tjs_uint ch_pos = 0;
 				while(ch_pos + 12 <= index_size)
@@ -460,7 +459,7 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 					if(ch_size > index_size ||
 						ch_pos + 12 + (tjs_uint)ch_size > index_size)
 						break;
-					if(tag == 0x6e666e68) // 'hnfn'
+					if(tag == 0x6e666e68 || tag == 0x46696c65) // 'hnfn' or 'eliF'
 					{
 						Kk4sHashedNames = true;
 						if(ch_size >= 6)
@@ -471,7 +470,7 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 							{
 								ttstr nm = TVPStringFromBMPUnicode(
 									(const tjs_uint16 *)(indexdata + ch_pos + 18), nl);
-								hnfn_names[key].push_back(nm);
+								hashed_names[key].push_back(nm);
 							}
 						}
 					}
@@ -558,15 +557,14 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 				// read 'aldr' sub-chunk
 				item.FileHash = ReadI32FromMem(indexdata + ch_adlr_start);
 
-				// kk4s: use the real name from the "hnfn" table. Entries that
-				// have no name record are decoys/extra entries inserted by the
-				// protector (the fake startup.tjs): drop them.
+			// kk4s: resolve names from either hashed-name table. Entries without
+			// a mapping are decoys/extra entries; do not expose their fake names.
 				bool kk4s_skip_item = false;
 				if(Kk4sHashedNames)
 				{
 					std::map<tjs_uint32, std::vector<ttstr> >::iterator hi =
-						hnfn_names.find(item.FileHash);
-					if(hi != hnfn_names.end() && !hi->second.empty())
+						hashed_names.find(item.FileHash);
+					if(hi != hashed_names.end() && !hi->second.empty())
 					{
 						item.Name = hi->second.front();
 						hi->second.erase(hi->second.begin());
@@ -607,7 +605,7 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 	if(indexdata) delete [] indexdata;
 	delete st;
 
-	if(Kk4sHashedNames) Kk4sBindCx(); // kk4s: CXDEC, only for hnfn archives
+	if(Kk4sHashedNames) Kk4sBindCx(); // kk4s: CXDEC, only for hashed-name archives
 
 	TVPAddLog( TVPFormatMessage( TVPInfoDoneWithContains, ttstr(Count), ttstr(segmentcount) ) );
 }
@@ -1172,7 +1170,7 @@ tjs_uint TJS_INTF_METHOD tTVPXP3ArchiveStream::Read(void *buffer, tjs_uint read_
 		}
 		else if(Kk4sCx)
 		{
-			// kk4s: CXDEC (hnfn/Cx archive with a verified scheme)
+			// kk4s: CXDEC (hashed-name/Cx archive with a verified scheme)
 			Kk4sCx->Decrypt(Owner->GetFileHash(StorageIndex), CurPos,
 				(tjs_uint8*)buffer + write_size, one_size);
 		}

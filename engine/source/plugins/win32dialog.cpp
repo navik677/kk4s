@@ -73,6 +73,10 @@ static void InitPlugin_WIN32Dialog()
 		TJS_W("	function messageBox(message, caption, type) {return !System.inform(message, caption, 2);}")
 		TJS_W("	function open() {return 2;}") // IDCANCEL
 		TJS_W("	function close() {}")
+		// Match SetDlgItemText's failure result when there is no dialog HWND or
+		// control. open() is deliberately headless and leaves hwnd == 0; expose
+		// that as false instead of raising a missing-member exception in KAGZ.
+		TJS_W("	function setItemText(id, text) {return false;}")
 		TJS_W("	function initCommonControlsEx() {return true;}")
 		// kk4s: WIN32DialogEX.store() builds a DLGTEMPLATE from these two; the real
 		// DLL returns a binary string. No dialog is ever shown here (open() above

@@ -1,0 +1,12 @@
+// Headless Win32Dialog contract probe. Run this directory as a game.
+Plugins.link("win32dialog.dll");
+if (typeof WIN32Dialog.setItemText != "Object")
+    throw new Exception("WIN32Dialog.setItemText is missing");
+
+// The headless implementation never creates a native dialog or control, so
+// the Win32 SetDlgItemText contract is a false result rather than an exception.
+var result = WIN32Dialog.setItemText(0, "kk4s headless dialog probe");
+if (result !== false)
+    throw new Exception("headless setItemText should report failure");
+
+Debug.message("win32dialog headless setItemText: PASS");
