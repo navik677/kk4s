@@ -19,8 +19,9 @@
 - Short paired log: [`test-logs/kk4s-20261102-021153.log`](test-logs/kk4s-20261102-021153.log).
 - Hardware status at start: **FAIL** after `title:xrated, 0`; previous `getNumberdId(void)` failure
   is absent, then `WIN32Dialog.setItemText` is missing (TJS exception in `win32dialog.tjs`, VM IP 12).
-- The two `k2compat.tjs:makeDummyProperty` "Invalid object context" exceptions appear during
-  startup; fatality/cause not yet independently established.
+- `k2compat.tjs:makeDummyProperty` was disassembled with the engine's bytecode dumper. Its `ENTRY`
+  try/catch encloses `TYPEOFI` at VM IP 5, so the two "Invalid object context" throws are caught by
+  the helper; startup continues. No engine fix is justified from these logs alone.
 - Existing confirmed FSN full-playthrough on Switch predates this work. No overnight regression
   results exist until tested again.
 
@@ -32,14 +33,17 @@ desktop gameplay, Switch build, Switch hardware startup, and Switch gameplay, us
 
 | Task | Result | Commit |
 |---|---|---|
-| Session bootstrap, start snapshot and work branch | Done; no code changes yet | pending |
+| Session bootstrap, start snapshot and work branch | Done; snapshot preserved; started on isolated branch | `06f137e` |
+| Headless `WIN32Dialog.setItemText` contract + TJS probe | Desktop build and fixture passed; Switch build pending | pending |
+| XP3 v2 header parsing in `xp3ls` | PASS on six NekoPara XP3 archives; data archive lists 1201 entries | pending |
+| Nekopara identification and isolated desktop probe | KiriKiri Z/KAG-compatible; engine startup still fails before gameplay; original files hash-identical | pending |
 
 ## Current test matrix
 
 | Game | Desktop startup | Desktop gameplay | Switch build | Switch hardware startup | Switch gameplay |
 |---|---|---|---|---|---|
 | ATRI | PASS to `start.ks` in prior desktop run; not re-run | NOT TESTED | PASS for starting NRO build | FAIL at missing `WIN32Dialog.setItemText` | NOT TESTED (startup fails before gameplay) |
-| Nekopara Vol. 1 | NOT TESTED (installation found; engine inspection pending) | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED |
+| Nekopara Vol. 1 | FAIL: current desktop runtime cannot find `startup.tjs` after mounting `data.xp3` (1201 entries) | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED |
 | Fate/stay night, Russian patch | PASS in prior PC regression; not re-run | NOT TESTED this session | NOT TESTED | PASS, user-confirmed full playthrough on earlier build; not re-tested | NOT TESTED this session |
 | Sharin no Kuni | NOT TESTED this session | NOT TESTED | NOT TESTED | PASS, previously user-tested; not re-tested | NOT TESTED this session |
 | Tsukihime + Plus-Disc | NOT TESTED this session | NOT TESTED | NOT TESTED | PASS, previously user-tested; not re-tested | NOT TESTED this session |
@@ -47,18 +51,53 @@ desktop gameplay, Switch build, Switch hardware startup, and Switch gameplay, us
 
 ## Next actions
 
-1. Inspect the located `E:\kk4s-pc\games\NekoPara Vol.1` install, identify its engine, and record
-   hashes before/after any read-only tests. Do not write saves or settings into that game folder.
-2. Inspect the actual KAGZ `WIN32Dialog.setItemText` wrapper/call sites and upstream API semantics;
-   then implement only the verified generic contract in kk4s and add an isolated fixture.
-3. Investigate `makeDummyProperty` using the TJS closure/object-context implementation and isolate
-   whether the logged exception is fatal. Do not suppress it without evidence.
-4. Continue through subsequent ATRI startup blockers; no title/menu success claim based only on the
+1. Inspect why the located KiriKiri Z/KAG-compatible NekoPara install has no accessible
+   `data.xp3>startup.tjs`; distinguish archive/header limitations from missing script content. Keep
+   user data under a separate `KK4S_ROOT` and verify original hashes after every run.
+2. Build/test the headless `WIN32Dialog.setItemText` change on Switch; the desktop fixture currently
+   verifies false (Win32 API failure with `hwnd == 0`) instead of a missing-member exception.
+3. Continue through subsequent ATRI startup blockers; no title/menu success claim based only on the
    absence of an exception.
-5. Run targeted tests/builds incrementally, max `-j4`, one full build at a time. Update this handoff
+4. Run targeted tests/builds incrementally, max `-j4`, one full build at a time. Update this handoff
    and create a focused commit after each verified task.
-6. Do not push to `main`; if pushing reviewed work, use only
+5. Do not push to `main`; if pushing reviewed work, use only
    `work/overnight-2026-11-02`.
+
+## Findings since branch start
+
+### Headless Win32 dialog
+
+The ATRI wrapper's `setItemText(id, text)` resolves its symbolic ID and delegates to the native
+`WIN32Dialog.setItemText`. NekoPara's original `win32dialog.dll` imports `SetDlgItemTextW`; the API
+returns false when there is no dialog/control. kk4s' stub always has `hwnd == 0` and `open()` cancels,
+so it now exposes that truthful failure result rather than throwing "member does not exist". The
+tracked fixture `tests/tjs/win32dialog/startup.tjs` links the plugin and asserts this behavior.
+
+- Desktop incremental build: **PASS** (CMake recompiled 180 objects because the pre-existing dirty
+  worktree files were newer; only `-j4` was used). Existing warnings were non-fatal.
+- Headless dialog fixture: **PASS**, log `win32dialog headless setItemText: PASS`.
+- Switch build/hardware: NOT TESTED yet for this change.
+
+### Nekopara Vol. 1
+
+- Located at `E:\kk4s-pc\games\NekoPara Vol.1`; this is Kirikiri Z/TJS2/KAG-compatible (PE strings
+  include `kirikiriz` and `startup.tjs`; files include XP3 archives, a `.tpm`, and KAGZ plugins). The
+  precise upstream engine version is not established.
+- First diagnostic used stale `out-desktop/kk4s.exe` (`c0d7705`); it mounted 1201 `data.xp3` entries
+  but could not find `startup.tjs`. Rebuilt from the overnight branch (`06f137e`) and repeated with a
+  separate `KK4S_ROOT`; it still exits with `Cannot find storage startup.tjs`, before gameplay.
+  Switch is NOT TESTED.
+- In both runs `compat: saves in ...` points outside the game directory; the existing five save files
+  were copied to the isolated test root. SHA-256 manifests (outside Git) cover all 86 files / 3.758 GB
+  before and after; **0 files changed**. The game folder is not modified.
+- Initial `tools/xp3ls` probe hit `std::length_error`; its v2-header parser was reading the version
+  block from the wrong offset. The generic correction now parses all six XP3 v2 archives present
+  (data 1201 entries, patch 222, adultsonly 1647, emote 88, emotewin 40, voice 4845).
+- The `data.xp3` index contains 1201 `eliF` hashed-name records paired with 1201 `File` records.
+  A temporary read-only index inspection confirms that `startup.tjs` exists under the `eliF` name
+  mapping. The current engine consumes kk4s/PackinOne `hnfn` records but does not yet map XP3v2
+  `eliF`, so the generic engine-side mapping is now the next experiment. No game resources or saves
+  are being added to Git.
 
 ## Commits and unresolved items
 

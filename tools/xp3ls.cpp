@@ -42,12 +42,19 @@ int main(int argc, char** argv) {
     uint8_t b8[8];
     fread(b8, 1, 8, f);
     uint64_t index_ofs = rd64(b8);
-    if (index_ofs == 0x17) { // 2.x header with version block
-        uint8_t vb[4 + 1 + 8 + 8];
-        fseeko(f, 0x17, SEEK_SET);
-        fread(vb, 1, sizeof(vb), f);
+    if (index_ofs == 0x17) { // XP3 v2: version block follows the 0x13 offset
+        uint8_t vb[4 + 8 + 1 + 8];
+        fseeko(f, 0x13, SEEK_SET);
+        if (fread(vb, 1, sizeof(vb), f) != sizeof(vb)) {
+            fprintf(stderr, "truncated XP3 v2 header\n");
+            return 1;
+        }
+        uint32_t version = rd32(vb);
+        uint64_t table_size = rd64(vb + 4);
+        uint8_t flags = vb[12];
         index_ofs = rd64(vb + 13);
-        printf("# XP3 v2 (minor %u)\n", rd32(vb));
+        printf("# XP3 v2 (version %u, table size %llu, flags 0x%02x)\n",
+               version, (unsigned long long)table_size, flags);
     }
     std::vector<uint8_t> index;
     for (;;) { // index may be chained (flag bit 0x80 = continue)
