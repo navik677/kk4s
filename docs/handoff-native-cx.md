@@ -161,9 +161,10 @@ KAG's `Action.tjs` completion callbacks),
 - `main/imagedressmap.txt` in `data.xp3`: its zlib segment does not inflate (all other entries verify).
 - Desktop runtime scheme recovery is automatic for supported PE32/TPM shapes and validates on archive
   adlr samples. Switch still needs a supplied profile scheme; port the generic x86/PE analyzer there.
-- The `win32dialog.dll` base classes/constants exist, but the wrapper/log-window contract is incomplete:
-  ATRI Switch logs `getNumberdId` indexing `itemMap` with `void`. Fix the general KAGZ dialog semantics,
-  not a game-specific callback.
+- The `win32dialog.dll` base classes/constants exist. ATRI Switch logged `getNumberdId` indexing
+  `itemMap` with a void ID; the headless stub now wraps the game-side method and returns Win32's
+  invalid-control ID (`0`) only for a void argument. Other IDs retain the game's validation. The
+  Switch build compiles; hardware retest is pending because FTP was offline after the build.
 - KAGZ PC support still lacks a real `AlphaMovie.dll` (AJPM/`.amv` video), `Scripts.loadDataPack`/
   `saveDataPack` (the `.pbd` `UKR.5r1` data packs), and the drawing half of `textrender.dll`; the
   `TextRenderBase` API surface now exists but draws nothing. Implement from the plugin contracts and

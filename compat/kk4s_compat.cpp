@@ -581,6 +581,31 @@ void AfterExecuteStorage(const ttstr& shortname) {
         if (!TVPIsExistentStorage(TJS_W("Override.tjs"))) RunOverride2();
     } else if (n == "afterinit.tjs" || n == "initialize.tjs") {
         RunAfterInit2();
+    } else if (n == "win32dialog.tjs") {
+        // WIN32DialogEX is game-side TJS, so the native plugin cannot supply
+        // this fallback directly. On non-Windows platforms the dialog stub
+        // cannot create native controls; an optional/absent control ID is
+        // therefore the Win32 equivalent of GetDlgItem(0), not a fatal TJS
+        // indexing error. Keep normal validation for every non-void ID.
+        try {
+            TVPExecuteScript(TJS_W(R"TJS(
+            if (global.__kk4s_win32dialog_stub &&
+                typeof WIN32DialogEX == "Object" &&
+                typeof WIN32DialogEX.getNumberdId == "Object" &&
+                typeof global.__kk4s_originalGetNumberdId == "undefined") {
+                global.__kk4s_originalGetNumberdId = WIN32DialogEX.getNumberdId;
+                WIN32DialogEX.getNumberdId = function(id, strict) {
+                    if (id === void) return 0;
+                    var f = global.__kk4s_originalGetNumberdId incontextof this;
+                    return f(id, strict);
+                };
+            }
+        )TJS"));
+        } catch (const eTJS& e) {
+            kk4s::Log("compat: win32dialog missing-ID fallback failed: %s", ToUtf8(e.GetMessage()).c_str());
+        } catch (...) {
+            kk4s::Log("compat: win32dialog missing-ID fallback failed");
+        }
     }
 }
 

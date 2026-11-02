@@ -108,6 +108,9 @@ static void InitPlugin_WIN32Dialog()
 	}
 	// common-control classes are addressed by name
 	script += TJS_W("WIN32Dialog.TRACKBAR = \"msctls_trackbar32\"; WIN32Dialog.LISTVIEW = \"SysListView32\"; WIN32Dialog.COMBOBOXEX = \"ComboBoxEx32\";");
+	// KAGZ's script wrapper can use this to distinguish kk4s' headless dialog
+	// implementation from the real Windows plugin before applying fallbacks.
+	script += TJS_W("global.__kk4s_win32dialog_stub = true;");
 	TVPExecuteScript(script);
 }
 
