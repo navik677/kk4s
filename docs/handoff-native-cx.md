@@ -1,6 +1,6 @@
 # Handoff: universal KiriKiri compatibility and native PC repacks
 
-Updated 2026-11-01. The CXDEC implementation was merged and pushed to `main`; current PC work adds
+Updated 2026-11-02. The CXDEC implementation was merged and pushed to `main`; current PC work adds
 generic automatic scheme recovery. Read `docs/cxdec.md` (design/status), `docs/debugging.md`, and
 `docs/build-deploy.md` first.
 
@@ -16,15 +16,14 @@ all `*.xp3` for all games. ATRI is only a test fixture; no ATRI-specific keys, o
 branches. Keep new changes local for review unless the user explicitly asks to push. The user writes
 Ukrainian; keep answers short, outcome first.
 
-## State (ATRI is only a test fixture; universal engine is the goal) - updated 2026-11-01 22:20
+## State (ATRI is only a test fixture; universal engine is the goal) - updated 2026-11-02 02:11
 
 ATRI is the PC Steam-repack test fixture only; it is not the product or acceptance target. The
-generic CXDEC/Steam path now recovers its scheme automatically on desktop from the embedded PE TPM
-(12/12 real-entry validation, with no `profiles/cx` scheme present) and reaches title setup. The
-desktop run then encounters general KAGZ gaps (`AlphaMovie` plugin and `TextRenderBase.fontScale`;
-the renderer is still a no-op). On Switch the user reports ATRI still does not show its title menu.
-The latest Switch log reaches `title:xrated, 0`, then `win32dialog.tjs getNumberdId` indexes
-`itemMap` with `void`. Fix reusable KiriKiri Z plugin/dialog semantics, not ATRI-specific behavior.
+generic CXDEC/Steam path recovers its scheme automatically on desktop from the embedded PE TPM
+(12/12 real-entry validation, without a prebuilt profile). On Switch the 2026-11-02 hardware retest
+still **fails**: the new headless-dialog fallback gets past the earlier void-ID failure, but the run
+logs a missing `WIN32Dialog.setItemText` member immediately after `title:xrated, 0`. See the exact
+logs and test record below. Implement reusable KiriKiri Z APIs, not ATRI-specific behavior.
 
 Desktop automatic CX scheme recovery is implemented in `compat/cxdec/scheme_recover.cpp` with
 Capstone, invoked by `BindCxDecoder()` only for positive `hnfn` detection and only after existing
@@ -161,10 +160,10 @@ KAG's `Action.tjs` completion callbacks),
 - `main/imagedressmap.txt` in `data.xp3`: its zlib segment does not inflate (all other entries verify).
 - Desktop runtime scheme recovery is automatic for supported PE32/TPM shapes and validates on archive
   adlr samples. Switch still needs a supplied profile scheme; port the generic x86/PE analyzer there.
-- The `win32dialog.dll` base classes/constants exist. ATRI Switch logged `getNumberdId` indexing
-  `itemMap` with a void ID; the headless stub now wraps the game-side method and returns Win32's
-  invalid-control ID (`0`) only for a void argument. Other IDs retain the game's validation. The
-  Switch build compiles; hardware retest is pending because FTP was offline after the build.
+- The `win32dialog.dll` base classes/constants exist. The headless stub wraps the game-side
+  `getNumberdId`: void IDs return Win32's invalid-control ID (`0`), while other IDs call the original
+  method. The latest Switch run passes that earlier failure but then reports missing
+  `WIN32Dialog.setItemText`; the headless dialog contract remains incomplete.
 - KAGZ PC support still lacks a real `AlphaMovie.dll` (AJPM/`.amv` video), `Scripts.loadDataPack`/
   `saveDataPack` (the `.pbd` `UKR.5r1` data packs), and the drawing half of `textrender.dll`; the
   `TextRenderBase` API surface now exists but draws nothing. Implement from the plugin contracts and
@@ -176,6 +175,39 @@ KAG's `Action.tjs` completion callbacks),
   from beginning to end. Before future shared changes, retain that complete-playthrough check plus
   Russian text/fonts, sprites/backgrounds, music, transitions, save/load, and the other compatibility
   titles. Follow `docs/HANDOFF.md`'s FSN precedence rule.
+
+## Recent compatibility work and ATRI retest (2026-11-02)
+
+These changes are generic and do not modify any game folder:
+
+- `65c26c3`: desktop CXDEC scheme recovery from PE/TPM data, validated against archive adler samples;
+  ATRI's tested archives recovered with 12/12 samples without a supplied scheme.
+- `05da582`: added KAGZ `Scripts.isNullContext`/`getObjectContext`, a `TextRenderBase` API shim
+  (drawing remains a no-op), and fixed the 64-bit `getVisBuffer` pointer cast.
+- `70e021e`: marked the built-in Win32 dialog implementation as headless and wrapped the game-side
+  `WIN32DialogEX.getNumberdId`; `void` returns `0`, non-void IDs forward to the original method in
+  the caller's object context.
+
+Validation and deployment:
+
+- Desktop build **PASS**; Switch build **PASS** (`tools/build-switch.sh`, `-j4`).
+- TJS wrapper probe **PASS**: `void` returns `0`, and a valid ID preserves the original result and
+  object context (`0:42`).
+- Desktop ATRI **PASS to `start.ks`**; PC FSN Russian-patch regression **PASS**. These do not imply
+  that the Switch ATRI run passes.
+- Uploaded `out/kk4s.nro` to `sdmc:/switch/kk4s/kk4s.nro`; downloaded it back and verified SHA-256
+  `FEDAC4F4D3039753B3DC2ADB2EAAE291B898B944A59551D055385843C8AF3CE2`.
+- Switch ATRI hardware retest **FAIL**. The log reaches `title:xrated, 0`; the prior
+  `getNumberdId(void)` / `itemMap[void]` exception is absent, then TJS reports
+  `Member "setItemText" does not exist` in `win32dialog.tjs`, function `setItemText`, VM IP 12.
+  Two `k2compat.tjs` `makeDummyProperty` "Invalid object context" exceptions also appear earlier.
+  The runtime exits back to the launcher; this is not a successful title-menu test.
+- Captured logs (full logs contain runtime diagnostics only, not game archives or keys):
+  [`kk4s-20261102-021122.log`](test-logs/kk4s-20261102-021122.log) and
+  [`kk4s-20261102-021153.log`](test-logs/kk4s-20261102-021153.log).
+
+No follow-up code fix has been made for the new `setItemText` failure. Keep it as the next generic
+dialog-compatibility investigation; do not substitute an ATRI-specific callback.
 
 ## FSN crash on Switch (crash report received after 22:00 run)
 

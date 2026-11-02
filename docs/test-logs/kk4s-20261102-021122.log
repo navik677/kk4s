@@ -1,0 +1,687 @@
+kk4s 0.0.1 (git 70e021e, built Nov  2 2026 01:51:23) on Nintendo Switch
+threads: log -> core 1 (mask 0x6)
+data folder: sdmc:/switch/kk4s
+memory: total 3189 MiB, used 3185 MiB, mode: full
+nxlink: no
+renderer: opengles2, window 1920x1080
+launcher: ATRI -My Dear Moments-: Steam/PackinOne repack (a plain Kirikiri game has no native protection; a clean DRM-free release is needed, see docs/HANDOFF.md)
+launcher: 5 game(s) found in sdmc:/switch/kk4s/games
+launcher: ATRI -My Dear Moments-: cover sdmc:/switch/kk4s/covers/ATRI -My Dear Moments-.jpg
+launcher: FSN: cover sdmc:/switch/kk4s/covers/FSN.jpg
+launcher: The Makings of a Lady - Purity Yours to Defile: cover sdmc:/switch/kk4s/covers/The Makings of a Lady - Purity Yours to Defile.jpg
+launcher: Tsukihime Plus+Disc Russian: cover sdmc:/switch/kk4s/covers/Tsukihime Plus+Disc Russian.jpg
+input: controller 'Switch Controller'
+input: controller 'Switch Controller'
+input: controller 'Switch Controller'
+input: controller 'Switch Controller'
+input: controller 'Switch Controller'
+input: controller 'Switch Controller'
+input: controller 'Switch Controller'
+input: controller 'Switch Controller'
+launcher: pad 0x1
+game folder: sdmc:/switch/kk4s/games/ATRI -My Dear Moments-/
+perf: CPU boost on
+compat: saves in sdmc:/switch/kk4s/saves/ATRI -My Dear Moments-/
+02:11:24 (info) Data path : file://./sdmc:/switch/kk4s/saves/atri -my dear moments-/
+02:11:24 Program started on Horizon (Horizon)
+threads: engine -> core 2 (mask 0x6)
+02:11:24 (info) Rebuilding Auto Path Table ...
+02:11:24 (info) Total 0 file(s) found, 0 file(s) activated. (0ms)
+project dir: sdmc:/switch/kk4s/games/ATRI -My Dear Moments-/data.xp3>
+storage project dir: file://./sdmc:/switch/kk4s/games/atri -my dear moments-/data.xp3>
+startup.tjs -> file://./sdmc:/switch/kk4s/games/atri -my dear moments-/data.xp3>startup.tjs
+02:11:24 (info) Specified option(s) (earlier item has more priority) : (none)
+threads: engine -> core 1 (mask 0x6)
+threads: engine -> core 2 (mask 0x6)
+fonts: nintendo_udsg-r_std_003 (sdmc:/switch/kk4s/fonts/.cache/nintendo_standard.ttf)
+fonts: nintendo_udsg-r_org_zh-cn_003 (sdmc:/switch/kk4s/fonts/.cache/nintendo_chs.ttf)
+fonts: nintendo_udsg-r_ko_003 (sdmc:/switch/kk4s/fonts/.cache/nintendo_ko.ttf)
+fonts: 3 face(s) from 3 file(s)
+compat: added -debugwin=no (release mode, no developer log window)
+compat: Steam build (steam_api.dll + steam.tjs/steam.xp3): added -steam=yes
+02:11:24 (info) Loading startup script : startup.tjs
+02:11:24 (info) Trying to read XP3 virtual file system information from : file://./sdmc:/switch/kk4s/games/atri -my dear moments-/data.xp3
+cxdec: 1 scheme file(s) in sdmc:/switch/kk4s/profiles/cx
+cxdec: file://./sdmc:/switch/kk4s/games/atri -my dear moments-/data.xp3 uses scheme atri.cxscheme (12/12 sample entries verified)
+02:11:24 (info) Done. (contains 2302 file(s), 2303 segment(s))
+02:11:24 (info) Rebuilding Auto Path Table ...
+02:11:24 (info) Total 11 file(s) found, 11 file(s) activated. (1ms)
+02:11:24 (info) Rebuilding Auto Path Table ...
+02:11:24 (info) Total 120 file(s) found, 120 file(s) activated. (0ms)
+02:11:24 (info) Rebuilding Auto Path Table ...
+02:11:24 (info) Total 238 file(s) found, 238 file(s) activated. (1ms)
+02:11:24 (info) Rebuilding Auto Path Table ...
+02:11:24 (info) Total 264 file(s) found, 264 file(s) activated. (1ms)
+02:11:24 (info) Rebuilding Auto Path Table ...
+02:11:24 (info) Total 264 file(s) found, 264 file(s) activated. (1ms)
+02:11:24 (info) Rebuilding Auto Path Table ...
+02:11:24 (info) Total 380 file(s) found, 380 file(s) activated. (0ms)
+02:11:24 (info) Rebuilding Auto Path Table ...
+02:11:24 (info) Total 1469 file(s) found, 1469 file(s) activated. (2ms)
+02:11:24 (info) Rebuilding Auto Path Table ...
+02:11:24 (info) Total 1514 file(s) found, 1514 file(s) activated. (1ms)
+02:11:24 (info) Rebuilding Auto Path Table ...
+02:11:24 (info) Trying to read XP3 virtual file system information from : file://./sdmc:/switch/kk4s/games/atri -my dear moments-/fgimage.xp3
+cxdec: file://./sdmc:/switch/kk4s/games/atri -my dear moments-/fgimage.xp3 uses scheme atri.cxscheme (12/12 sample entries verified)
+02:11:24 (info) Done. (contains 2658 file(s), 2658 segment(s))
+02:11:24 (info) Trying to read XP3 virtual file system information from : file://./sdmc:/switch/kk4s/games/atri -my dear moments-/bgimage.xp3
+cxdec: file://./sdmc:/switch/kk4s/games/atri -my dear moments-/bgimage.xp3 uses scheme atri.cxscheme (12/12 sample entries verified)
+02:11:25 (info) Done. (contains 662 file(s), 662 segment(s))
+02:11:25 (info) Total 1633 file(s) found, 1632 file(s) activated. (95ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Total 1634 file(s) found, 1633 file(s) activated. (2ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Total 1659 file(s) found, 1658 file(s) activated. (2ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Trying to read XP3 virtual file system information from : file://./sdmc:/switch/kk4s/games/atri -my dear moments-/voice.xp3
+cxdec: file://./sdmc:/switch/kk4s/games/atri -my dear moments-/voice.xp3 uses scheme atri.cxscheme (12/12 sample entries verified)
+02:11:25 (info) Done. (contains 186 file(s), 186 segment(s))
+02:11:25 (info) Total 1660 file(s) found, 1658 file(s) activated. (30ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Total 1660 file(s) found, 1658 file(s) activated. (2ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Total 1689 file(s) found, 1687 file(s) activated. (2ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Total 1689 file(s) found, 1687 file(s) activated. (2ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Total 1755 file(s) found, 1752 file(s) activated. (2ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Total 1755 file(s) found, 1752 file(s) activated. (2ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Total 1755 file(s) found, 1752 file(s) activated. (2ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Total 1942 file(s) found, 1935 file(s) activated. (2ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Total 1942 file(s) found, 1935 file(s) activated. (2ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Total 1942 file(s) found, 1935 file(s) activated. (2ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Total 1942 file(s) found, 1935 file(s) activated. (2ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Total 1942 file(s) found, 1935 file(s) activated. (2ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Total 1942 file(s) found, 1935 file(s) activated. (2ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Total 1944 file(s) found, 1937 file(s) activated. (2ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Trying to read XP3 virtual file system information from : file://./sdmc:/switch/kk4s/games/atri -my dear moments-/steam.xp3
+cxdec: file://./sdmc:/switch/kk4s/games/atri -my dear moments-/steam.xp3 uses scheme atri.cxscheme (2/2 sample entries verified)
+02:11:25 (info) Done. (contains 3 file(s), 3 segment(s))
+02:11:25 (info) Total 5781 file(s) found, 5771 file(s) activated. (18ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Trying to read XP3 virtual file system information from : file://./sdmc:/switch/kk4s/games/atri -my dear moments-/vol1.xp3
+cxdec: file://./sdmc:/switch/kk4s/games/atri -my dear moments-/vol1.xp3 uses scheme atri.cxscheme (12/12 sample entries verified)
+02:11:25 (info) Done. (contains 4984 file(s), 4984 segment(s))
+02:11:25 (info) Total 10765 file(s) found, 10754 file(s) activated. (106ms)
+02:11:25 append_init.tjs を読み込みました(132ms)
+02:11:25 (info) Rebuilding Auto Path Table ...
+02:11:25 (info) Trying to read XP3 virtual file system information from : file://./sdmc:/switch/kk4s/games/atri -my dear moments-/patch.xp3
+02:11:25 (info) Done. (contains 197 file(s), 197 segment(s))
+02:11:25 (info) Total 10962 file(s) found, 10781 file(s) activated. (25ms)
+02:11:25 ########################################
+02:11:25 OS : Horizon (Horizon)
+02:11:25 Engine : Revision 450, Last Changed 2020/05/25 16:10:50, Compiled 2020/05/25 16:12:01
+02:11:25 Kirikiri : 2.32.2.426
+02:11:25 ########################################
+compat: plugin not available, ignored: PackinOne.dll
+compat: plugin kagparserex.dll -> kk4s built-in
+02:11:25 AppConfig.tjs を読み込みました(1ms)
+02:11:25 UpdateAppendAppConfig:ENV_IconFile:setup/game.ico=>setup/vol1/game.ico
+02:11:25 UpdateAppendAppConfig:ENV_GameId:{6AC19D9F-0077-4F48-8B75-778CD8D5C5C1}=>{AFA7C865-AB52-4AF7-99B2-286A4BF1A945}
+02:11:25 Config.tjs を読み込みました(11ms)
+02:11:25 KAG System スクリプトを読み込んでいます...
+02:11:25 (exception) Invalid object context
+02:11:25 ==== An exception occured at k2compat.tjs(1)[(function) makeDummyProperty], VM ip = 5 ====
+02:11:25 -- Disassembled VM code --
+02:11:25 #(1) Bytecode.
+02:11:25 00000000 cl %-6
+02:11:25 00000002 entry 000000015, %1
+02:11:25 00000005 typeofi %1, %-3.%-4
+02:11:25 -- Register dump --
+02:11:25 %-6=(void)  %-5=(int)1  %-4=(string)"innerSunken"  %-3=(object)(object 0x9eaa32a0:0x0)
+02:11:25 %-2=(object)(object 0x13d5cba0:0x0)  %-1=(object)(object 0xa7c09aa0:0xa7c09aa0)  %0=(void)
+02:11:25 %1=(object)(object 0xa7c09aa0:0xa7c09aa0)  %2=(void)
+02:11:25 ------------------------------------------------------------------------------------------
+02:11:25 (exception) Invalid object context
+02:11:25 ==== An exception occured at k2compat.tjs(1)[(function) makeDummyProperty], VM ip = 5 ====
+02:11:25 -- Disassembled VM code --
+02:11:25 #(1) Bytecode.
+02:11:25 00000000 cl %-6
+02:11:25 00000002 entry 000000015, %1
+02:11:25 00000005 typeofi %1, %-3.%-4
+02:11:25 -- Register dump --
+02:11:25 %-6=(void)  %-5=(int)1  %-4=(string)"showScrollBars"  %-3=(object)(object 0x9eaa32a0:0x0)
+02:11:25 %-2=(object)(object 0x13d5cba0:0x0)  %-1=(object)(object 0xa7c09aa0:0xa7c09aa0)  %0=(void)
+02:11:25 %1=(string)"undefined"  %2=(void)
+02:11:25 ------------------------------------------------------------------------------------------
+compat: plugin not available, ignored: layerExImage.dll
+02:11:25 LayerEx.tjs を読み込みました(7ms)
+compat: plugin not available, ignored: scriptsEx.dll
+02:11:25 Utils.tjs を読み込みました(3ms)
+02:11:25 KAGLayer.tjs を読み込みました(2ms)
+02:11:25 AnimKAGLayer.tjs を読み込みました(1ms)
+02:11:25 ButtonLayer.tjs を読み込みました(3ms)
+02:11:25 TransLayer.tjs を読み込みました(1ms)
+02:11:25 SelectLayer.tjs を読み込みました(2ms)
+02:11:25 MapSelectLayer.tjs を読み込みました(2ms)
+02:11:25 DialogLayer.tjs を読み込みました(2ms)
+02:11:25 HistoryLayer.tjs を読み込みました(2ms)
+02:11:25 BGM.tjs を読み込みました(1ms)
+02:11:25 SE.tjs を読み込みました(1ms)
+02:11:25 Voice.tjs を読み込みました(5ms)
+02:11:25 Movie.tjs を読み込みました(3ms)
+02:11:25 Conductor.tjs を読み込みました(1ms)
+02:11:25 UpdateRegion.tjs を読み込みました(1ms)
+02:11:25 psdlayer.tjs を読み込みました(1ms)
+02:11:25 StandLayer.tjs を読み込みました(2ms)
+compat: plugin textrender.dll -> kk4s built-in
+02:11:25 TextRender.tjs を読み込みました(2ms)
+02:11:25 LangRender.tjs を読み込みました(0ms)
+compat: plugin not available, ignored: layerExRaster.dll
+compat: plugin not available, ignored: layerExDraw.dll
+02:11:25 AffineLayer.tjs を読み込みました(19ms)
+02:11:25 MultiResolution.tjs を読み込みました(0ms)
+02:11:25 AffineSourceBMPBase.tjs を読み込みました(1ms)
+02:11:25 AffineSourceBitmap.tjs を読み込みました(2ms)
+02:11:25 AffineSourcePSD.tjs を読み込みました(1ms)
+02:11:25 AffineSourceImage.tjs を読み込みました(0ms)
+02:11:25 AffineSourceFlip.tjs を読み込みました(1ms)
+02:11:25 AffineSourceVector.tjs を読み込みました(1ms)
+02:11:25 AffineSourceStand.tjs を読み込みました(8ms)
+02:11:25 AffineSourceASD.tjs を読み込みました(1ms)
+02:11:25 AffineSourceTile.tjs を読み込みました(1ms)
+02:11:25 AffineSourceNoise.tjs を読み込みました(0ms)
+02:11:25 AnimationLayer.tjs を読み込みました(1ms)
+02:11:25 GenericFlip.tjs を読み込みました(2ms)
+02:11:25 BaseLayer.tjs を読み込みました(1ms)
+compat: plugin not available, ignored: layerExBtoA.dll
+02:11:25 SubTitleLayer.tjs を読み込みました(1ms)
+02:11:25 GFX_Movie.tjs を読み込みました(2ms)
+02:11:25 GFX_Particle.tjs を読み込みました(0ms)
+compat: plugin not available, ignored: AlphaMovie.dll
+02:11:25 GFX_AMovie.tjs を読み込みました(1ms)
+02:11:25 MessageLayer.tjs を読み込みました(6ms)
+02:11:25 Menus.tjs を読み込みました(2ms)
+02:11:25 DefaultMover.tjs を読み込みました(2ms)
+02:11:25 Action.tjs を読み込みました(3ms)
+02:11:25 LoopVoice.tjs を読み込みました(2ms)
+02:11:25 LineMode.tjs を読み込みました(1ms)
+02:11:25 LineModeEx.tjs を読み込みました(2ms)
+compat: plugin not available, ignored: windowEx.dll
+02:11:25 MainWindow.tjs を読み込みました(19ms)
+02:11:25 YAML.tjs を読み込みました(1ms)
+02:11:25 KAGEnvBase.tjs を読み込みました(3ms)
+02:11:25 KAGEnvTrans.tjs を読み込みました(1ms)
+02:11:25 KAGEnvironment.tjs を読み込みました(6ms)
+02:11:25 KAGEnvImageMapperStage.tjs を読み込みました(1ms)
+02:11:25 KAGEnvImageMapperStand.tjs を読み込みました(1ms)
+02:11:25 KAGEnvImage.tjs を読み込みました(10ms)
+02:11:25 KAGEnvMusic.tjs を読み込みました(1ms)
+02:11:25 KAGEnvSound.tjs を読み込みました(0ms)
+02:11:25 world.tjs を読み込みました(41ms)
+02:11:25 MyHistoryLayer.tjs を読み込みました(4ms)
+02:11:25 YesNoDialog.tjs を読み込みました(1ms)
+02:11:25 MyYesNoDialog.tjs を読み込みました(3ms)
+02:11:25 MyMapSelectLayer.tjs を読み込みました(1ms)
+02:11:25 system.tjs を読み込みました(17ms)
+02:11:25 pagebase.tjs を読み込みました(1ms)
+02:11:25 cgmode.tjs を読み込みました(4ms)
+02:11:25 scenemode.tjs を読み込みました(2ms)
+02:11:25 soundmode.tjs を読み込みました(2ms)
+02:11:25 option.tjs を読み込みました(6ms)
+02:11:25 saveload.tjs を読み込みました(9ms)
+02:11:25 default.tjs を読み込みました(11ms)
+02:11:25 exroll.tjs を読み込みました(11ms)
+02:11:25 emotion.tjs を読み込みました(3ms)
+02:11:25 TagTextConverter.tjs を読み込みました(9ms)
+02:11:25 TagTextConverterEx.tjs を読み込みました(17ms)
+02:11:25 rendermsgwin.tjs を読み込みました(19ms)
+02:11:25 speech.tjs を読み込みました(7ms)
+02:11:25 autoface.tjs を読み込みました(2ms)
+02:11:25 voicematch.tjs を読み込みました(1ms)
+02:11:25 stopdeactive.tjs を読み込みました(2ms)
+02:11:25 mscurautohide.tjs を読み込みました(1ms)
+02:11:25 stayontop.tjs を読み込みました(0ms)
+02:11:25 bgmtitleindicator.tjs を読み込みました(3ms)
+02:11:25 gamecont.tjs を読み込みました(3ms)
+02:11:25 sqscr.tjs を読み込みました(2ms)
+02:11:25 quickmenu.tjs を読み込みました(2ms)
+02:11:25 iconfader.tjs を読み込みました(2ms)
+02:11:25 movieqsel.tjs を読み込みました(0ms)
+02:11:25 drefasd.tjs を読み込みました(2ms)
+02:11:25 standoffset.tjs を読み込みました(3ms)
+02:11:25 advancedmenu.tjs を読み込みました(1ms)
+02:11:25 syslangtext.tjs を読み込みました(3ms)
+02:11:25 multilang.tjs を読み込みました(107ms)
+02:11:25 msghack.tjs を読み込みました(3ms)
+02:11:25 sysvoice.tjs を読み込みました(8ms)
+02:11:25 helptextman.tjs を読み込みました(2ms)
+02:11:25 rotatesave.tjs を読み込みました(2ms)
+02:11:25 PreRenderFontEx.tjs を読み込みました(2ms)
+02:11:25 PreRenderFontEx.MakeFontInfoTable: conflict FontVirtName/RealFace: *NameFont*:,ＭＳ ゴシック
+02:11:25 nocfchkdialog.tjs を読み込みました(3ms)
+02:11:25 backlog.tjs を読み込みました(6ms)
+02:11:25 drawtextparam.tjs を読み込みました(3ms)
+02:11:25 qlpopup.tjs を読み込みました(2ms)
+02:11:25 nextprevscn.tjs を読み込みました(3ms)
+02:11:25 uimain.tjs を読み込みました(80ms)
+compat: plugin not available, ignored: k2compat.dll
+02:11:25 SliderLayer.tjs を読み込みました(6ms)
+02:11:25 EditLayer.tjs を読み込みました(2ms)
+02:11:25 gesture.tjs を読み込みました(13ms)
+02:11:25 AppendSetup, append_setup_10.tjs
+02:11:25 append_setup_10.tjs を読み込みました(1ms)
+compat: Steam object registered (achievements logged, no cloud)
+compat: plugin krkrsteam.dll -> kk4s built-in
+02:11:25 steam_r18hack.tjs を読み込みました(1ms)
+02:11:25 steam.tjs を読み込みました(11ms)
+02:11:25 weblinkpanel.tjs を読み込みました(1ms)
+02:11:25 custom.tjs を読み込みました(307ms)
+02:11:25 
+================================================================================
+Embedded Font license about MTLc3m.ttf, MTLmr3m.ttf :
+
+   Copyright (c) 2005-2010, The Android Open Source Project
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting
+02:11:26 
+================================================================================
+Embedded Font license about SourceHanSansJP-Regular.otf, SourceHanSansJP-Bold.otf, SourceHanSansJP-Heavy.otf, SourceHanSerifJP-Bold.otf, SourceHanSerifJP-Heavy.otf :
+This Font Software is licensed under the SIL Open Font License,
+Version 1.1.
+
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font
+creation efforts of academic and linguistic communities, and to
+provide a free and open framework in which fonts may be shared and
+improved in partnership with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply to
+any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software
+components as distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to,
+deleting, or substituting -- in part or in whole -- any of the
+components of the Original Version, by changing formats or
+02:11:26 
+================================================================================
+Embedded Font license about GenJyuuGothicX-Medium.ttf, GenJyuuGothicX-Bold.ttf, GenJyuuGothicX-Heavy.ttf :
+About:
+源柔ゴシックX(GenJyuuGothicX) derived from Source Han Sans and M+ OUTLINE FONTS.
+
+自家製フォント工房
+http://jikasei.me/
+
+源ノ角ゴシック (Source Han Sans)
+http://store1.adobe.com/cfusion/store/html/index.cfm?store=OLS-JP&event=displayFontPackage&code=1967
+
+M+ OUTLINE FONTS
+http://mplus-fonts.sourceforge.jp/
+
+
+License:
+-------------------------------------------------------------------------------
+Apache License
+
+Version 2.0, January 2004
+
+http://www.apache.org/licenses/
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+1. Definitions.
+
+"License" shall mean the terms and conditions for use, reproduction,
+and distribution as defined by Sections 1 through 9 of this document.
+
+"Licensor" shall mean the copyright owner or entity authorized by the
+copyright owner that is granting the License.
+
+"Legal Entity" shall mean the union of the acting entity and all other
+entities that control, are controlled by, or are under common control
+with that entity. For the purposes of this definition, "control" means
+(i) the power, direct or indirect, to cause the direction or
+management of such entity, whether by contract or otherwise, or (ii)
+ownership of fifty percent (50%) or more of the outstanding shares, or
+(iii) beneficial ownership of such entity.
+
+"You" (or "Your") shall mean an individual or Legal Entity exercising
+permissions granted by this License.
+
+"Source" form shall mean the preferred form for making modifications,
+including but not limited to software source code, documentation
+source, and configuration files.
+
+"Object" form shall mean any form resulting from mechanical
+transformation or translation of a Source form, including but not
+limited to compiled object code, generated documentation, and
+conversions to other media types.
+
+"Work" shall mean the work of authorship, whether 
+02:11:26 
+================================================================================
+Embedded Font license about SourceHanSansSC-Regular.otf, SourceHanSansSC-Bold.otf, SourceHanSansSC-Heavy.otf, SourceHanSerifSC-Bold.otf, SourceHanSerifSC-Heavy.otf :
+This Font Software is licensed under the SIL Open Font License,
+Version 1.1.
+
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font
+creation efforts of academic and linguistic communities, and to
+provide a free and open framework in which fonts may be shared and
+improved in partnership with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply to
+any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software
+components as distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to,
+deleting, or substituting -- in part or in whole -- any of the
+components of the Original Version, by changing formats or
+02:11:26 
+================================================================================
+Embedded Font license about SourceHanSansTC-Regular.otf, SourceHanSansTC-Bold.otf, SourceHanSansTC-Heavy.otf, SourceHanSerifTC-Bold.otf, SourceHanSerifTC-Heavy.otf :
+This Font Software is licensed under the SIL Open Font License,
+Version 1.1.
+
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font
+creation efforts of academic and linguistic communities, and to
+provide a free and open framework in which fonts may be shared and
+improved in partnership with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply to
+any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software
+components as distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to,
+deleting, or substituting -- in part or in whole -- any of the
+components of the Original Version, by changing formats or
+02:11:26 
+================================================================================
+Embedded Font license about namefont_27_cn.tft, namefont_27_tw.tft :
+Rasterized cn/tw-name font license:
+
+Resource Han Rounded
+https://github.com/CyanoHao/Resource-Han-Rounded
+
+SIL Open Font License 1.1
+http://scripts.sil.org/OFL
+================================================================================
+02:11:26 embFontLoader.tjs を読み込みました(811ms)
+02:11:26 Override.tjs を読み込みました(1200ms)
+compat: plugin wuvorbis.dll -> kk4s built-in
+compat: plugin not available, ignored: wuopus.dll
+02:11:26 スクリプトの読み込みに 1405ms かかりました
+02:11:26 セーブデータ保存場所:file://./sdmc:/switch/kk4s/saves/atri -my dear moments-/
+02:11:26 (info) Rebuilding Auto Path Table ...
+02:11:26 (info) Total 10962 file(s) found, 10781 file(s) activated. (17ms)
+compat: plugin not available, ignored: SteamDrawDevice.dll
+02:11:26 (info) Use malloc for Bitmap
+threads: engine -> core 1 (mask 0x6)
+threads: engine -> core 2 (mask 0x6)
+threads: engine -> core 1 (mask 0x6)
+threads: engine -> core 2 (mask 0x6)
+threads: engine -> core 1 (mask 0x6)
+threads: engine -> core 2 (mask 0x6)
+threads: engine -> core 1 (mask 0x6)
+threads: engine -> core 2 (mask 0x6)
+threads: engine -> core 1 (mask 0x6)
+threads: engine -> core 2 (mask 0x6)
+threads: engine -> core 1 (mask 0x6)
+threads: engine -> core 2 (mask 0x6)
+threads: engine -> core 1 (mask 0x6)
+threads: engine -> core 2 (mask 0x6)
+threads: engine -> core 1 (mask 0x6)
+threads: engine -> core 2 (mask 0x6)
+threads: engine -> core 1 (mask 0x6)
+threads: engine -> core 2 (mask 0x6)
+threads: engine -> core 1 (mask 0x6)
+threads: engine -> core 2 (mask 0x6)
+02:11:26 LogWindow.tjs を読み込みました(2ms)
+02:11:26 Krkr2CompatUtils.getModelessOwnerWindow, k2compat.dll link failed
+02:11:26 menubarhack, 
+02:11:26 menubarhack, 
+02:11:26 *** internal warn: SET storeCaptionEnabled=false in Config.tjs if multiLangTitleCaption.
+compat: plugin fstat.dll -> kk4s built-in
+02:11:27 (info) Rebuilding Auto Path Table ...
+02:11:27 (info) Total 10962 file(s) found, 10781 file(s) activated. (18ms)
+02:11:27 Plugin.tjs を読み込みました(6ms)
+02:11:27 * loadEnvinfo:envinit.tjs
+02:11:27 KAGMainWindow のコンストラクタで 405ms かかりました
+02:11:27 (info) Rebuilding Auto Path Table ...
+02:11:27 (info) Total 10962 file(s) found, 10781 file(s) activated. (14ms)
+02:11:27 UILoader.tjs を読み込みました(12ms)
+02:11:27 UIListParser:quickmenu.ini:2:, uipsd:uiの登録名省略形式はスルーされる仕様に変更されました。登録名を記入するか「layer,save/on」形式を使用してください
+02:11:27 UIListParser:quickmenu.ini:3:, uipsd:ui:指定されたレイヤが存在しません:save/over/over のコピー/S:quickmenu
+02:11:27 UIListParser:quickmenu.ini:4:, uipsd:ui:指定されたレイヤが存在しません:save/over/over のコピー/SAVE:quickmenu
+02:11:27 UIListParser:quickmenu.ini:5:, uipsd:ui:指定されたレイヤが存在しません:save/over/S:quickmenu
+02:11:27 UIListParser:quickmenu.ini:6:, uipsd:ui:指定されたレイヤが存在しません:save/over/SAVE:quickmenu
+02:11:27 UIListParser:quickmenu.ini:7:, uipsd:ui:指定されたレイヤが存在しません:save/off/S:quickmenu
+02:11:27 UIListParser:quickmenu.ini:8:, uipsd:ui:指定されたレイヤが存在しません:save/off/SAVE:quickmenu
+02:11:27 UIListParser:quickmenu.ini:9:, uipsd:uiの登録名省略形式はスルーされる仕様に変更されました。登録名を記入するか「layer,load/on」形式を使用してください
+02:11:27 UIListParser:quickmenu.ini:10:, uipsd:ui:指定されたレイヤが存在しません:load/over/L:quickmenu
+02:11:27 UIListParser:quickmenu.ini:11:, uipsd:ui:指定されたレイヤが存在しません:load/over/LOAD:quickmenu
+02:11:27 UIListParser:quickmenu.ini:12:, uipsd:ui:指定されたレイヤが存在しません:load/off/L:quickmenu
+02:11:27 UIListParser:quickmenu.ini:13:, uipsd:ui:指定されたレイヤが存在しません:load/off/LOAD:quickmenu
+02:11:27 UIListParser:quickmenu.ini:14:, uipsd:uiの登録名省略形式はスルーされる仕様に変更されました。登録名を記入するか「layer,qsave/on」形式を使用してください
+02:11:27 UIListParser:quickmenu.ini:15:, uipsd:ui:指定されたレイヤが存在しません:qsave/over/QS:quickmenu
+02:11:27 UIListParser:quickmenu.ini:16:, uipsd:ui:指定されたレイヤが存在しません:qsave/over/Q.SAVE:quickmenu
+02:11:27 UIListParser:quickmenu.ini:17:, uipsd:ui:指定されたレイヤが存在しません:qsave/off/QS:quickmenu
+02:11:27 UIListParser:quickmenu.ini:18:, uipsd:ui:指定されたレイヤが存在しません:qsave/off/Q.SAVE:quickmenu
+02:11:27 UIListParser:quickmenu.ini:19:, uipsd:ui:指定されたレイヤが存在しません:qload/on:quickmenu
+02:11:27 UIListParser:quickmenu.ini:20:, uipsd:ui:指定されたレイヤが存在しません:qload/over/QL:quickmenu
+02:11:27 UIListParser:quickmenu.ini:21:, uipsd:ui:指定されたレイヤが存在しません:qload/over/Q.LOAD:quickmenu
+02:11:27 UIListParser:quickmenu.ini:22:, uipsd:ui:指定されたレイヤが存在しません:qload/off/QL:quickmenu
+02:11:27 UIListParser:quickmenu.ini:23:, uipsd:ui:指定されたレイヤが存在しません:qload/off/Q.LOAD:quickmenu
+02:11:27 UIListParser:quickmenu.ini:24:, uipsd:uiの登録名省略形式はスルーされる仕様に変更されました。登録名を記入するか「layer,prev/on」形式を使用してください
+02:11:27 UIListParser:quickmenu.ini:25:, uipsd:ui:指定されたレイヤが存在しません:prev/over/PREV:quickmenu
+02:11:27 UIListParser:quickmenu.ini:26:, uipsd:ui:指定されたレイヤが存在しません:prev/off/PREV:quickmenu
+02:11:27 UIListParser:quickmenu.ini:27:, uipsd:uiの登録名省略形式はスルーされる仕様に変更されました。登録名を記入するか「layer,next/on」形式を使用してください
+02:11:27 UIListParser:quickmenu.ini:28:, uipsd:ui:指定されたレイヤが存在しません:next/over/NEXT:quickmenu
+02:11:27 UIListParser:quickmenu.ini:29:, uipsd:ui:指定されたレイヤが存在しません:next/off/NEXT:quickmenu
+02:11:27 UIListParser:quickmenu.ini:30:, uipsd:uiの登録名省略形式はスルーされる仕様に変更されました。登録名を記入するか「layer,auto/on」形式を使用してください
+02:11:27 UIListParser:quickmenu.ini:31:, uipsd:ui:指定されたレイヤが存在しません:auto/over/AUTO:quickmenu
+02:11:27 UIListParser:quickmenu.ini:32:, uipsd:ui:指定されたレイヤが存在しません:auto/off/AUTO:quickmenu
+02:11:27 UIListParser:quickmenu.ini:33:, uipsd:uiの登録名省略形式はスルーされる仕様に変更されました。登録名を記入するか「layer,skip/on」形式を使用してください
+02:11:27 UIListParser:quickmenu.ini:34:, uipsd:ui:指定されたレイヤが存在しません:skip/over/SKIP:quickmenu
+02:11:27 UIListParser:quickmenu.ini:35:, uipsd:ui:指定されたレイヤが存在しません:skip/off/SKIP:quickmenu
+02:11:27 UIListParser:quickmenu.ini:36:, uipsd:uiの登録名省略形式はスルーされる仕様に変更されました。登録名を記入するか「layer,log/on」形式を使用してください
+02:11:27 UIListParser:quickmenu.ini:37:, uipsd:ui:指定されたレイヤが存在しません:log/over/LOG:quickmenu
+02:11:27 UIListParser:quickmenu.ini:38:, uipsd:ui:指定されたレイヤが存在しません:log/off/LOG:quickmenu
+02:11:27 UIListParser:quickmenu.ini:39:, uipsd:uiの登録名省略形式はスルーされる仕様に変更されました。登録名を記入するか「layer,system/on」形式を使用してください
+02:11:27 UIListParser:quickmenu.ini:40:, uipsd:ui:指定されたレイヤが存在しません:system/over/SYSTEM:quickmenu
+02:11:27 UIListParser:quickmenu.ini:41:, uipsd:ui:指定されたレイヤが存在しません:system/off/SYSTEM:quickmenu
+02:11:27 UIListParser:quickmenu.ini:42:, uipsd:uiの登録名省略形式はスルーされる仕様に変更されました。登録名を記入するか「layer,base」形式を使用してください
+02:11:27 UIListParser:quickmenu.func:21:, uipsd:ui:指定されたレイヤが存在しません:qload/on:quickmenu
+02:11:27 HoldPsdFile, submenu
+fonts: default font: nintendo_udsg-r_std_003
+fonts: sdmc:/switch/kk4s/fonts/.cache/nintendo_standard.ttf loaded into memory (1985 KB)
+02:11:27 (info) Rebuilding Auto Path Table ...
+02:11:27 (info) Total 10962 file(s) found, 10781 file(s) activated. (18ms)
+02:11:27 enableTouch: 0
+02:11:27 AfterInit.tjs を読み込みました(604ms)
+02:11:27 (info) Startup script ended.
+compat: plugin extrans.dll -> kk4s built-in
+02:11:27 *** Revision: 539
+02:11:27 (info) Rebuilding Auto Path Table ...
+02:11:27 (info) Total 10962 file(s) found, 10781 file(s) activated. (14ms)
+audio: switch, 48000 Hz, 2 ch, format 0x8010, 4096 samples per buffer
+sound: open 0xacbff5a0 'ATR_sys_001.opus' (48000 Hz 1 ch 16 bits)
+sound: start 0xacbff5a0 (48000 Hz 1 ch 16 bits)
+audio: new stream 0xb0554960 (48000 Hz 1 ch 16 bits, conv yes), t=7398 ms
+audio: stream 0xb0554960 first append 24000 bytes (48000 Hz 1 ch 16 bits), t=7399 ms
+sound: 0xacbff5a0 short decode 1284/6000 samples at pos 24000 (L2 ended), t=7406 ms
+audio: stream 0xb0554960 ran dry (624 bytes missing, 61284 samples played, appended 245136 bytes in 11 call(s), 0 buffer(s) left, t=8630 ms)
+audio: pause 0xb0554960 while playing, 0 ms queued, no fade, t=8662 ms
+sound: stop 0xacbff5a0
+sound: open 0xacbff5a0 'ATR_sys_003.opus' (48000 Hz 1 ch 16 bits)
+sound: stop 0xacbff5a0
+sound: start 0xacbff5a0 (48000 Hz 1 ch 16 bits)
+audio: stream 0xb0554960 first append 24000 bytes (48000 Hz 1 ch 16 bits), t=9930 ms
+sound: 0xacbff5a0 short decode 3766/6000 samples at pos 24000 (L2 ended), t=9933 ms
+audio: jump 10228 at sample 1881/4096 (ch 0, -12355 -> -2127), 1 stream(s), 0 tail(s), t=10341 ms
+audio: stream 0xb0554960 ran dry (12392 bytes missing, 33766 samples played, appended 135064 bytes in 6 call(s), 0 buffer(s) left, t=10681 ms)
+audio: pause 0xb0554960 while playing, 0 ms queued, no fade, t=10712 ms
+sound: stop 0xacbff5a0
+sound: open 0xacbff5a0 'ATR_sys_002.opus' (48000 Hz 1 ch 16 bits)
+sound: stop 0xacbff5a0
+sound: start 0xacbff5a0 (48000 Hz 1 ch 16 bits)
+audio: stream 0xb0554960 first append 24000 bytes (48000 Hz 1 ch 16 bits), t=12475 ms
+sound: 0xacbff5a0 short decode 805/6000 samples at pos 30000 (L2 ended), t=12704 ms
+audio: jump 13652 at sample 3702/4096 (ch 0, -6884 -> 6768), 1 stream(s), 0 tail(s), t=13238 ms
+audio: jump 12413 at sample 3051/4096 (ch 0, -1808 -> 10605), 1 stream(s), 0 tail(s), t=13323 ms
+audio: jump 11629 at sample 2957/4096 (ch 0, -8851 -> 2778), 1 stream(s), 0 tail(s), t=13408 ms
+audio: jump 10274 at sample 3428/4096 (ch 0, -8659 -> 1615), 1 stream(s), 0 tail(s), t=13663 ms
+audio: stream 0xb0554960 ran dry (3692 bytes missing, 72805 samples played, appended 291220 bytes in 13 call(s), 0 buffer(s) left, t=14008 ms)
+audio: pause 0xb0554960 while playing, 0 ms queued, no fade, t=14037 ms
+02:11:51 *clearSoundMode*
+02:11:51 (info) Rebuilding Auto Path Table ...
+02:11:51 (info) Total 10962 file(s) found, 10781 file(s) activated. (21ms)
+steam: achievement 'ID_AN_LCL1_01' (logged only, no Steam client)
+02:11:51 updatebgm, playbgm
+sound: open 0xabfde940 'BGM20.ogg' (44100 Hz 2 ch 16 bits)
+sound: start 0xabfde940 (44100 Hz 2 ch 16 bits)
+audio: new stream 0xa8239be0 (44100 Hz 2 ch 16 bits, conv yes), t=29564 ms
+audio: stream 0xa8239be0 first append 21768 bytes (44100 Hz 2 ch 16 bits), t=29566 ms
+02:11:51 title:xrated, 0
+02:11:51 (info) Rebuilding Auto Path Table ...
+02:11:51 (info) Total 10962 file(s) found, 10781 file(s) activated. (26ms)
+slow frame: 350 ms (compose 8, upload 2, present 1, file reads 0 ms / 0, writes 0 ms / 0, gc 0, other 339)
+02:11:51 (exception) Member "setItemText" does not exist
+02:11:51 ==== An exception occured at win32dialog.tjs(1)[(function) setItemText], VM ip = 12 ====
+02:11:51 -- Disassembled VM code --
+02:11:51 #(1) Bytecode.
+02:11:51 00000000 calld %1, %-2.*0(%-3)	// *0 = (string)"getNumberdId"
+02:11:51 00000006 global %2
+02:11:51 00000008 gpd %3, %2.*1	// *1 = (string)"WIN32Dialog"
+02:11:51 00000012 calld %4, %3.*2(%1, %-4)	// *2 = (string)"setItemText"
+02:11:51 -- Register dump --
+02:11:51 %-4=(string)"custom.ks:239: 実績:開始\r\ncustom.ks:239: Steam実績: 開始 -> ID_AN_LCL1_01"
+02:11:51 %-3=(void)  %-2=(object)(object 0x13d5cb80:0x0)
+02:11:51 %-1=(object)(object 0xa8aeace0:0xa8aeace0)  %0=(void)  %1=(int)0
+02:11:51 %2=(object)(object 0xa71b3120:0x0)  %3=(object)(object 0xac3ae0a0:0x0)
+02:11:51 %4=(object)(object 0xa6db00c0:0xa6db00c0)
+02:11:51 ----------------------------------------------------------------------------------------
+sound: stop 0xabfde940
+audio: reset 0xa8239be0 while playing, dropped 436 ms, kept 8 ms fade, t=30005 ms
+sound: destroy 0xabfde940
+audio: adopt 8 ms fade-out of 0xa8239be0, t=30007 ms
+sound: stop 0xacbff5a0
+sound: destroy 0xacbff5a0
+threads: 27 engine thread(s) stopped at exit, 0 did not stop
+TVPExitApplication(0)
+kk4s: game quit, back to the launcher
+perf: CPU boost off
+threads: 0 detached thread(s) closed, 0 still running
+kk4s: shutdown

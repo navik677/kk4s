@@ -1,0 +1,20 @@
+kk4s 0.0.1 (git 70e021e, built Nov  2 2026 01:51:23) on Nintendo Switch
+threads: log -> core 1 (mask 0x6)
+data folder: sdmc:/switch/kk4s
+memory: total 3189 MiB, used 3185 MiB, mode: full
+nxlink: no
+renderer: opengles2, window 1920x1080
+launcher: ATRI -My Dear Moments-: Steam/PackinOne repack (a plain Kirikiri game has no native protection; a clean DRM-free release is needed, see docs/HANDOFF.md)
+launcher: 5 game(s) found in sdmc:/switch/kk4s/games
+launcher: ATRI -My Dear Moments-: cover sdmc:/switch/kk4s/covers/ATRI -My Dear Moments-.jpg
+launcher: FSN: cover sdmc:/switch/kk4s/covers/FSN.jpg
+launcher: The Makings of a Lady - Purity Yours to Defile: cover sdmc:/switch/kk4s/covers/The Makings of a Lady - Purity Yours to Defile.jpg
+launcher: Tsukihime Plus+Disc Russian: cover sdmc:/switch/kk4s/covers/Tsukihime Plus+Disc Russian.jpg
+input: controller 'Switch Controller'
+input: controller 'Switch Controller'
+input: controller 'Switch Controller'
+input: controller 'Switch Controller'
+input: controller 'Switch Controller'
+input: controller 'Switch Controller'
+input: controller 'Switch Controller'
+input: controller 'Switch Controller'
