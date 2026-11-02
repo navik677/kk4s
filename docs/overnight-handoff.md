@@ -4,10 +4,11 @@
 
 - Repository: `C:\Users\navik\gits\kk4s`; remote `origin` is `navik677/kk4s`.
 - Starting HEAD: `1f649e0cbca0fc4a1e3021df39ff066f5b2785ac` (`origin/main` at session start).
-- Working branch: `work/overnight-2026-11-02`; do not commit to or push `main`.
+- Working branch: `work/overnight-2026-11-02`; development happened here, and `main` is advanced
+  only by an explicit merge of this branch.
 - Safety ref: `backup/overnight-start-2026-11-02` points to the starting HEAD.
 - The branch is published to `origin` as `work/overnight-2026-11-02` with a normal fast-forward
-  push; history is not rewritten and `main`/`origin/main` stay at the starting commit.
+  push; history is not rewritten.
 - The starting worktree already had hundreds of modified tracked files. They were not staged,
   reverted, or included in the overnight branch's commits. A binary diff snapshot is saved outside
   the repo at `%TEMP%\kk4s-overnight-start-2026-11-02\tracked-working-tree.patch`, with the initial
