@@ -4,7 +4,7 @@
 // archive uses, from data: candidate schemes are loaded from
 // <RootDir>/profiles/cx/*.cxscheme and each is tested on a few entries of the
 // archive (adler32 of the decrypted data must equal the entry's "adlr"). Only a
-// scheme that passes is bound; nothing is applied to archives without hnfn
+// scheme that passes is bound; nothing is applied to archives without hashed names
 // records, so ordinary XP3 games (FSN and its patches) never reach this code.
 #pragma once
 
@@ -22,7 +22,7 @@ struct CxSample {
     std::vector<uint8_t> raw;  // decompressed but still encrypted bytes
 };
 
-// Returns the decoder for an archive whose index has hnfn (Cx name) records, or
+// Returns the decoder for an archive with hnfn/XP3v2 eliF (Cx name) records, or
 // nullptr when no known scheme fits. `samples` are a few small entries of it.
 // Decoders are shared between archives of the same game and live until exit.
 cxdec::CxDecoder* BindCxDecoder(const std::string& archive_name, const std::vector<CxSample>& samples);

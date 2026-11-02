@@ -555,7 +555,7 @@ void BeforeStartup() {
 const tjs_char* StartupScriptShim() {
     // kk4s: hashed-name XP3 (PackinOne) repacks hide the real startup.tjs in an
     // obfuscated bytecode object; execute the standard KiriKiri Z start instead.
-    // Positive identification only: a Cx (hnfn) archive with a verified CXDEC
+    // Positive identification only: a hashed-name Cx archive with a verified CXDEC
     // scheme was mounted in this run. Folder markers are not enough (FSN's
     // folder has version.dll/KrkrExtract and must keep its own startup.tjs).
     if (getenv("KK4S_NO_SHIM")) return NULL; // test the game's own startup.tjs

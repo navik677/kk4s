@@ -1,16 +1,23 @@
 # CXDEC (KiriKiri "Cx" XP3 filter)
 
-Status (2026-11-01, merged into local `main`):
+Status (2026-11-02, overnight branch):
 
 - Generic decoder in the runtime (`compat/cxdec`), verified byte-exact.
+- Runtime maps both kk4s/PackinOne `hnfn` and Kirikiri Z XP3v2 `eliF` filename records by `adlr`.
+  This only resolves archive names; it does not decrypt file contents or bypass scheme validation.
 - Scheme recovery without running the game is available as a developer tool and in the desktop
   runtime. The runtime's Capstone-backed PE/TPM analyzer validates candidate schemes against XP3
   adlr samples; it does not persist a scheme or modify the game folder.
 - Switch still requires a scheme in user data; porting the generic PE/x86 analyzer to Switch remains
   open. ATRI is only a PC Steam-repack test fixture, not the product.
 - The user confirms Fate/FSN and other tested games work on Switch; Fate is playable beginning to
-  end. ATRI still fails to reach its title menu on Switch, which is a KAGZ Win32-dialog compatibility
-  issue after title setup, not a CXDEC decoding failure. See “ATRI test fixture status”.
+  end. ATRI still fails to reach its title menu on the latest hardware-tested build; the current
+  source adds a headless `setItemText` result but is not yet hardware-tested. See “ATRI test fixture
+  status” and `docs/overnight-handoff.md`.
+- NekoPara Vol. 1 uses XP3v2 `eliF` names; the runtime maps its 1201 archive entries and locates
+  `startup.tjs`, but its content remains encrypted (desktop scheme recovery 0/12). The supplied
+  PE32 `.tpm` has no standard CXDEC LCG signature, so no game-specific key or scheme is embedded.
+  Further support needs a generic compatible filter/TPM implementation.
 
 ## Three layers
 
@@ -78,8 +85,9 @@ programs reproduced). No ATRI constant is in the tool.
 
 ### Layer 3 — detection in the runtime
 
-- An XP3 index with `hnfn` records ⇒ Cx archive (names come from `hnfn`; entries
-  without a name are decoys and are dropped). Other archives are untouched.
+- An XP3 index with `hnfn` or XP3v2 `eliF` records ⇒ hashed-name archive/CX candidate (real names
+  are keyed by `adlr`; entries without a matching name are dropped). This is not proof of the cipher:
+  no decoder is applied unless a scheme validates against sample `adlr`s.
 - `BindCxDecoder()` tries saved `*.cxscheme` profiles on ≤12 small entries and binds the best one
   with ≥80 % verified. On desktop, when none fits, it scans PE32 `.tpm` files and embedded
   `internal module` containers, recovers generic candidates, and validates them against the same
@@ -97,7 +105,7 @@ programs reproduced). No ATRI constant is in the tool.
 | Generator variant with another PRNG (GARbro `CxProgramNana`: Nana/Cabbage/Riddle) | add the variant to layer 1 as a scheme flag; the extractor must detect it |
 | Compiler shape the extractor's switch parser does not know | extractor reports "could not read all branch orders"; fix the parser or provide a scheme by hand |
 | TPM packed/encrypted by something other than the zlib internal-module container | unknown loader ⇒ scheme must be provided (profile) or captured once on a PC |
-| Archives with `hnfn` but a non-Cx cipher | no scheme validates ⇒ nothing is applied; needs its own filter |
+| Hashed-name archives (`hnfn`/`eliF`) with a non-CX filter or unsupported scheme | no scheme validates ⇒ nothing is applied; needs a generic filter/TPM implementation |
 | Non-Cx TPM (FSN's `cxdec.tpm` is FateCrypt; no generator) | extractor finds no TPM ⇒ correct; such games keep using `xp3filter.tjs` |
 
 The desktop runtime now performs this static recovery automatically, using Capstone for x86
@@ -119,8 +127,9 @@ decoder and PE/internal-module reader; until then, generate a scheme with the PC
   (`AlphaMovie`, `fontScale`); this is not a playable-game milestone. A previous desktop run with a
   prepared profile rendered the translated title/menu. On Switch, the user reports it still does not
   reach the title menu. Its latest log reaches `title:xrated, 0` then fails in
-  `win32dialog.tjs getNumberdId` while indexing `itemMap` with `void`; fix the generic dialog/log
-  wrapper contract, not ATRI behavior. Compatibility work to date (all general):
+  `win32dialog.tjs` dialog handling. The source now handles the void ID and `setItemText` headlessly,
+  but the new source has not had a Switch build/hardware retest. Fix the generic dialog/log wrapper
+  contract, not ATRI behavior. Compatibility work to date (all general):
   `win32dialog.dll` stub, `psbfile.dll` (`PSBFile` + `psb://` media; parser in `compat/psb`, tests in
   `tests/psb`), `Scripts.foreach/getObjectKeys/getObjectCount/clone/equalStruct`, custom storage media
   names (`psb://`, `var://`) that were turned into file paths, the temp directory

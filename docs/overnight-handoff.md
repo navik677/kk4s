@@ -34,26 +34,27 @@ desktop gameplay, Switch build, Switch hardware startup, and Switch gameplay, us
 | Task | Result | Commit |
 |---|---|---|
 | Session bootstrap, start snapshot and work branch | Done; snapshot preserved; started on isolated branch | `06f137e` |
-| Headless `WIN32Dialog.setItemText` contract + TJS probe | Desktop build and fixture passed; Switch build pending | pending |
-| XP3 v2 header parsing in `xp3ls` | PASS on six NekoPara XP3 archives; data archive lists 1201 entries | pending |
-| Nekopara identification and isolated desktop probe | KiriKiri Z/KAG-compatible; engine startup still fails before gameplay; original files hash-identical | pending |
+| Headless `WIN32Dialog.setItemText` contract + TJS probe | Desktop build and fixture passed; Switch build passed; hardware pending | `cecb5c8` |
+| XP3 v2 header parsing in `xp3ls` | PASS on six NekoPara XP3 archives; data archive lists 1201 entries | `e5be02b` |
+| XP3v2 `eliF` name mapping in runtime | Synthetic XP3v2 smoke test PASS; ATRI and FSN desktop regressions PASS | pending |
+| Nekopara identification and isolated desktop probe | KiriKiri Z/KAG-compatible; scheme validation FAIL; original files hash-identical | pending |
 
 ## Current test matrix
 
 | Game | Desktop startup | Desktop gameplay | Switch build | Switch hardware startup | Switch gameplay |
 |---|---|---|---|---|---|
-| ATRI | PASS to `start.ks` in prior desktop run; not re-run | NOT TESTED | PASS for starting NRO build | FAIL at missing `WIN32Dialog.setItemText` | NOT TESTED (startup fails before gameplay) |
-| Nekopara Vol. 1 | FAIL: current desktop runtime cannot find `startup.tjs` after mounting `data.xp3` (1201 entries) | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED |
-| Fate/stay night, Russian patch | PASS in prior PC regression; not re-run | NOT TESTED this session | NOT TESTED | PASS, user-confirmed full playthrough on earlier build; not re-tested | NOT TESTED this session |
+| ATRI | PASS to `title.ks:35`; CX samples 12/12; no `setItemText` exception | NOT TESTED | PASS (new NRO built) | NOT TESTED on new NRO (older tested NRO FAIL at `setItemText`) | NOT TESTED |
+| Nekopara Vol. 1 | FAIL: startup TJS resolves, CX recovery 0/12; narrow-string conversion error | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED |
+| Fate/stay night, Russian patch | PASS: `data.xp3>` project path, `rupatch`/`rufix` mounted, 0 script exceptions | NOT TESTED this session | NOT TESTED | PASS, user-confirmed full playthrough on earlier build; not re-tested | NOT TESTED this session |
 | Sharin no Kuni | NOT TESTED this session | NOT TESTED | NOT TESTED | PASS, previously user-tested; not re-tested | NOT TESTED this session |
 | Tsukihime + Plus-Disc | NOT TESTED this session | NOT TESTED | NOT TESTED | PASS, previously user-tested; not re-tested | NOT TESTED this session |
 | The Makings of a Lady | NOT TESTED this session | NOT TESTED | NOT TESTED | PASS, previously user-tested; not re-tested | NOT TESTED this session |
 
 ## Next actions
 
-1. Inspect why the located KiriKiri Z/KAG-compatible NekoPara install has no accessible
-   `data.xp3>startup.tjs`; distinguish archive/header limitations from missing script content. Keep
-   user data under a separate `KK4S_ROOT` and verify original hashes after every run.
+1. Investigate the NekoPara `.tpm`/`CxFilterFS` implementation and why the generic desktop scheme
+   analyzer validates 0/12 samples. Do not extract, embed, or commit game-specific keys; add support
+   only for a generic TPM/CX shape. Keep test data in a separate `KK4S_ROOT` and hash the original.
 2. Build/test the headless `WIN32Dialog.setItemText` change on Switch; the desktop fixture currently
    verifies false (Win32 API failure with `hwnd == 0`) instead of a missing-member exception.
 3. Continue through subsequent ATRI startup blockers; no title/menu success claim based only on the
@@ -78,26 +79,46 @@ tracked fixture `tests/tjs/win32dialog/startup.tjs` links the plugin and asserts
 - Headless dialog fixture: **PASS**, log `win32dialog headless setItemText: PASS`.
 - Switch build/hardware: NOT TESTED yet for this change.
 
+### XP3v2 hashed filenames
+
+- NekoPara's XP3v2 index uses `eliF` chunks (adlr key + UTF-16 filename) paired with `File` chunks;
+  `data.xp3` has 1201 of each, including `startup.tjs`. This is a generic Kirikiri Z XP3 convention,
+  distinct from kk4s/PackinOne's `hnfn` table.
+- `engine/source/core/base/XP3Archive.cpp` now maps either `hnfn` or XP3v2 `eliF` names using the
+  shared adlr-keyed path table; unknown/unmapped hashed entries remain excluded.
+- Added `tests/xp3/elif_smoke.py`, which generates a tiny XP3v2 archive in a temporary directory and
+  asserts that its `eliF`-named `startup.tjs` executes. Result: **PASS**.
+- `tools/xp3ls.cpp`'s old v2 handling sought four bytes too far into the version block. Commit
+  `e5be02b` fixes the offset/read bounds; all six NekoPara XP3 archives list successfully.
+- Desktop synthetic XP3v2 `eliF` fixture: **PASS**. Desktop ATRI after the mapping change: **PASS to
+  `title.ks:35`**, CX 12/12, no `setItemText` exception. FSN desktop regression: **PASS** with the
+  `data.xp3>` project dir, `rupatch.xp3`/`rufix.xp3` mounts, and 0 script exceptions.
+- Switch build: **PASS** with `SKIP_DEPS=1`, max `-j4`, in `build-switch-overnight-msys/`. The first
+  attempt reused an MSYS-path cache from a UCRT shell and failed path validation; the separate MSYS
+  build directory avoided modifying that cache. `out/kk4s.nro` SHA-256:
+  `67FE0CFB56D6B79DAAFA5E9245FA23C3910D3E9070639E1E5A4F69E92227EE3C`. It was not uploaded; no
+  Switch hardware result for this source exists.
+
 ### Nekopara Vol. 1
 
 - Located at `E:\kk4s-pc\games\NekoPara Vol.1`; this is Kirikiri Z/TJS2/KAG-compatible (PE strings
   include `kirikiriz` and `startup.tjs`; files include XP3 archives, a `.tpm`, and KAGZ plugins). The
   precise upstream engine version is not established.
 - First diagnostic used stale `out-desktop/kk4s.exe` (`c0d7705`); it mounted 1201 `data.xp3` entries
-  but could not find `startup.tjs`. Rebuilt from the overnight branch (`06f137e`) and repeated with a
-  separate `KK4S_ROOT`; it still exits with `Cannot find storage startup.tjs`, before gameplay.
-  Switch is NOT TESTED.
+  but could not find `startup.tjs`. After the generic `eliF` mapping, a fresh desktop run locates and
+  attempts `startup.tjs` but exits with `Cannot convert given narrow string to wide string`; CX scheme
+  recovery validates 0/12 samples. Switch is NOT TESTED.
 - In both runs `compat: saves in ...` points outside the game directory; the existing five save files
   were copied to the isolated test root. SHA-256 manifests (outside Git) cover all 86 files / 3.758 GB
   before and after; **0 files changed**. The game folder is not modified.
 - Initial `tools/xp3ls` probe hit `std::length_error`; its v2-header parser was reading the version
   block from the wrong offset. The generic correction now parses all six XP3 v2 archives present
   (data 1201 entries, patch 222, adultsonly 1647, emote 88, emotewin 40, voice 4845).
-- The `data.xp3` index contains 1201 `eliF` hashed-name records paired with 1201 `File` records.
-  A temporary read-only index inspection confirms that `startup.tjs` exists under the `eliF` name
-  mapping. The current engine consumes kk4s/PackinOne `hnfn` records but does not yet map XP3v2
-  `eliF`, so the generic engine-side mapping is now the next experiment. No game resources or saves
-  are being added to Git.
+- After adding generic `eliF` mapping, the current desktop run locates `startup.tjs` and attempts to
+  load it, but the TJS compiler reports `Cannot convert given narrow string to wide string`. The log
+  shows automatic CX scheme recovery validated **0/12** samples. The original TPM is a PE32 plugin
+  exporting `V2Link` and contains `CxFilterFS`; the exact format/algorithm is not yet supported by the
+  generic analyzer. No game-specific key will be embedded. No game resources or saves are in Git.
 
 ## Commits and unresolved items
 

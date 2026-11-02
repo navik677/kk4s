@@ -111,8 +111,8 @@ class tTVPXP3Archive : public tTVPArchive
 
 	std::vector<tArchiveItem> ItemVector;
 
-	// kk4s: the index has "hnfn" (Cx hashed-name) records. Kk4sCx is the CXDEC
-	// decoder bound after a scheme was verified on this archive's entries
+	// kk4s: the index has "hnfn" or XP3v2 "eliF" hashed-name records. Kk4sCx
+	// is the CXDEC decoder bound after a scheme was verified on this archive's entries
 	// (see compat/kk4s_cx.h); NULL when no scheme fits.
 	bool Kk4sHashedNames;
 	kk4s::cxdec::CxDecoder* Kk4sCx;
