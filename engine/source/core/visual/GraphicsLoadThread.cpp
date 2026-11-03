@@ -15,6 +15,8 @@
 #include "LayerIntf.h"
 #include "GraphicsLoaderIntf.h"
 #include "kk4s_compat.h"
+#include "kk4s_platform.h" // kk4s: crash diagnostics logging
+#include <cstdlib>
 
 tTVPTmpBitmapImage::tTVPTmpBitmapImage()
 	: MetaInfo(NULL)
@@ -226,7 +228,11 @@ void tTVPAsyncImageLoader::LoadRequest( iTJSDispatch2 *owner, tTJSNI_Bitmap* bmp
 	// a TLG. For games using a script extraction filter, do the image load on
 	// this (main) thread instead. This is intentionally limited to filtered
 	// games; normal games retain the asynchronous image path.
+	static const bool kk4sCrashTrace = getenv("KK4S_CRASH_TRACE") != nullptr;
 	if (kk4s::compat::ScriptFilterActive() && kk4s::compat::IsMainThread()) {
+		if (kk4sCrashTrace)
+			kk4s::Log("crashdiag: image sync-load %s (main thread, filter active)",
+			          ttstr(nname).AsNarrowStdString().c_str());
 		tTVPBaseBitmap dest(TVPGetInitialBitmap());
 		iTJSDispatch2 *metainfo = NULL;
 		ttstr error;
@@ -264,6 +270,11 @@ void tTVPAsyncImageLoader::LoadRequest( iTJSDispatch2 *owner, tTJSNI_Bitmap* bmp
 // TVPCreateStream はロックされているので、非同期で実行可能
 
 void tTVPAsyncImageLoader::PushLoadQueue( iTJSDispatch2 *owner, tTJSNI_Bitmap *bmp, const ttstr &nname ) {
+	static const bool kk4sCrashTrace = getenv("KK4S_CRASH_TRACE") != nullptr;
+	if (kk4sCrashTrace)
+		kk4s::Log("crashdiag: image queued %s (thread %s)",
+		          ttstr(nname).AsNarrowStdString().c_str(),
+		          kk4s::compat::IsMainThread() ? "main" : "worker");
 	tTVPImageLoadCommand* cmd = new tTVPImageLoadCommand();
 	cmd->owner_ = owner;
 	if (owner) owner->AddRef();
@@ -311,6 +322,10 @@ void tTVPAsyncImageLoader::LoadingThread() {
 }
 tTVPGraphicHandlerType* TVPGuessGraphicLoadHandler(ttstr& name);
 void tTVPAsyncImageLoader::LoadImageFromCommand( tTVPImageLoadCommand* cmd ) {
+	static const bool kk4sCrashTrace = getenv("KK4S_CRASH_TRACE") != nullptr;
+	if (kk4sCrashTrace)
+		kk4s::Log("crashdiag: image async-load start %s",
+		          ttstr(cmd->path_).AsNarrowStdString().c_str());
 	ttstr ext = TVPExtractStorageExt(cmd->path_);
 	tTVPGraphicHandlerType* handler = NULL;
 	ttstr name(cmd->path_);
@@ -330,6 +345,9 @@ void tTVPAsyncImageLoader::LoadImageFromCommand( tTVPImageLoadCommand* cmd ) {
 		} catch(...) {
 			// 例外は全てキャッチ
 			cmd->result_ = TVPFormatMessage(TVPImageLoadError, cmd->path_);
+			if (getenv("KK4S_CRASH_TRACE"))
+				kk4s::Log("crashdiag: image async-load failed %s",
+				          ttstr(cmd->path_).AsNarrowStdString().c_str());
 		}
 	} else {
 		// error

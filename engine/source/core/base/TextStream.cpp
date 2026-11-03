@@ -24,6 +24,7 @@
 #include "UtilStreams.h"
 #include "tjsError.h"
 #include "CharacterSet.h"
+#include <vector>
 
 extern "C" int sjis_mbtowc(unsigned short *wc, const unsigned char *s);
 extern "C" int gbk_mbtowc(unsigned short *wc, const unsigned char *s);
@@ -54,7 +55,7 @@ int utf8_mbtowc(unsigned short *pwc, const unsigned char *s) {
 		return -1;
 }
 
-int(*mbtowc_for_text_stream)(unsigned short *wc, const unsigned char *s) = nullptr;
+// (removed global cached encoding; detection is now per stream)
 
 static size_t _TextStream_mbstowcs(int(*func_mbtowc)(unsigned short *, const unsigned char *), tjs_char *pwcs, const tjs_nchar *s, size_t n)
 {
@@ -92,24 +93,41 @@ static size_t _TextStream_mbstowcs(int(*func_mbtowc)(unsigned short *, const uns
 */
 
 extern size_t TextStream_mbstowcs(tjs_char *pwcs, const tjs_nchar *s, size_t n) {
-	if (mbtowc_for_text_stream) {
-		return _TextStream_mbstowcs(mbtowc_for_text_stream, pwcs, s, n);
-	}
-	// trying every encoding available
-	size_t ret = _TextStream_mbstowcs(sjis_mbtowc, pwcs, s, n);
-	if (ret == (size_t)-1) {
-		ret = _TextStream_mbstowcs(utf8_mbtowc, pwcs, s, n);
-		if (ret != (size_t)-1) {
-			mbtowc_for_text_stream = utf8_mbtowc;
-			return ret;
+	// Auto-detect per stream with a documented fallback policy:
+	//   1. UTF-8 if the whole buffer is valid UTF-8 (strict validity).
+	//   2. Shift_JIS (the historical Kirikiri default).
+	//   3. GBK.
+	// Shift_JIS and GBK are both loose multibyte codepages and a byte
+	// sequence can be valid in both; Shift_JIS is tried first because the
+	// majority of Kirikiri titles are Japanese. A GBK (Chinese) file whose
+	// bytes also happen to be valid Shift_JIS may be misdetected; such files
+	// should carry a UTF-8 BOM or be read with an explicit encoding via
+	// TVPCreateTextStreamForReadByEncoding. This ambiguity is inherent to
+	// byte-level auto-detection and cannot be resolved reliably without
+	// metadata.
+	size_t utf8_len = _TextStream_mbstowcs(utf8_mbtowc, NULL, s, 0);
+	if (utf8_len != (size_t)-1) {
+		if (pwcs && utf8_len > 0) {
+			_TextStream_mbstowcs(utf8_mbtowc, pwcs, s,
+			                     n ? n : utf8_len);
 		}
-		ret = _TextStream_mbstowcs(gbk_mbtowc, pwcs, s, n);
-		if (ret != (size_t)-1) {
-			mbtowc_for_text_stream = gbk_mbtowc;
-			return ret;
-		}
+		return utf8_len;
 	}
-	return ret;
+	size_t sjis_len = _TextStream_mbstowcs(sjis_mbtowc, NULL, s, 0);
+	if (sjis_len != (size_t)-1) {
+		if (pwcs && sjis_len > 0) {
+			_TextStream_mbstowcs(sjis_mbtowc, pwcs, s, n ? n : sjis_len);
+		}
+		return sjis_len;
+	}
+	size_t gbk_len = _TextStream_mbstowcs(gbk_mbtowc, NULL, s, 0);
+	if (gbk_len != (size_t)-1) {
+		if (pwcs && gbk_len > 0) {
+			_TextStream_mbstowcs(gbk_mbtowc, pwcs, s, n ? n : gbk_len);
+		}
+		return gbk_len;
+	}
+	return (size_t)-1;
 }
 
 /*
@@ -293,7 +311,7 @@ public:
 							Buffer = new tjs_char [ BufferLen +1];
 							_TextStream_mbstowcs(sjis_mbtowc, Buffer, (tjs_nchar*)nbuf, BufferLen);
 						} else if( encoding == TJS_W("GBK") ) {
-							BufferLen = _TextStream_mbstowcs(sjis_mbtowc, NULL, (tjs_nchar*)nbuf, 0);
+							BufferLen = _TextStream_mbstowcs(gbk_mbtowc, NULL, (tjs_nchar*)nbuf, 0);
 							if(BufferLen == (size_t)-1) TVPThrowExceptionMessage(TJSNarrowToWideConversionError);
 							Buffer = new tjs_char [ BufferLen +1];
 							_TextStream_mbstowcs(gbk_mbtowc, Buffer, (tjs_nchar*)nbuf, BufferLen);

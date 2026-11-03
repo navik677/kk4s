@@ -19,6 +19,7 @@
 
 #include "tjsArray.h"
 #include "LayerIntf.h"
+#include "kk4s_platform.h" // kk4s: crash diagnostics logging
 #include "MsgIntf.h"
 #include "LayerBitmapIntf.h"
 #include "LayerTreeOwner.h"
@@ -6955,6 +6956,13 @@ tTVPBaseTexture * tTJSNI_BaseLayer::Complete()
 void tTJSNI_BaseLayer::StartTransition(const ttstr &name, bool withchildren,
 	tTJSNI_BaseLayer * transsource, tTJSVariantClosure options)
 {
+	// kk4s crash diagnostics: record transition boundaries (opt-in).
+	static const bool kk4sCrashTrace = getenv("KK4S_CRASH_TRACE") != nullptr;
+	if (kk4sCrashTrace)
+		kk4s::Log("crashdiag: transition start layer=%p name=%s withchildren=%d source=%p",
+		          (void*)this, ttstr(name).AsNarrowStdString().c_str(),
+		          (int)withchildren, (void*)transsource);
+
 	// start transition
 
 	// is current transition processing?
@@ -7123,6 +7131,11 @@ void tTJSNI_BaseLayer::StartTransition(const ttstr &name, bool withchildren,
 //---------------------------------------------------------------------------
 void tTJSNI_BaseLayer::InternalStopTransition()
 {
+	// kk4s crash diagnostics: record transition end (opt-in).
+	static const bool kk4sCrashTrace = getenv("KK4S_CRASH_TRACE") != nullptr;
+	if (kk4sCrashTrace && InTransition)
+		kk4s::Log("crashdiag: transition stop layer=%p", (void*)this);
+
 	// stop transition
 	if(InTransition)
 	{
@@ -7181,6 +7194,10 @@ void tTJSNI_BaseLayer::InternalStopTransition()
 		// fire event
 		if(Owner && !Shutdown && transsrcalive)
 		{
+			static const bool kk4sCrashTrace = getenv("KK4S_CRASH_TRACE") != nullptr;
+			if (kk4sCrashTrace)
+				kk4s::Log("crashdiag: transition completed -> onTransitionCompleted layer=%p",
+				          (void*)this);
 			static ttstr eventname(TJS_W("onTransitionCompleted"));
 
 			// fire SYNCHRONOUS event of "onTransitionCompleted"

@@ -79,6 +79,11 @@ relative.
   **crash** was a separate issue: its Atmosphere report symbolicated to `ScriptExtractionFilter`
   running from the async image loader. TJS filters must not run on a background thread; see
   `docs/handoff-native-cx.md`.
+- `KK4S_CRASH_TRACE=1` enables opt-in crash breadcrumbs in the engine log: image load requests
+  (sync vs. queued vs. async, with storage name and thread), transition start/stop/completion and
+  the thread id in the "xp3 filter called on a background thread" warning. Default off, so normal
+  runs are unaffected. Use it on the Switch together with the existing crash-report + ELF
+  symbolication workflow to correlate an Atmosphere report with the operation in progress.
 - `KK4S_KAG_TRACE=1|2` sets `kag.conductor.debugLevel` once after startup (a game may reset it,
   ATRI does in `first.ks`). For state at a given moment use `KK4S_INPUT_SCRIPT` with `eval`, e.g.
   `25000 eval kag.conductor.curStorage + " line " + kag.conductor.curLine`.

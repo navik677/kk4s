@@ -48,7 +48,7 @@ desktop gameplay, Switch build, Switch hardware startup, and Switch gameplay, us
 
 | Game | Desktop startup | Desktop gameplay | Switch build | Switch hardware startup | Switch gameplay |
 |---|---|---|---|---|---|
-| ATRI | PASS to `start.ks:24`; opening Russian line renders; AlphaMovie member resolves; later PBD `loadDataPack` missing | NOT TESTED (opening scene only) | PASS (latest NRO built) | PASS: starts and advances past the previous `setItemText` failure | FAIL: crash during Skip; not full compatibility |
+| ATRI | PASS to title menu: opening Russian line renders, AlphaMovie member resolves, audio plays (ATR_sys_002/003); later PBD `loadDataPack` still needed for story progression | NOT TESTED (opening scene only) | PASS (latest NRO built) | PASS: starts and advances past the previous `setItemText` failure | FAIL: crash during Skip; not full compatibility |
 | Nekopara Vol. 1 | FAIL: startup TJS resolves, CX recovery 0/12; narrow-string conversion error | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED |
 | Fate/stay night, Russian patch | PASS: `data.xp3>` project path, `rupatch`/`rufix` mounted, 0 script exceptions after renderer changes | NOT TESTED this session | NOT TESTED | PASS, user-confirmed full playthrough on earlier build; not re-tested | NOT TESTED this session |
 | Sharin no Kuni | NOT TESTED this session | NOT TESTED | NOT TESTED | PASS, previously user-tested; not re-tested | NOT TESTED this session |
@@ -177,9 +177,12 @@ tracked fixture `tests/tjs/win32dialog/startup.tjs` links the plugin and asserts
 - Added `tests/alphamovie/smoke.py` and `tests/tjs/alphamovie/startup.tjs`, which generate a synthetic
   16x16 AJPM zlib-alpha movie in a temporary directory and test header properties, frame decode,
   Layer draw dispatch, and play/stop. Result: **PASS** on desktop; no original media is included.
-- ATRI was launched after integration: its `AlphaMovie` missing-member exception is gone and the
-  script requests `tatinoboruawa.amv`. The opening text renders; the screenshot is not sufficient to
-  prove decoded-video pixels. PBD `loadDataPack` remains the scene-progression blocker on desktop.
+- ATRI was launched after integration with the current desktop binary: its `AlphaMovie` missing-member
+  exception is gone, the script requests `tatinoboruawa.amv`, the opening Russian line renders, and
+  the run reaches the title menu with audio (ATR_sys_002/003) and no new script exceptions beyond the
+  two benign `makeDummyProperty` "Invalid object context" throws. PBD `loadDataPack` remains the
+  scene-progression blocker on desktop; the screenshot alone is still not proof of decoded video
+  pixels.
 - Physical Switch (2026-11-02): the game starts and advances further into the story than the
   previous build, confirming the `setItemText`/TextRenderBase work on hardware. It then crashes while
   **Skip** is active. Switch gameplay is **FAIL** and full compatibility is **not** claimed; no crash

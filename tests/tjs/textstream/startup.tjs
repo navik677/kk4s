@@ -1,0 +1,73 @@
+// Synthetic TextStream encoding contract test.
+function check(label, actual, expected) {
+    if (actual !== expected) {
+        Debug.message("FAIL " + label + ": got=" + actual + " expected=" + expected);
+        throw new Exception("TextStream test failed: " + label);
+    }
+    Debug.message("PASS " + label);
+}
+
+function expectThrow(label, filename) {
+    var arr = new Array();
+    var threw = false;
+    try { arr.load(filename); }
+    catch (e) { threw = true; Debug.message("PASS " + label + " threw: " + e.message); }
+    if (!threw) throw new Exception("expected throw did not happen: " + label);
+}
+
+// ASCII
+var a = new Array();
+a.load("ascii.txt");
+check("ascii", a[0], "Hello, world!");
+
+// Shift_JIS
+var b = new Array();
+b.load("sjis.txt");
+check("sjis", b[0], "日本語テスト");
+
+// UTF-8 without BOM
+var c = new Array();
+c.load("utf8.txt");
+check("utf8", c[0], "café");
+
+// UTF-8 with BOM
+var f = new Array();
+f.load("utf8bom.txt");
+check("utf8bom", f[0], "BOMテキスト");
+
+// Mixed sequential reads in one process (regression for the old global
+// encoding cache): a Shift_JIS file followed by a UTF-8 file must both be
+// decoded correctly instead of the second inheriting the first's encoding.
+var e1 = new Array(); e1.load("sjis.txt");
+var e2 = new Array(); e2.load("utf8.txt");
+check("mixed-sjis", e1[0], "日本語テスト");
+check("mixed-utf8", e2[0], "café");
+
+// Empty file must not crash
+var g = new Array();
+try { g.load("empty.txt"); Debug.message("PASS empty-no-crash (lines=" + g.count + ")"); }
+catch (e) { Debug.message("empty threw (acceptable): " + e.message); }
+
+// Malformed single byte (invalid in UTF-8, Shift_JIS and GBK)
+expectThrow("malformed-0x85", "bad.txt");
+
+// Truncated UTF-8: lead byte 0xC3 without continuation
+expectThrow("truncated-utf8", "trunc-utf8.txt");
+
+// Truncated Shift_JIS: lead byte 0x82 without trail
+expectThrow("truncated-sjis", "trunc-sjis.txt");
+
+// Truncated GBK: lead byte 0xD6 without trail
+expectThrow("truncated-gbk", "trunc-gbk.txt");
+
+// Invalid multibyte: 0x80 0x80 (continuation bytes without lead in UTF-8)
+expectThrow("invalid-utf8-cont", "bad2.txt");
+
+// GBK fixture: documented as ambiguous. Log the actual decoded value instead
+// of asserting, because auto-detection may select Shift_JIS for GBK bytes
+// that are also valid in the engine's Shift_JIS table.
+var gb = new Array();
+try { gb.load("gbk.txt"); Debug.message("INFO gbk auto-detected result: " + gb[0]); }
+catch (e) { Debug.message("INFO gbk threw: " + e.message); }
+
+Debug.message("TextStream encoding tests: PASS");
