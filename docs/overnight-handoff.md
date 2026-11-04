@@ -22,6 +22,8 @@
 - Short paired log: [`test-logs/kk4s-20261102-021153.log`](test-logs/kk4s-20261102-021153.log).
 - Hardware status at start: **FAIL** after `title:xrated, 0`; previous `getNumberdId(void)` failure
   is absent, then `WIN32Dialog.setItemText` is missing (TJS exception in `win32dialog.tjs`, VM IP 12).
+  This is the 2026-11-02 snapshot; the 2026-11-04 retest below supersedes it (the game now reaches
+  `start.ks` and fails later on `layerEx*`).
 - `k2compat.tjs:makeDummyProperty` was disassembled with the engine's bytecode dumper. Its `ENTRY`
   try/catch encloses `TYPEOFI` at VM IP 5, so the two "Invalid object context" throws are caught by
   the helper; startup continues. No engine fix is justified from these logs alone.
@@ -48,27 +50,29 @@ desktop gameplay, Switch build, Switch hardware startup, and Switch gameplay, us
 
 | Game | Desktop startup | Desktop gameplay | Switch build | Switch hardware startup | Switch gameplay |
 |---|---|---|---|---|---|
-| ATRI | PASS to title menu: opening Russian line renders, AlphaMovie member resolves, audio plays (ATR_sys_002/003); later PBD `loadDataPack` still needed for story progression | NOT TESTED (opening scene only) | PASS (latest NRO built) | PASS: starts and advances past the previous `setItemText` failure | FAIL: crash during Skip; not full compatibility |
+| ATRI | PASS to title menu: opening Russian line renders, AlphaMovie member resolves, audio plays (ATR_sys_002/003); `Scripts.loadDataPack` now decodes the PBD layers | Desktop reaches `start.ks` and the PBD/affine scene, then fatal error on missing `layerEx*` (`clipAlphaRect`, `fillAlpha`) | PASS (2026-11-04 NRO) | PASS: enters the game, renders the opening and PBD-backed layers, then exits through the fatal-error banner | FAIL: fatal error at `start.ks:25`; next blocker is `layerEx*`, not PBD |
 | Nekopara Vol. 1 | FAIL: startup TJS resolves, CX recovery 0/12; narrow-string conversion error | NOT TESTED | NOT TESTED | NOT TESTED | NOT TESTED |
-| Fate/stay night, Russian patch | PASS: `data.xp3>` project path, `rupatch`/`rufix` mounted, 0 script exceptions after renderer changes | NOT TESTED this session | NOT TESTED | PASS, user-confirmed full playthrough on earlier build; not re-tested | NOT TESTED this session |
+| Fate/stay night, Russian patch | PASS: `data.xp3>` project path, `rupatch`/`rufix` mounted, 0 script exceptions after renderer changes | PASS (title/load menu, 2026-11-04) | PASS (2026-11-04 NRO) | PASS, user-confirmed full playthrough; 2026-11-04 log reaches the title and exits cleanly | PASS on hardware (user-confirmed) |
 | Sharin no Kuni | NOT TESTED this session | NOT TESTED | NOT TESTED | PASS, previously user-tested; not re-tested | NOT TESTED this session |
 | Tsukihime + Plus-Disc | NOT TESTED this session | NOT TESTED | NOT TESTED | PASS, previously user-tested; not re-tested | NOT TESTED this session |
 | The Makings of a Lady | NOT TESTED this session | NOT TESTED | NOT TESTED | PASS, previously user-tested; not re-tested | NOT TESTED this session |
 
 ## Next actions
 
-1. AlphaMovie is integrated and committed (`a448c2e`); ATRI now starts and advances on physical
-   Switch, but crashes during Skip. Treat this as partial startup progress, not compatibility:
-   capture the crash log and fix it before calling Switch gameplay PASS.
-2. Keep PBD `Scripts.loadDataPack`/`saveDataPack` marked BLOCKED until its binary/crypto contract or
-   reusable source is available. Do not add a fake empty API or bake in ATRI's `PSDInfo` values.
+1. ATRI now enters the game on both Switch and desktop, but both fail at `start.ks:25` with
+   `Member "clipAlphaRect" does not exist` (`affinelayer.tjs onPaint`) after `fillAlpha`
+   (`affinesourcenoise.tjs loadImages`). Implement the generic `layerEx*` plugin contracts
+   (`layerExDraw`, `layerExImage`, `layerExRaster`, `layerExBtoA`), add synthetic fixtures/tests,
+   then retest ATRI and FSN. Do not call ATRI compatible based on the opening scene.
+2. `Scripts.loadDataPack` is implemented and verified (see the PBD section); the remaining DataPack
+   APIs (`saveDataPack`, `makeDataPackThumb`, `makeDataPackDigest`) only when a game needs them.
 3. Investigate NekoPara `.tpm`/`CxFilterFS` only for a generic decoder shape/source; scheme validation
    remains 0/12. Do not add a game-specific key; preserve the separate `KK4S_ROOT` and game hashes.
-4. Continue through ATRI startup blockers; do not call it playable based on the opening line.
+4. The older ATRI crash during Skip has no crash log; keep it separate from the reproducible
+   `layerEx*` fatal error above. Do not conflate them when retesting.
 5. Run targeted tests/builds incrementally, max `-j4`, one full build at a time; update this handoff
    and commit verified logical tasks separately.
-6. Do not push to `main`; if pushing reviewed work, use only
-   `work/overnight-2026-11-02`.
+6. Commit reviewed work and merge it into local `main`; do not push unless the user asks.
 
 ## Findings since branch start
 
@@ -114,8 +118,8 @@ tracked fixture `tests/tjs/win32dialog/startup.tjs` links the plugin and asserts
 - Desktop ATRI reached `start.ks:24`; screenshot at
   `%TEMP%\kk4s-overnight-start-2026-11-02\atri-textrender-retest-screen.png` confirms the Russian
   opening line `Мир тонет.` renders. `calcShowCount(count)` was corrected from the observed bytecode
-  call `calcShowCount(0)`. After advancing, `psdlayer.tjs` emits missing `Scripts.loadDataPack` errors;
-  this run is not a gameplay PASS.
+  call `calcShowCount(0)`. After advancing, `psdlayer.tjs` loads the PBD layers; the later stop is the
+  missing `layerEx*` members described in the 2026-11-04 section below, not a DataPack error.
 - Desktop FSN regression after renderer changes: **PASS**, `data.xp3>` project path, Russian patch
   archives mounted, 0 script exceptions.
 - Switch build after this change: **PASS** at max `-j4` in `build-switch-overnight-msys/`. Latest
@@ -127,9 +131,8 @@ tracked fixture `tests/tjs/win32dialog/startup.tjs` links the plugin and asserts
   renders.
 - `psdlayer.tjs` bytecode shows `loadPBD(storage, options)` calls `Scripts.loadDataPack(storage,
   options)` and passes the result to `loadDATA`. When no explicit IV is supplied, options is a
-  dictionary with `outeriv: PSDInfo.PBDOuterIV`. PBD-backed content remains blocked on a generic
-  `Scripts.loadDataPack`; observed per-layer exceptions are caught by KAG, not a runtime crash. The
-  extracted `UKR.5r1` PBDs stay outside Git.
+  dictionary with `outeriv: PSDInfo.PBDOuterIV`. This API is now implemented; see the PBD / Scripts
+  DataPack section below.
 
 ### Nekopara Vol. 1
 
@@ -193,20 +196,46 @@ tracked fixture `tests/tjs/win32dialog/startup.tjs` links the plugin and asserts
   `ftp://192.168.1.135:5000/switch/kk4s/kk4s.nro`; a server re-download hashes identically. The NRO is
   reproducible in behaviour but not byte-identical across rebuilds.
 
-### PBD / Scripts DataPack reconnaissance (BLOCKED)
+### PBD / Scripts DataPack (resolved 2026-11-04)
 
 - ATRI `psdlayer.tjs` calls `Scripts.loadDataPack(storage, options)` from `loadPBD`; when its optional
   IV is absent it passes a dictionary containing `outeriv: PSDInfo.PBDOuterIV`, then passes the
-  returned object to `loadDATA`. That consumer expects a pack object with `count` and layer/group
-  dictionaries (`layer_type`, dimensions, names, ids, etc.).
-- The original `PackinOne.dll` string table names an internal `tjsDataPack.dll` module and exposes
-  `Scripts.loadDataPack`, `saveDataPack`, `makeDataPackThumb`, and `makeDataPackDigest`, plus an
-  `unknown thumboct format` error. No standalone module/source is present in the install or the
-  public `krkrz_dev` tree. Read-only extracted PBD samples begin `UKR.5r1\x01`; the payload format and
-  serialization/encryption are not established by this header alone.
-- The errors in kk4s are caught by KAG; there is no runtime crash, but PBD-backed content will not
-  load. No no-op `Scripts.loadDataPack` was added, and no PBD, IV, or game asset was placed in Git.
-  Status: **BLOCKED** pending a reusable format/source reference and synthetic vectors.
+  returned object to `loadDATA`. The consumer indexes the returned value directly: for the observed
+  real packs the root is an Array whose `[0]` is `{width, height}` and whose remaining items are
+  layer/group Dictionaries (`name`, `layer_id`, `group_layer_id`, `layer_type`, `left`, `top`,
+  `width`, `height`, `opacity`, `visible`, `type`).
+- Real ATRI `fgimage.xp3` `.pbd` files are not `UKR.5r1`; all 49 are `TJS/4s0`, `crypt=1`, `iv_len=0`.
+  The format is the PackinOne data pack implemented by the MIT `xp3-brute` 0.3.7 reference:
+  BLAKE2s-256 keyed by the header seed, XXH32 nonce, ChaCha8/12/20, PackinOne xorshift stream
+  expansion, then 16-bit-framed LZ4 with a 64 KiB dictionary. `TJS/ns0` is the same TJS value stream
+  without cipher/framing and with a final checksum.
+- Implementation: `compat/pbd` (self-contained codec; no external lz4/xxhash link dependency for the
+  `.pbd` path), `Scripts.loadDataPack` in `compat/kk4s_scripts.cpp`, tests in `tests/pbd`.
+  All 49 real samples decode; synthetic tests cover every value type, all six crypt modes,
+  dictionary LZ4, truncation and corruption. `outeriv` is ignored because every observed pack has
+  `iv_len=0`; a pack that needs it would fail the type checker rather than produce garbage.
+- Verified in ATRI desktop: after starting a new game, `Scripts.loadDataPack` loads
+  `tatr03_m/s/w/l/ll.pbd` (all `ok`), no exception follows, and the PBD-backed character sprite and
+  dialogue render. `KK4S_TRACE_DATAPACK=1` logs each successful pack load.
+
+## Switch retest 2026-11-04 (DataPack + XP3 build)
+
+- NRO: 27,571,621 bytes, SHA-256
+  `F9F0F4D1FFA2F2299EFCC403D55F1C4E38771B603939F46EC384F21A134D82DE`, uploaded to
+  `sdmc:/switch/kk4s/kk4s.nro`. Logs: `kk4s-20261104-015354.log` (ATRI),
+  `kk4s-20261104-015432.log` (FSN), `kk4s-20261104-015516.log` (launcher).
+- FSN (Russian patch): **PASS**. Mounts the archives, loads `first.ks` / `タイトル.ks` /
+  `mirrormoon.ks`, reaches the title and exits cleanly; the user confirms it works on hardware.
+- ATRI: **enters the game** (the previous title/Win32-dialog failures are gone) and renders the
+  opening dialogue/sprites/BGM plus Steam achievements. At `start.ks:25` it prints its fatal-error
+  banner and exits to the launcher after `Member "fillAlpha" does not exist`
+  (`affinesourcenoise.tjs loadImages`) and `Member "clipAlphaRect" does not exist`
+  (`affinelayer.tjs onPaint`). The log still reports `layerExDraw.dll`, `layerExImage.dll`,
+  `layerExRaster.dll` and `layerExBtoA.dll` as ignored.
+- Desktop reproduces the same failure with the same build (40 inputs over 54 s): three `fillAlpha`
+  exceptions, then `clipAlphaRect` and the fatal-error exit. The blocker is therefore the generic
+  `layerEx*` plugin API, not PBD, XP3, or Switch-specific behavior. Next cycle: implement the
+  `layerEx*` contracts and retest ATRI/FSN.
 
 ## Commits and unresolved items
 

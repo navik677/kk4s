@@ -8,16 +8,21 @@
 //   Scripts.clone(obj)           recursive copy of Dictionary / Array trees; other values as is
 //   Scripts.isNullContext(obj)   true when obj is a closure with no object context
 //   Scripts.getObjectContext(obj) the object context a closure is bound to, or void
+//   Scripts.loadDataPack(storage) decode a TJS/ns0 or TJS/4s0 `.pbd` data pack
 //
 // Each is only added when the engine has no such member. Implemented natively because
 // TJS function expressions here cannot see the locals of the function around them.
 #include "kk4s_compat.h"
 
+#include "CharacterSet.h"
 #include "ScriptMgnIntf.h"
+#include "StorageIntf.h"
+#include "pbd/pbd.h"
 #include "tjsArray.h"
 #include "tjsDictionary.h"
 #include "tjsObject.h"
 
+#include <cstdlib>
 #include <functional>
 #include <utility>
 #include <vector>
@@ -134,6 +139,75 @@ bool EqualStruct(const tTJSVariant& a, const tTJSVariant& b, int depth) {
         return true;
     }
     return false;
+}
+
+// Converts a decoded data pack value tree to TJS values. Arrays and
+// Dictionaries are real TJS containers, so the game can index them normally.
+tTJSVariant ToVariant(const kk4s::pbd::Value& v, int depth) {
+    using Type = kk4s::pbd::Value::Type;
+    if (depth > 256) return tTJSVariant();
+    switch (v.type) {
+        case Type::Void:
+            return tTJSVariant();
+        case Type::String: {
+            tjs_string w;
+            if (!TVPUtf8ToUtf16(w, v.string)) w.clear();
+            return tTJSVariant(ttstr(w.c_str()));
+        }
+        case Type::Integer:
+            return tTJSVariant((tTVInteger)v.integer);
+        case Type::Double:
+            return tTJSVariant((tTVReal)v.real);
+        case Type::Array: {
+            iTJSDispatch2* a = TJSCreateArrayObject();
+            tTJSVariant out(a, a);
+            a->Release();
+            for (std::size_t i = 0; i < v.array.size(); i++) {
+                tTJSVariant e = ToVariant(v.array[i], depth + 1);
+                a->PropSetByNum(TJS_MEMBERENSURE, (tjs_int)i, &e, a);
+            }
+            return out;
+        }
+        case Type::Dictionary: {
+            iTJSDispatch2* d = TJSCreateDictionaryObject();
+            tTJSVariant out(d, d);
+            d->Release();
+            for (auto& kv : v.dictionary) {
+                tjs_string key;
+                if (!TVPUtf8ToUtf16(key, kv.first)) continue;
+                tTJSVariant e = ToVariant(kv.second, depth + 1);
+                ttstr name(key.c_str());
+                d->PropSet(TJS_MEMBERENSURE, name.c_str(), nullptr, &e, d);
+            }
+            return out;
+        }
+    }
+    return tTJSVariant();
+}
+
+// Reads a whole storage (file or archive member).
+bool ReadStorage(const ttstr& storage, std::vector<tjs_uint8>& out) {
+    tTJSBinaryStream* stream = nullptr;
+    try {
+        stream = TVPCreateStream(TVPNormalizeStorageName(storage), TJS_BS_READ);
+    } catch (...) {
+        stream = nullptr;
+    }
+    if (!stream) return false;
+    try {
+        tjs_uint64 size = stream->GetSize();
+        if (size > 0x7fffffff) {
+            delete stream;
+            return false;
+        }
+        out.resize((std::size_t)size);
+        if (size) stream->ReadBuffer(out.data(), (tjs_uint)size);
+    } catch (...) {
+        delete stream;
+        return false;
+    }
+    delete stream;
+    return true;
 }
 
 void Define(iTJSDispatch2* scripts, const tjs_char* name, NativeFn fn) {
@@ -268,6 +342,36 @@ void InstallScriptsCompat() {
             tTJSVariantClosure c = p[0]->AsObjectClosureNoAddRef();
             if (c.ObjThis && r) *r = tTJSVariant(c.ObjThis, c.ObjThis);
         }
+        return TJS_S_OK;
+    });
+
+    // Scripts.loadDataPack(storage): KAGZ's psdlayer.tjs uses this for `.pbd`
+    // files. They are TJS value streams (TJS/ns0) or PackinOne-encrypted,
+    // LZ4-framed streams (TJS/4s0); the decoded tree is exactly what loadDATA
+    // consumes: root[0] is the page size and the remaining items are layers.
+    Define(scripts, TJS_W("loadDataPack"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2*) -> tjs_error {
+        if (n < 1) return TJS_E_BADPARAMCOUNT;
+        if (p[0]->Type() == tvtVoid) return TJS_E_INVALIDPARAM;
+        ttstr storage = *p[0];
+
+        std::vector<tjs_uint8> data;
+        if (!ReadStorage(storage, data)) {
+            LogTJS(ttstr(TJS_W("Scripts.loadDataPack: cannot read ")) + storage);
+            return TJS_E_FAIL;
+        }
+
+        kk4s::pbd::Value root;
+        std::string error;
+        if (!kk4s::pbd::Decode(data.data(), data.size(), root, error)) {
+            tjs_string message;
+            TVPUtf8ToUtf16(message, error);
+            LogTJS(ttstr(TJS_W("Scripts.loadDataPack: ")) + storage + TJS_W(": ") + ttstr(message.c_str()));
+            return TJS_E_FAIL;
+        }
+        if (getenv("KK4S_TRACE_DATAPACK")) {
+            LogTJS(ttstr(TJS_W("Scripts.loadDataPack: ")) + storage + TJS_W(" ok"));
+        }
+        if (r) *r = ToVariant(root, 0);
         return TJS_S_OK;
     });
 }

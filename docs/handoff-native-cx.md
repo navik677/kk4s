@@ -16,14 +16,16 @@ all `*.xp3` for all games. ATRI is only a test fixture; no ATRI-specific keys, o
 branches. Keep new changes local for review unless the user explicitly asks to push. The user writes
 Ukrainian; keep answers short, outcome first.
 
-## State (ATRI is only a test fixture; universal engine is the goal) - updated 2026-11-02 03:20
+## State (ATRI is only a test fixture; universal engine is the goal) - updated 2026-11-04
 
 ATRI is the PC Steam-repack test fixture only; it is not the product or acceptance target. The
 generic CXDEC/Steam path recovers its scheme automatically on desktop from the embedded PE TPM
-(12/12 real-entry validation, without a prebuilt profile). On Switch the 2026-11-02 hardware retest
-still **fails**: the new headless-dialog fallback gets past the earlier void-ID failure, but the run
-logs a missing `WIN32Dialog.setItemText` member immediately after `title:xrated, 0`. See the exact
-logs and test record below. Implement reusable KiriKiri Z APIs, not ATRI-specific behavior.
+(12/12 real-entry validation, without a prebuilt profile). The 2026-11-04 hardware retest gets
+further: the game enters `start.ks`, renders the opening and the PBD-backed `psd` layers, then fails
+on missing `layerEx*` members (`KAGLayer.clipAlphaRect`, `Layer.fillAlpha`) and exits through its own
+fatal-error banner. The identical failure reproduces on desktop, so it is a generic plugin gap, not
+Switch-specific. The earlier void-ID / `setItemText` failures are gone. See the exact logs and test
+record below. Implement reusable KiriKiri Z APIs, not ATRI-specific behavior.
 
 Desktop automatic CX scheme recovery is implemented in `compat/cxdec/scheme_recover.cpp` with
 Capstone, invoked by `BindCxDecoder()` only for positive hashed-name detection (`hnfn` or XP3v2
@@ -165,10 +167,16 @@ KAG's `Action.tjs` completion callbacks),
   `getNumberdId`: void IDs return Win32's invalid-control ID (`0`), while other IDs call the original
   method. It now also exposes `setItemText`; with no dialog HWND, it returns Win32's false result.
   Desktop fixture passes; Switch rebuild/hardware retest is still pending.
-- KAGZ PC support still lacks a real `AlphaMovie.dll` (AJPM/`.amv` video), `Scripts.loadDataPack`/
-  `saveDataPack` (the `.pbd` `UKR.5r1` data packs), and the drawing half of `textrender.dll`; the
-  `TextRenderBase` API surface now exists but draws nothing. Implement from the plugin contracts and
-  verify another KAGZ game.
+- KAGZ PC support still lacks a real `AlphaMovie.dll` (AJPM/`.amv` video),
+  `Scripts.saveDataPack`/`makeDataPackThumb`/`makeDataPackDigest`, the `layerEx*` family and the
+  drawing half of `textrender.dll`; the `TextRenderBase` API surface now exists but draws nothing.
+  `Scripts.loadDataPack` is implemented: real PackinOne `TJS/4s0` `.pbd` packs decode to TJS
+  Array/Dictionary trees (`compat/pbd`, `tests/pbd`), and ATRI loads `tatr03_*.pbd` while entering
+  the first scene. `outeriv` is not used because all observed packs have `iv_len=0`. The 2026-11-04
+  Switch log and an identical desktop run fail at `KAGLayer.clipAlphaRect` (and
+  `AffineSourceNoise` -> `Layer.fillAlpha`) while `layerExDraw.dll`, `layerExImage.dll`,
+  `layerExRaster.dll` and `layerExBtoA.dll` are still ignored: implement those contracts next.
+  Implement the rest from the plugin contracts and verify another KAGZ game.
 - Memory: `PSBFile.root` is built eagerly (largest ATRI `.scn` ~126k nodes); fine so far, untested on
   Switch with many files loaded.
 - `E:\atri-cx-probe` (hard-link mirror of ATRI used to dump memory) can be deleted.
@@ -212,6 +220,35 @@ The `WIN32Dialog.setItemText(id, text)` base method is implemented in the headle
 focused desktop TJS fixture passes; this only prevents a missing-member exception and does not
 provide a native dialog UI. Rebuild and retest on Switch; investigate any subsequent generic dialog
 contract failure rather than adding an ATRI-specific callback.
+
+## DataPack / layerEx Switch retest (2026-11-04)
+
+Build: `out/kk4s.nro`, 27,571,621 bytes, SHA-256
+`F9F0F4D1FFA2F2299EFCC403D55F1C4E38771B603939F46EC384F21A134D82DE`, built from the work branch
+with the generic DataPack + XP3 changes and uploaded to `sdmc:/switch/kk4s/kk4s.nro`. Logs copied
+from the SD: `kk4s-20261104-015354.log` (ATRI), `kk4s-20261104-015432.log` (FSN),
+`kk4s-20261104-015516.log` (launcher).
+
+- FSN (Russian patch): **PASS**. The log mounts the archives, loads `first.ks`, `タイトル.ks`,
+  `mirrormoon.ks`, reaches the title and exits cleanly (`TVPExitApplication(0)`); the user confirms
+  it works on hardware. The earlier desktop title/load-menu regression also passed on 2026-11-04.
+- ATRI: **enters the game** (the previous `title:xrated` / Win32-dialog failures are gone), loads
+  `psdlayer.tjs` and `AffineSourcePSD.tjs`, renders the opening dialogue/sprites/BGM and logs Steam
+  achievements. At `start.ks:25` it prints its fatal-error banner
+  (`致命的なエラーが発生しました`) and exits to the launcher after:
+  - `Member "fillAlpha" does not exist` at `affinesourcenoise.tjs(1)[(function) loadImages]`
+    (VM ip 74), call `_image.fillAlpha()` on a `Layer`;
+  - `Member "clipAlphaRect" does not exist` at `affinelayer.tjs(1)[(function) onPaint]`
+    (VM ip 374), call `KAGLayer.clipAlphaRect(dx, dy, dest, sx, sy, w, h, flag)`.
+  The log reports `compat: plugin not available, ignored: layerExImage.dll`,
+  `layerExRaster.dll`, `layerExDraw.dll` and `layerExBtoA.dll`.
+- The same failure reproduces on desktop with the same build (40 `pad A` inputs over 54 s):
+  identical `fillAlpha` exceptions three times, then `clipAlphaRect` and the game's fatal-error
+  exit. This proves the crash is a generic missing `layerEx*` contract, not a Switch-specific or
+  PBD-specific defect; the earlier desktop "opening renders" checks simply stopped before this
+  scene.
+- Next: implement the `layerEx*` plugin contracts (at minimum the `Layer` alpha-fill primitive and
+  `KAGLayer.clipAlphaRect`), add synthetic fixtures/tests, and retest ATRI plus the FSN regression.
 
 ## FSN crash on Switch (crash report received after 22:00 run)
 

@@ -11,9 +11,9 @@ Status (2026-11-02, overnight branch):
 - Switch still requires a scheme in user data; porting the generic PE/x86 analyzer to Switch remains
   open. ATRI is only a PC Steam-repack test fixture, not the product.
 - The user confirms Fate/FSN and other tested games work on Switch; Fate is playable beginning to
-  end. ATRI still fails to reach its title menu on the latest hardware-tested build; the current
-  source adds a headless `setItemText` result but is not yet hardware-tested. See “ATRI test fixture
-  status” and `docs/overnight-handoff.md`.
+  end. ATRI now enters the game on Switch (2026-11-04 NRO) and renders the PBD-backed opening, then
+  stops at `start.ks:25` on missing `layerEx*` members (`clipAlphaRect`, `fillAlpha`) — the same
+  failure as desktop. See “ATRI test fixture status” and `docs/overnight-handoff.md`.
 - NekoPara Vol. 1 uses XP3v2 `eliF` names; the runtime maps its 1201 archive entries and locates
   `startup.tjs`, but its content remains encrypted (desktop scheme recovery 0/12). The supplied
   PE32 `.tpm` has no standard CXDEC LCG signature, so no game-specific key or scheme is embedded.
@@ -123,25 +123,29 @@ decoder and PE/internal-module reader; until then, generate a scheme with the PC
   inflate; to investigate).
 - Verified on Switch too (original folder on the SD card): all Cx archives bind, `patch.xp3` loads.
 - On desktop, a no-profile run recovers the embedded scheme automatically (12/12 verified) and
-  decrypts all Cx archives. It reaches title setup, then reports missing general KAGZ compatibility
-  (`AlphaMovie`, `fontScale`); this is not a playable-game milestone. A previous desktop run with a
-  prepared profile rendered the translated title/menu. On Switch, the user reports it still does not
-  reach the title menu. Its latest log reaches `title:xrated, 0` then fails in
-  `win32dialog.tjs` dialog handling. The source now handles the void ID and `setItemText` headlessly,
-  but the new source has not had a Switch build/hardware retest. Fix the generic dialog/log wrapper
-  contract, not ATRI behavior. Compatibility work to date (all general):
+  decrypts all Cx archives. With `Scripts.loadDataPack` it enters the game and renders the
+  PBD-backed `psd` layers (ATRI loads `tatr03_m/s/w/l/ll.pbd` while entering the first scene). On
+  Switch, the 2026-11-04 NRO also enters the game and plays the opening, then prints its fatal-error
+  banner (`start.ks:25`) and exits to the launcher on `Member "clipAlphaRect" does not exist` in
+  `affinelayer.tjs onPaint`, preceded by `Member "fillAlpha" does not exist` in
+  `affinesourcenoise.tjs loadImages`. The identical sequence reproduces on desktop, so it is a
+  generic missing-plugin gap. The log still reports
+  `layerExDraw.dll`, `layerExImage.dll`, `layerExRaster.dll` and `layerExBtoA.dll` as ignored, so the
+  next generic work is that plugin family, not ATRI behavior. Compatibility work to date (all general):
   `win32dialog.dll` stub, `psbfile.dll` (`PSBFile` + `psb://` media; parser in `compat/psb`, tests in
-  `tests/psb`), `Scripts.foreach/getObjectKeys/getObjectCount/clone/equalStruct`, custom storage media
-  names (`psb://`, `var://`) that were turned into file paths, the temp directory
+  `tests/psb`), `Scripts.foreach/getObjectKeys/getObjectCount/clone/equalStruct`, `Scripts.loadDataPack`
+  (`TJS/ns0` and PackinOne `TJS/4s0` `.pbd` packs; decoder in `compat/pbd`, tests in `tests/pbd`),
+  custom storage media names (`psb://`, `var://`) that were turned into file paths, the temp directory
   (`sdmc:/tmp` -> `<data>/tmp`), `[emb escape=false]` and the `taglist` element field of
   `KAGParserEx.dll` (emulated in the built-in KAG parser, only for games that link that plugin).
 - **Steam chain (fixed 2026-11-01):** kk4s now detects the Steam build (`steam_api.dll` +
   `steam.tjs`/`steam.xp3` in the folder), passes `-steam=yes` and `-debugwin=no` (release semantics)
   and provides `krkrsteam.dll` (a `Steam` object; achievements logged, cloud off). `steam.tjs` then
   installs its `[実績]` handling and the game no longer dies there.
-- `textrender.dll` is currently a no-op stub; that is not a playable-game milestone. Remaining
-  KAGZ support includes the real text renderer and other generally useful plugins (`layerEx*`,
-  `AlphaMovie`, ...). ATRI only exercises those shared compatibility gaps; it is not the product.
+- `textrender.dll` exposes the `TextRenderBase` API surface but still draws nothing; that is not a
+  playable-game milestone. Remaining KAGZ support includes the real text renderer and other generally
+  useful plugins (`layerEx*`, `AlphaMovie`, ...). ATRI only exercises those shared compatibility gaps;
+  it is not the product.
 
 ## FSN regression check (2026-11-01)
 
