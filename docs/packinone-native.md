@@ -1,5 +1,9 @@
 # Native PackinOne support — where it stopped (2026-11-01)
 
+> **Superseded (2026-11-05).** The branch described here is merged; the current state is in
+> `docs/status.md` (round 3) and `docs/plugins.md`. Keep this page as the evidence trail for the
+> `hnfn`/XOR findings, not as a description of what is missing today.
+
 Goal: run the original `ATRI -My Dear Moments-` repack folder on kk4s without any
 extraction/repacking. The work is in the local branch `wip/packinone-native`
 (commit `3201fa9`), based on `main` `4d767de`. It is **not** on `main` and not

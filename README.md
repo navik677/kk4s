@@ -80,6 +80,7 @@ sdmc:/switch/kk4s/
 | Sharin no Kuni, Himawari no Shoujo (російський переклад) | грається |
 | Tsukihime + Plus-Disc (російський переклад) | грається |
 | The Makings of a Lady (російський переклад, `xp3filter.tjs`) | грається |
+| ATRI -My Dear Moments- (Steam-версія, оригінальна папка) | грається; окремі ефекти з `generateWhiteNoise` поки не малюються |
 
 Якщо гра не запускається, лог у `sdmc:/switch/kk4s/logs/` зазвичай показує причину: помилку скрипту, плагін, якого бракує, або відсутній шрифт.
 
@@ -102,6 +103,9 @@ bash tools/build-switch.sh
 
 # PC viewer (Linux / Windows MSYS2)
 DEPS=1 bash tools/build-desktop.sh                                       # → out-desktop/kk4s
+
+# Перевірки: синтетичні ігри, без контенту реальних
+bash tools/run-tests.sh                                                  # xp3 + io + decoders
 ```
 
 ## Структура

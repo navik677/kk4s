@@ -1,6 +1,6 @@
 # CXDEC (KiriKiri "Cx" XP3 filter)
 
-Status (2026-11-02, overnight branch):
+Status (2026-11-05):
 
 - Generic decoder in the runtime (`compat/cxdec`), verified byte-exact.
 - Runtime maps both kk4s/PackinOne `hnfn` and Kirikiri Z XP3v2 `eliF` filename records by `adlr`.
@@ -11,13 +11,13 @@ Status (2026-11-02, overnight branch):
 - Switch still requires a scheme in user data; porting the generic PE/x86 analyzer to Switch remains
   open. ATRI is only a PC Steam-repack test fixture, not the product.
 - The user confirms Fate/FSN and other tested games work on Switch; Fate is playable beginning to
-  end. ATRI now enters the game on Switch (2026-11-04 NRO) and renders the PBD-backed opening, then
-  stops at `start.ks:25` on missing `layerEx*` members (`clipAlphaRect`, `fillAlpha`) — the same
-  failure as desktop. See “ATRI test fixture status” and `docs/overnight-handoff.md`.
-- NekoPara Vol. 1 uses XP3v2 `eliF` names; the runtime maps its 1201 archive entries and locates
-  `startup.tjs`, but its content remains encrypted (desktop scheme recovery 0/12). The supplied
-  PE32 `.tpm` has no standard CXDEC LCG signature, so no game-specific key or scheme is embedded.
-  Further support needs a generic compatible filter/TPM implementation.
+  end. ATRI enters the game on Switch (2026-11-04 NRO) and renders the PBD-backed opening; the
+  `start.ks:25` stop on `clipAlphaRect` / `fillAlpha` is fixed in `9f229bb` by the PackinOne shim, so
+  the opening runs on desktop and the 6.5-min run is stable. See “ATRI test fixture status”.
+- A second, scheme-free filter variant exists: `TinyFilter` (`compat/cxdec/tinyfilter.{h,cpp}`) XORs
+  each entry with one byte derived from its `adlr`. It is validated exactly like a scheme (adler32 of
+  the decrypted data == `adlr`, 4/5 of samples) and is what NekoPara's archives bind
+  (`tinyfilter/adlr-xor`).
 
 ## Three layers
 
@@ -145,13 +145,16 @@ decoder and PE/internal-module reader; until then, generate a scheme with the PC
 - On desktop, a no-profile run recovers the embedded scheme automatically (12/12 verified) and
   decrypts all Cx archives. With `Scripts.loadDataPack` it enters the game and renders the
   PBD-backed `psd` layers (ATRI loads `tatr03_m/s/w/l/ll.pbd` while entering the first scene). On
-  Switch, the 2026-11-04 NRO also enters the game and plays the opening, then prints its fatal-error
-  banner (`start.ks:25`) and exits to the launcher on `Member "clipAlphaRect" does not exist` in
-  `affinelayer.tjs onPaint`, preceded by `Member "fillAlpha" does not exist` in
-  `affinesourcenoise.tjs loadImages`. The identical sequence reproduces on desktop, so it is a
-  generic missing-plugin gap. The log still reports
-  `layerExDraw.dll`, `layerExImage.dll`, `layerExRaster.dll` and `layerExBtoA.dll` as ignored, so the
-  next generic work is that plugin family, not ATRI behavior. Compatibility work to date (all general):
+  Switch, the 2026-11-04 NRO also enters the game and plays the opening. That build then stopped at
+  `start.ks:25` on `Member "clipAlphaRect" does not exist` (`affinelayer.tjs onPaint`, after
+  `fillAlpha` in `affinesourcenoise.tjs loadImages`); `9f229bb` adds the `PackinOne.dll` shim that
+  supplies both, so the opening now runs on desktop (not yet on the SD-card build). A 6.5-min run on
+  2026-11-05 survived and quit cleanly; the only remaining errors are 6
+  `LayerExAffineSourceNoise.generateWhiteNoise` calls (not implemented, so affine noise layers draw
+  nothing) and the 2 known `k2compat` background exceptions. The log still reports
+  `layerExDraw.dll`, `layerExImage.dll`, `layerExRaster.dll` and `layerExBtoA.dll` as ignored, so
+  other members of that family can surface next; that is generic plugin work, not ATRI behavior.
+  Compatibility work to date (all general):
   `win32dialog.dll` stub, `psbfile.dll` (`PSBFile` + `psb://` media; parser in `compat/psb`, tests in
   `tests/psb`), `Scripts.foreach/getObjectKeys/getObjectCount/clone/equalStruct`, `Scripts.loadDataPack`
   (`TJS/ns0` and PackinOne `TJS/4s0` `.pbd` packs; decoder in `compat/pbd`, tests in `tests/pbd`),

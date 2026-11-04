@@ -42,6 +42,7 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
 | Sharin no Kuni, Himawari no Shoujo | plain archives; saving, touch and gamepad checked |
 | Tsukihime + Plus-Disc | own font (`umineko.ttf`) |
 | The Makings of a Lady – Purity Yours to Defile | `xp3filter.tjs` (`b.xor(0,l,h)`); existing saves from the game folder are migrated |
+| ATRI -My Dear Moments- (Steam release, original folder) | User-confirmed playable on Switch; `TinyFilter`/CXDEC bind 6 archives, PackinOne layers work. Affine-noise effects (`generateWhiteNoise`) are not drawn yet (round 3) |
 
 ## Compatibility matrix (CXDEC, 2026-11-04)
 
@@ -53,7 +54,7 @@ decryption; rendering was **not** observed.
 |---|---|---|---|---|---|
 | NekoPara Vol. 1 | `startup.tjs` ended in `Cannot convert given narrow string to wide string`; CX recovery 0/12 | `startup.tjs` decrypts and its scripts run; 8147 files found, 7917 active | `tinyfilter/adlr-xor` bound on `data.xp3`, `voice.xp3`, `emote.xp3`, `adultsonly.xp3` (12/12, 8/8 samples); 938 real entries decrypt to `adler32 == adlr` | stops at `Member "Motion" does not exist` (`motion.tjs:28`, needs `emoteplayer.dll`); `patch.xp3` is a decoy index (222 entries, one `adlr`) and is left unfiltered on purpose | **CXDEC works; boots into its scripts, not playable** |
 | Fate/stay night (Russian patch) | PASS | PASS | `project dir: …/fsn/data.xp3>`, same mounts | 0 script exceptions, 0 `cxdec` lines (no hashed-name archive) | **regression PASS** |
-| ATRI -My Dear Moments- | Cx auto-recovered, stops at `start.ks:25` on missing `layerEx*` | unchanged | 6 archives bind the auto-recovered scheme (12/12, `steam.xp3` 2/2) | 2 pre-existing `k2compat` background exceptions | **no regression** |
+| ATRI -My Dear Moments- | Cx auto-recovered, stops at `start.ks:25` on missing `layerEx*` | unchanged | 6 archives bind the auto-recovered scheme (12/12, `steam.xp3` 2/2) | 2 pre-existing `k2compat` background exceptions | **no regression** (superseded by round 3) |
 
 ## Compatibility matrix, round 2: Motion, TJS `typeof`, plugin layer (2026-11-04, same branch)
 
@@ -64,7 +65,7 @@ window or sound output.
 |---|---|---|---|---|---|
 | NekoPara Vol. 1 | `Member "Motion" does not exist` (`motion.tjs:28`) | window is built, KAGZ environment initialises, the engine executes `title.ks` (line 13) | `Motion.*` registered and `emoteplayer.dll` linked; `typeof` of an undeclared global returns `"undefined"`; `windowEx.dll`/`menu.dll` members present | fatal `Image Load Error /Invalid image` while `buttonlayer.tjs:_copyButtonUIStates` loads `window@help__config%layer` (`kaglayer.tjs:69` → `Layer.loadImages`); emotes are not rendered (no E-mote runtime) | **starts, CXDEC + window OK, stops in the title UI** |
 | Fate/stay night | PASS | PASS | `data.xp3` project dir, 0 script exceptions | — | **regression PASS** |
-| ATRI -My Dear Moments- | 2 `k2compat` background exceptions | 2 (same) | Cx scheme still binds 12/12 | `layerEx*` gap unchanged | **no regression** |
+| ATRI -My Dear Moments- | 2 `k2compat` background exceptions | 2 (same) | Cx scheme still binds 12/12 | `layerEx*` gap unchanged | **no regression** (superseded by round 3) |
 
 TJS change behind this: `typeof someGlobalThatDoesNotExist` used to throw `Member ... does not
 exist` because a global symbol was compiled as a plain `gpd`; the compiler now asks for
@@ -193,20 +194,20 @@ this harness (the same taps do open FSN's menu), so the long run proves stabilit
   `firespark` / lens effects missing).
 - `.tpm` decryption plugins (e.g. `cxdec.tpm`) are not run: encrypted games need an `xp3filter.tjs`.
 - Universal runtime is the goal; ATRI is only the PC Steam-repack test fixture, not a product target.
-  Generic `hnfn` mapping, CXDEC decoding, Steam compatibility and `Scripts.loadDataPack` are
-  implemented. **Desktop now recovers supported CX schemes at runtime** from PE/TPM data and
-  validates them against XP3 adlr samples; the test ATRI folder auto-recovered 12/12 without a
-  prebuilt scheme profile. Switch still requires a CX profile until the portable x86/PE analyzer is
-  implemented. On the 2026-11-04 Switch build ATRI enters the game and plays the opening
-  (PBD-backed `psd` layers, dialogue, sprites, BGM, achievements). It then prints its fatal-error
-  banner (`start.ks:25`) and exits to the launcher on `Member "clipAlphaRect" does not exist` in
-  `affinelayer.tjs onPaint`, preceded by `Member "fillAlpha" does not exist` in
-  `affinesourcenoise.tjs loadImages`; the same sequence reproduces on desktop, so it is generic, not
-  Switch-specific. The log still reports
-  `layerExDraw.dll`, `layerExImage.dll`, `layerExRaster.dll` and `layerExBtoA.dll` as ignored. The
-  next generic work is the `layerEx*` plugin API (alpha fill/clip primitives), not ATRI behavior.
-  This does not make ATRI a product target: implement reusable KiriKiri Z APIs/plugins and test
-  across unrelated games. Details: [cxdec.md](cxdec.md), [handoff-native-cx.md](handoff-native-cx.md).
+  Generic `hnfn` mapping, CXDEC decoding (x86 scheme interpreter and the scheme-free `TinyFilter`
+  variant), Steam compatibility and `Scripts.loadDataPack` are implemented. **Desktop recovers
+  supported CX schemes at runtime** from PE/TPM data and validates them against XP3 adlr samples; the
+  test ATRI folder auto-recovered 12/12 without a prebuilt scheme profile. Switch still requires a CX
+  profile until the portable x86/PE analyzer is implemented. ATRI enters the game on Switch and
+  desktop and, since `9f229bb`, plays the opening: the `PackinOne.dll` shim supplies
+  `Layer.fillAlpha` and `Layer.clipAlphaRect`, which used to end the run at `start.ks:25`. The
+  2026-11-05 desktop run lasted 6.5 min and quit cleanly; the remaining errors are
+  `LayerExAffineSourceNoise.generateWhiteNoise` (6×, not implemented, so those noise layers draw
+  nothing) and the 2 known `k2compat` background exceptions. `layerExDraw.dll`, `layerExImage.dll`,
+  `layerExRaster.dll` and `layerExBtoA.dll` are still reported as ignored, so other members of that
+  family may surface next. This does not make ATRI a product target: implement reusable KiriKiri Z
+  APIs/plugins and test across unrelated games. Details: [cxdec.md](cxdec.md),
+  [handoff-native-cx.md](handoff-native-cx.md).
 - XP3 script filters are **not thread-safe**. `8d4bef4` routes filtered game graphics/touchimages
   through synchronous main-thread loading. User-confirmed: Fate/FSN now plays through to the end and
   other tested games work well. This hardware regression is mandatory for further filter changes.

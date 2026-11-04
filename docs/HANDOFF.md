@@ -1,19 +1,23 @@
 # Handoff — read this first in a new session
 
-Last update: 2026-11-01. Goal: **a universal Kirikiri runtime/compatibility layer**: any KAG/TJS2
+Last update: 2026-11-05. Goal: **a universal Kirikiri runtime/compatibility layer**: any KAG/TJS2
 game folder (plain or repacked) runs unmodified on Switch and PC. ATRI is one PC-repack test fixture,
 not the target. No per-game fixes, game files, keys or conversion; compatibility belongs in the engine,
 `compat/` or kk4s' own files. Full requirements: `docs/original-prompt.md`; milestones:
 `docs/roadmap.md`.
 
-## Where we are (2026-11-04)
+## Where we are (2026-11-05)
 
 The SD holds NRO `F9F0F4D1FFA2F2299EFCC403D55F1C4E38771B603939F46EC384F21A134D82DE`
-(27,571,621 bytes), built from the work branch with the generic DataPack/XP3 work. User confirms on
-Switch that Fate/FSN and the other tested games work well; **Fate is playable from beginning to end**.
-The generic XP3-filter threading fix is in that build. ATRI now enters the game on Switch and plays
-the opening (PBD-backed layers, dialogue, sprites, BGM); it then exits to the launcher on missing
-`layerEx*` members (`clipAlphaRect`, `fillAlpha`).
+(27,571,621 bytes, built 2026-11-04 from the work branch with the generic DataPack/XP3 work). User
+confirms on Switch that Fate/FSN and the other tested games work well; **Fate is playable from
+beginning to end**. The generic XP3-filter threading fix is in that build. ATRI also enters the game
+on Switch and plays the opening (PBD-backed layers, dialogue, sprites, BGM).
+
+The branch `compat/tinyfilter-2026-11-04` (HEAD `9f229bb`, **not pushed** as of 2026-11-05) adds the
+scheme-free TinyFilter CXDEC variant, the PackinOne `Layer.fillAlpha` / `clipAlphaRect` shim and the
+Motion/EmotePlayer model. It is newer than the NRO on the SD card, so Switch hardware has not run it
+yet; the 2026-11-05 desktop results are in `docs/status.md` (round 3).
 
 The current native repack work is engine-wide: `hnfn` names + generic CXDEC decoder/scheme binding,
 Steam-build argument detection, `Scripts.loadDataPack`, and plugin compatibility. ATRI is used only to
@@ -82,13 +86,14 @@ paths, keys, offsets, names or behavior. Every compatibility fix must implement 
 API/semantic or a generally detectable plugin/platform behavior; test against the existing game set.
 
 - Generic native repack path is implemented: `hnfn` names, CXDEC decoder, and verified scheme binding.
-  `Scripts.loadDataPack` decodes real PackinOne `TJS/4s0` `.pbd` packs. ATRI's original folder now
-  enters the game on Switch and desktop; the 2026-11-04 logs then fail on
-  `Member "clipAlphaRect" does not exist` in `affinelayer.tjs onPaint` (after `fillAlpha` in
-  `affinesourcenoise.tjs loadImages`), print the game's fatal-error banner (`start.ks:25`) and exit.
-  The identical desktop failure proves this is the missing generic `layerEx*` plugin API
-  (`layerExDraw`/`layerExImage`/`layerExRaster`/`layerExBtoA` are still ignored), not an
-  ATRI-specific defect.
+  `Scripts.loadDataPack` decodes real PackinOne `TJS/4s0` `.pbd` packs. ATRI's original folder
+  enters the game on Switch and desktop. The 2026-11-04 NRO stopped at `start.ks:25` on
+  `Member "clipAlphaRect" does not exist` (`affinelayer.tjs onPaint`, after `fillAlpha` in
+  `affinesourcenoise.tjs loadImages`); `9f229bb` supplies both through the `PackinOne.dll` shim, so
+  the opening now runs. A 6.5-min desktop run (2026-11-05) stayed alive and quit cleanly; the only
+  remaining ATRI errors are 6 `LayerExAffineSourceNoise.generateWhiteNoise` calls (not implemented,
+  so affine noise layers draw nothing) and the 2 known `k2compat` background exceptions. Still a test
+  fixture, not a target.
 - Steam detection (`steam_api.dll` plus `steam.tjs`/`steam.xp3`), `-steam=yes`, KZ release
   `-debugwin=no`, and the `krkrsteam.dll` compatibility object are in the engine layer. Achievements
   are logged, cloud is unavailable.
@@ -233,11 +238,12 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 
 ## Next steps (universal engine; ATRI is one test fixture)
 
-1. Implement the generic `layerEx*` plugin API exposed by ATRI's Switch run: `layerExDraw.dll`
-   (`fillAlpha`), and whichever plugin provides `KAGLayer.clipAlphaRect`, plus the ignored
-   `layerExImage.dll` / `layerExRaster.dll` / `layerExBtoA.dll`. Do not special-case ATRI; implement
-   the plugin contracts (see `docs/plugins.md`), add focused fixtures/tests, then retest ATRI and
-   other KAGZ games.
+1. Implement the remaining generic plugin APIs named by the logs: `LayerExAffineSourceNoise`
+   (`generateWhiteNoise`, 6 exceptions per 6.5-min ATRI run), the still-ignored `layerExImage.dll` /
+   `layerExRaster.dll` / `layerExBtoA.dll` members, and the KAGZ UI pseudo-storage
+   `<storage>@<piece>%layer` that stops NekoPara at `title.ks:13`. Do not special-case a game;
+   implement the plugin contracts (see `docs/plugins.md`), add focused fixtures/tests, then retest
+   ATRI, NekoPara and FSN.
 2. Implement the real generic `TextRenderBase` behavior (the API surface exists but `textrender.dll`
    draws nothing), then add other KAGZ API/plugin compatibility only when evidence from multiple
    games supports it.
@@ -259,10 +265,12 @@ game, not just FSN; never commit game files or keys; game folders are never modi
 CXDEC decoding, Steam compatibility, PSB/psbfile, KAG/Scripts APIs and debugging aids are in `main`.
 Desktop now auto-recovers supported CX schemes from generic PE/TPM structures without a pre-made
 scheme profile (ATRI test: 12/12 validation); Switch still needs a profile pending the portable x86
-analyzer. ATRI confirms the PC scheme recovery path but remains only a test fixture: on Switch it
-now enters the game and fails on missing generic `layerEx*` members
-(`layerExDraw`/`layerExImage`/`layerExRaster`/`layerExBtoA` are ignored; `clipAlphaRect`, `fillAlpha`),
-and desktop reproduces the same gap. User-confirmed regressions: Fate/FSN and the other tested games
+analyzer. ATRI confirms the PC scheme recovery path but remains only a test fixture: on Switch and
+desktop it now enters the game, and since `9f229bb` the PackinOne `fillAlpha`/`clipAlphaRect` shim
+carries it through the opening (6.5-min desktop run, clean quit). What is left is generic:
+`LayerExAffineSourceNoise.generateWhiteNoise`, the rest of the ignored `layerEx*` family, and the KAGZ
+`%layer` pseudo-storage. FSN was re-checked the same day (86 s, 0 exceptions). User-confirmed
+regressions: Fate/FSN and the other tested games
 work on Switch; Fate has a complete beginning-to-end playthrough. The FSN TJS-filter crash was traced
 to running its XP3 filter on the async image thread; `8d4bef4` routes filtered graphic loading through
 the main thread. Full details, known limits and remaining generic compatibility gaps are in
