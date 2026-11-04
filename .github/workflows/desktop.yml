@@ -43,19 +43,46 @@ jobs:
             echo "::error title=smoke test::$(tail -40 smoke.log | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')"
             exit 1
           fi
-      - uses: actions/upload-artifact@v4
+      - name: Tests - decoders (PBD, PSB, CXDEC)
+        if: success()
+        shell: bash
+        run: |
+          set -o pipefail
+          KK4S_TEST_WORK="$PWD/build-tests" bash tools/run-tests.sh --group decoders \
+            out-desktop/kk4s 2>&1 | tee tests-decoders.log
+      - name: Tests - xp3 storage layer (project dir, overlay precedence)
+        if: success()
+        shell: bash
+        run: |
+          set -o pipefail
+          KK4S_TEST_WORK="$PWD/build-tests" bash tools/run-tests.sh --group xp3 \
+            out-desktop/kk4s 2>&1 | tee tests-xp3.log
+      - name: Tests - engine I/O (TextStream, AlphaMovie, DataPack)
+        if: success()
+        shell: bash
+        run: |
+          set -o pipefail
+          KK4S_TEST_WORK="$PWD/build-tests" bash tools/run-tests.sh --group io \
+            out-desktop/kk4s 2>&1 | tee tests-io.log
+      - name: Upload artifacts
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: kk4s-linux-${{ github.sha }}
           path: |
             out-desktop/kk4s
             build.log
             smoke.log
+            tests-*.log
+            build-tests/*.log
           if-no-files-found: warn
 
+  # MinGW build. This is a compile check plus a portable decoder/unit-test run;
+  # the viewer is not executed here, so do not read a green run as "Windows
+  # runtime verified". The job is blocking: a compile break on MinGW is a real
+  # regression, not an experiment.
   windows:
     runs-on: windows-latest
-    continue-on-error: true   # experimental: engine has many MSVC-only branches
     defaults:
       run:
         shell: msys2 {0}
@@ -75,6 +102,12 @@ jobs:
       - name: Report build errors
         if: failure()
         run: bash tools/ci-report.sh build.log
+      - name: Tests - decoders (PBD, PSB, CXDEC)
+        if: success()
+        run: |
+          set -o pipefail
+          KK4S_TEST_WORK="$PWD/build-tests" bash tools/run-tests.sh --group decoders \
+            out-desktop/kk4s.exe 2>&1 | tee tests-decoders.log
       - name: Bundle DLLs
         if: success()
         run: |
@@ -88,4 +121,6 @@ jobs:
           path: |
             dist/
             build.log
+            tests-decoders.log
+            build-tests/*.log
           if-no-files-found: warn

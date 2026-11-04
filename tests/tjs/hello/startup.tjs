@@ -1,5 +1,10 @@
 // kk4s smoke test: open a window, fill it, print to the log.
 Debug.message("kk4s hello: startup.tjs running");
+
+// Regression: typeof of a name that was never declared must be "undefined"
+// (KAGZ games guard optional plugins with `typeof GdiPlus != "undefined"`).
+if (typeof kk4sUndefinedGlobal != "undefined") throw new Exception("typeof unknown global is not undefined");
+if (typeof kk4sUndefinedGlobal == "undefined") Debug.message("kk4s hello: typeof unknown global ok");
 Debug.message("System.exePath = " + System.exePath);
 
 class HelloWindow extends Window

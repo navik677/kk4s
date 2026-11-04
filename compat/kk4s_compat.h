@@ -30,6 +30,11 @@ const tjs_char* StartupScriptShim();
 // Used to run Override2.tjs / AfterInit2.tjs at the right moment.
 void AfterExecuteStorage(const ttstr& shortname);
 
+// Window members that Kirikiri's menu.dll adds and KAGZ scripts use before the
+// plugin is linked (KAGZ links menu.dll lazily, yet its window sets
+// Window.exSystemMenu during construction). Idempotent; called from BeforeStartup().
+void InstallWindowMenuCompat();
+
 // Plugins.link(): kk4s native replacement for a Windows plugin DLL.
 // Returns false if kk4s has none (compat/kk4s_plugins.cpp).
 bool LinkBuiltinPlugin(const ttstr& name);

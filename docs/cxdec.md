@@ -50,6 +50,26 @@ Tests: `tests/cxdec/cxdec_test.cpp` — 384 synthetic vectors from the Python re
 (`tools/cxdec_ref.py`, `tests/cxdec/gen_vectors.py`), incl. chunked reads; plus
 `--archive` mode for a real game (adler32 of every entry).
 
+### Layer 1b — the scheme-free "TinyFilter" variant
+
+Not every TPM interprets generated programs. One common variant (the plugin's
+RTTI names it `TinyFilterCore`) derives a single byte from the entry's `adlr` and
+XORs the whole entry with it:
+
+```
+x = adlr ^ 0x1548e29c
+k = (x >> 24) ^ (x >> 16) ^ (x >> 8) ^ x      (low 8 bits)
+if k == 0: k = 0xd7                          (the TPM never applies a no-op)
+plain[i] = stored[i] ^ k                     (position independent)
+```
+
+`compat/cxdec/tinyfilter.{h,cpp}` implements it; `tools/cxdec_ref.py` has the
+same function as `tiny_key()`. It takes no per-game data, so it needs no scheme
+file: the runtime treats it as another candidate filter and binds it only when
+adler32 of the decrypted sample entries equals their `adlr` (same ≥80 % rule as
+for schemes). NekoPara Vol. 1's `data.xp3` and `patch.xp3` use it; the formula
+was verified against 938 of their entries.
+
 ### Layer 2 — where schemes come from
 
 The Cx filter lives in a **TPM plugin** (`cxdec_tpm.dll`/`*.tpm`, a KiriKiri plugin

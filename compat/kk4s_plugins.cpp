@@ -1046,6 +1046,57 @@ void LinkFilterDll();
 void LinkDrawerDll();
 void LinkSlideOpenDll();
 void LinkFireSparkDll();
+void LinkPackinOneDll();
+void LinkEmotePlayerDll();
+
+// menu.dll: the Win32 menu bar. The engine already has MenuItem and Window.menu
+// (engine/source/core/visual/MenuItemIntf.cpp), so items added by KAGZ work; the
+// one member menu.dll adds that scripts rely on is Window.exSystemMenu, which KAGZ
+// fills with its "menu bar visibility" entries. kk4s stores it (per window) for
+// listeners such as KAG's onExSystemMenuSelected and has no OS menu to put it in.
+static void EnsureWindowMember(iTJSDispatch2* window, const tjs_char* name, const tTJSVariant& value) {
+    tTJSVariant existing;
+    if (TJS_FAILED(window->PropGet(0, name, nullptr, &existing, window)))
+        window->PropSet(TJS_MEMBERENSURE, name, nullptr, &value, window);
+}
+
+void InstallWindowMenuCompat() {
+    iTJSDispatch2* g = Global();
+    tTJSVariant v;
+    if (TJS_FAILED(g->PropGet(0, TJS_W("Window"), nullptr, &v, g)) || v.Type() != tvtObject) return;
+    iTJSDispatch2* window = v.AsObjectNoAddRef();
+    // menu.dll: KAGZ stores its menu-bar entry tree here.
+    EnsureWindowMember(window, TJS_W("exSystemMenu"), tTJSVariant());
+    // windowEx.dll: KAGZ's window assigns these while constructing. kk4s windows
+    // have no OS decorations, so they are stored flags (the window cannot be
+    // resized or moved by dragging anyway); declaring them keeps the plain
+    // `name = value` assignment inside KAGZ methods from failing (it compiles to
+    // a property set that requires the member to exist).
+    tTJSVariant no(false);
+    EnsureWindowMember(window, TJS_W("disableResize"), no);
+    EnsureWindowMember(window, TJS_W("disableMove"), no);
+}
+
+static void LinkMenuDll() { InstallWindowMenuCompat(); }
+
+// windowEx.dll: extended window events. kk4s already delivers mouse/keyboard events
+// to Window subclasses, so registering only has to mark the window and report
+// success; games then set their own "exEventEnabled" flag and use the normal
+// handlers. Without the method KAGZ's custom.tjs stops at `kag.registerExEvent()`.
+static void LinkWindowExDll() {
+    iTJSDispatch2* g = Global();
+    tTJSVariant v;
+    if (TJS_FAILED(g->PropGet(0, TJS_W("Window"), nullptr, &v, g)) || v.Type() != tvtObject) return;
+    iTJSDispatch2* window = v.AsObjectNoAddRef();
+    DefineFunction(window, TJS_W("registerExEvent"), [](tTJSVariant* r, tjs_int, tTJSVariant**) -> tjs_error {
+        if (r) *r = (tjs_int)1;
+        return TJS_S_OK;
+    });
+    DefineFunction(window, TJS_W("unregisterExEvent"), [](tTJSVariant* r, tjs_int, tTJSVariant**) -> tjs_error {
+        if (r) *r = (tjs_int)1;
+        return TJS_S_OK;
+    });
+}
 
 // KAGParserEx.dll replaces the KAG parser: the engine's own parser does the work; the one
 // visible difference games rely on is "taglist" in tag elements (KAGParser.cpp).
@@ -1070,6 +1121,11 @@ static const PluginEntry kPlugins[] = {
     {"drawer.dll", LinkDrawerDll},
     {"slideopen.dll", LinkSlideOpenDll},
     {"firespark.dll", LinkFireSparkDll},
+    {"packinone.dll", LinkPackinOneDll},
+    {"windowex.dll", LinkWindowExDll},
+    {"menu.dll", LinkMenuDll},
+    {"emoteplayer.dll", LinkEmotePlayerDll},
+    {"motionplayer.dll", LinkEmotePlayerDll},
     {"wuvorbis.dll", ProvidedByEngine},
     {"krmovie.dll", ProvidedByEngine},
     {"alphamovie.dll", ProvidedByEngine},

@@ -155,6 +155,22 @@ cmake --build build-desktop -j$(nproc) && cp build-desktop/kk4s out-desktop/   #
 KK4S_ROOT=/tmp/kk4s-run ./out-desktop/kk4s game/fsn    # one game; without an argument: launcher
 ```
 
+### Regression suite (before touching storage, startup or decoders)
+
+```bash
+bash tools/run-tests.sh                  # all groups against out-desktop/kk4s
+bash tools/run-tests.sh --group xp3      # project dir + overlay precedence
+bash tools/run-tests.sh --group io       # TextStream, AlphaMovie, loadDataPack
+bash tools/run-tests.sh --group decoders # PBD, PSB, CXDEC vs Python references
+```
+
+`tests/xp3/precedence_smoke.py` pins the two rules FSN depends on (project dir
+and last-mounted-wins overlay order, with the current dir first). If it fails,
+treat that as an FSN regression: do not relax the test to match the new
+behaviour without re-checking FSN on hardware. The suite runs synthetic games on
+the desktop build and never replaces the hardware check — see
+[tests/README.md](../tests/README.md) for what it does and does not cover.
+
 Windows (no admin): portable MSYS2 (`msys2-base-x86_64-latest.sfx.exe`), `pacman -Syu` twice, then
 `DEPS=1 bash tools/build-desktop.sh` in a UCRT64 shell. Details: `docs/pc-viewer.md`.
 

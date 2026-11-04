@@ -1,24 +1,92 @@
 # Tests
 
-Synthetic scripts only — no game content.
+Synthetic fixtures only — no game content. Two kinds:
 
-- `tjs/hello/` — smallest possible "game": checks that the engine boots, opens a window and logs.
-  CI runs it for 15 s under xvfb (Linux, ASan + UBSan) as a smoke test.
-- `tjs/input/` — shows every key / mouse event the game receives, plus `System.getKeyState(VK_CONTROL)`.
-  Copy to `games/kk4s-input-test/` to check the gamepad / touch mapping on a device.
+- **Engine tests** boot a generated "game" with the desktop `kk4s` binary and
+  assert on what the engine logs. They exercise the real storage layer, script
+  APIs and decoders.
+- **Unit tests** compare a C++ decoder in `compat/` with its independent Python
+  reference. They do not need the engine.
 
-Generated fixtures (they create their own temporary game folders and archives):
+## Running
 
-- `xp3/elif_smoke.py` — XP3v2 `eliF` filename mapping.
-- `xp3/empty_entry_smoke.py` — a zero-byte entry with an empty `segm` chunk opens, reads, seeks and rejects a seek past the end.
-- `xp3/malformed_index_smoke.py` — a corrupt index is rejected instead of looping or reading out of bounds.
-- `xp3/index_cycle_smoke.py` — a self-referential index chain is rejected instead of looping forever.
-- `textstream/smoke.py` — TextStream encoding detection (ASCII, Shift_JIS, UTF-8/BOM, GBK, malformed).
-- `alphamovie/smoke.py` — AlphaMovie AJPM zlib-alpha decode.
-- `pbd/run_tests.py` — `TJS/ns0` / `TJS/4s0` data-pack decoder against a Python encoder (all value
-  types, all six crypt modes, dictionary LZ4, truncation/corruption). Pass a directory of real
-  `.pbd` files as the second argument to check those too.
-- `pbd/loaddatapack_smoke.py` — engine integration: `Scripts.loadDataPack` returns real TJS
-  Array/Dictionary trees and rejects an invalid pack.
+```bash
+# everything, against a desktop build (default out-desktop/kk4s)
+bash tools/build-desktop.sh
+bash tools/run-tests.sh
 
-Later: a TJS2/KAG conformance suite.
+# one group
+bash tools/run-tests.sh --group xp3
+bash tools/run-tests.sh --group io
+bash tools/run-tests.sh --group decoders
+
+# a specific binary
+bash tools/run-tests.sh build-desktop/kk4s
+```
+
+Engine tests run headlessly (`SDL_VIDEODRIVER=dummy`) and write per-test logs to
+`build-tests/` (`KK4S_TEST_WORK` changes the directory). A failing test prints
+the tail of its own log.
+
+## What each test protects
+
+| Test | Group | Checks | Needs |
+|---|---|---|---|
+| `xp3/precedence_smoke.py` | xp3 | project dir is `<game>/data.xp3>` when `startup.tjs` is inside the archive; the current dir wins over auto paths, including overlays mounted by absolute path (`System.exePath + "patch.xp3>"`, which is how FSN mounts); the **last mounted** archive wins for a shared name; `removeAutoPath` + re-add flips the order; an overlay does not hide base-only files | engine |
+| `xp3/elif_smoke.py` | xp3 | XP3v2 `eliF` filename mapping | engine |
+| `xp3/empty_entry_smoke.py` | xp3 | a zero-byte entry with an empty `segm` chunk opens, reads, seeks and rejects a seek past the end | engine |
+| `xp3/malformed_index_smoke.py` | xp3 | a corrupt index is rejected instead of looping or reading out of bounds | engine |
+| `xp3/index_cycle_smoke.py` | xp3 | a self-referential index chain is rejected instead of looping forever | engine |
+| `textstream/smoke.py` | io | TextStream encoding detection (ASCII, Shift_JIS, UTF-8/BOM, GBK, malformed, truncated) and mixed sequential reads | engine |
+| `alphamovie/smoke.py` | io | AlphaMovie AJPM zlib-alpha decode | engine |
+| `pbd/loaddatapack_smoke.py` | io | `Scripts.loadDataPack` returns real TJS Array/Dictionary trees and rejects an invalid pack | engine |
+| `pbd/run_tests.py` | decoders | `compat/pbd` against a Python encoder: all value types, all six crypt modes, dictionary LZ4, truncation/corruption | `pbd_dump` |
+| `psb/run_tests.py` | decoders | `compat/psb` against `tools/psb_ref.py`: every value type, the name trie, resources, `mdf` wrapping, corruption | `psb_dump` |
+| `cxdec/cxdec_test.cpp` | decoders | `compat/cxdec` against 384 vectors from `tests/cxdec/gen_vectors.py`, plus chunked-vs-whole decryption | nothing |
+| `cxdec/tinyfilter_test.cpp` | decoders | `compat/cxdec/tinyfilter` against vectors from `tests/cxdec/gen_tiny_vectors.py`: adlr-derived keystream, the `k == 0` case, chunked-vs-whole decryption | nothing |
+
+`tools/run-tests.sh` builds the three decoder helpers itself.
+
+`pbd/run_tests.py` and `psb/run_tests.py` take an optional second argument: a
+directory of real files (`.pbd`, `.pimg`/`.scn`/`.psb`). That is a manual check
+for a specific game; such files never enter the repository.
+
+## The FSN invariant
+
+`xp3/precedence_smoke.py` exists because Fate/stay night's Russian patch
+(`rufix.xp3` + `rupatch.xp3` next to `data.xp3`) broke twice when the project
+dir or the global mount order was "fixed" for another game. The test pins the
+behaviour the engine has today, including the parts that look odd:
+
+- when the project dir is `data.xp3>`, a *relative* sibling name is normalized
+  into the archive (`<game>/data.xp3>patch.xp3>`);
+- a name that the project archive contains is served from the project archive
+  even when an overlay mounted by absolute path also has it, so overlays can
+  only supply files the project archive does not contain.
+
+FSN's real mount order is visible in its own log: `data.xp3` as the project
+dir, then `video`, `sound`, `bgm`, `fgimage`, `bgimage`, `image`, `patch`..
+`patch7`, `RealtaNua`, `rupatch`, `rufix`, all by absolute path. Do not change
+the test to match new behaviour unless FSN has been re-checked by hand and the
+change is intended.
+
+## What CI runs
+
+`.github/workflows/desktop.yml`:
+
+| Job | Steps | Blocking |
+|---|---|---|
+| `linux` | ASan+UBSan build, boot smoke test (`tjs/hello`, 15 s under xvfb), `--group decoders`, `--group xp3`, `--group io` | yes |
+| `windows` | MinGW build, `--group decoders` | yes |
+
+The Windows job compiles the viewer but does **not** run it: a green Windows run
+is a compile check plus portable decoder tests, not Windows runtime verification.
+
+## Not covered
+
+- Switch hardware and devkitPro builds (no Switch in CI; hardware runs are manual).
+- Real games. FSN is the only real game available on this machine and is checked
+  by hand; CI never sees game files.
+- Rendering correctness, frame rate, aspect scaling, audio output.
+- `tjs/hello/` and `tjs/input/` are manual smoke fixtures, not assertions except
+  for the boot check above.

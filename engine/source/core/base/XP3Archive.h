@@ -80,7 +80,7 @@ TJS_EXP_FUNC_DEF(void, TVPSetXP3ArchiveExtractionFilter, (tTVPXP3ArchiveExtracti
 extern bool TVPIsXP3Archive(const ttstr &name); // check XP3 archive
 extern void TVPClearXP3SegmentCache(); // clear XP3 segment cache
 //---------------------------------------------------------------------------
-namespace kk4s { namespace cxdec { class CxDecoder; } } // kk4s
+namespace kk4s { namespace compat { class ContentDecoder; } } // kk4s
 struct tTVPXP3ArchiveSegment
 {
 	tjs_uint64 Start;  // start position in archive storage
@@ -115,7 +115,7 @@ class tTVPXP3Archive : public tTVPArchive
 	// is the CXDEC decoder bound after a scheme was verified on this archive's entries
 	// (see compat/kk4s_cx.h); NULL when no scheme fits.
 	bool Kk4sHashedNames;
-	kk4s::cxdec::CxDecoder* Kk4sCx;
+	kk4s::compat::ContentDecoder* Kk4sCx;
 	void Kk4sBindCx();
 public:
 	tTVPXP3Archive(const ttstr & name);
@@ -126,7 +126,7 @@ public:
 	tjs_uint32 GetFileHash(tjs_uint idx) const { return ItemVector[idx].FileHash; }
 	ttstr GetName(tjs_uint idx) { return ItemVector[idx].Name; }
 
-	kk4s::cxdec::CxDecoder* GetKk4sCx() const { return Kk4sCx; }
+	kk4s::compat::ContentDecoder* GetKk4sCx() const { return Kk4sCx; }
 
 	const ttstr & GetName() const { return Name; }
 
@@ -174,7 +174,7 @@ class tTVPXP3ArchiveStream : public tTJSBinaryStream
 
 	bool SegmentOpened;
 
-	kk4s::cxdec::CxDecoder* Kk4sCx; // kk4s: CXDEC decoder of the owner (or NULL)
+	kk4s::compat::ContentDecoder* Kk4sCx; // kk4s: CXDEC decoder of the owner (or NULL)
 
 public:
 	tTVPXP3ArchiveStream(tTVPXP3Archive *owner, tjs_int storageindex,

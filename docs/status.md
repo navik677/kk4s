@@ -1,14 +1,36 @@
 # Status
 
-Last update: 2026-11-04.
+Last update: 2026-11-05.
 
 ## Builds (CI, every push to main)
 
 | Target | State | Where to get it |
 |---|---|---|
 | Switch `kk4s.nro` (+ `.elf`) | builds, **runs on hardware** | [nightly release](https://github.com/navik677/kk4s/releases/tag/nightly), Actions artifact `kk4s-<sha>` |
-| PC viewer, Linux (ASan + UBSan) | builds, smoke test passes (hello game 15 s under xvfb) | Actions → desktop → `kk4s-linux-<sha>` |
-| PC viewer, Windows (MinGW) | builds | Actions → desktop → `kk4s-windows-<sha>` (exe + DLLs) |
+| PC viewer, Linux (ASan + UBSan) | builds; boot smoke test + the synthetic suite (see [tests/README.md](../tests/README.md)) | Actions → desktop → `kk4s-linux-<sha>` |
+| PC viewer, Windows (MinGW) | builds; portable decoder tests run; the viewer is **not** executed in CI | Actions → desktop → `kk4s-windows-<sha>` (exe + DLLs) |
+
+## Tests and CI
+
+`tools/run-tests.sh` is the single entry point; CI calls it per group, so a red
+run names the component. Full list and scope: [tests/README.md](../tests/README.md).
+
+| What | Command | CI |
+|---|---|---|
+| Storage: project dir, overlay precedence, XP3 parsing | `tools/run-tests.sh --group xp3 out-desktop/kk4s` | Linux, blocking |
+| Engine I/O: TextStream, AlphaMovie, `Scripts.loadDataPack` | `--group io` | Linux, blocking |
+| Decoders vs Python references (PBD, PSB, CXDEC) | `--group decoders` | Linux + Windows, blocking |
+| Boot smoke test (`tests/tjs/hello`, 15 s under xvfb) | see `.github/workflows/desktop.yml` | Linux, blocking |
+
+These tests boot **synthetic** games on the Linux desktop build. They prove that
+storage, decoding and script-facing APIs still behave as documented; they prove
+**nothing** about Switch hardware, real game content, rendering or frame rate.
+Windows CI compiles the viewer and runs the decoder group only.
+
+Fate/stay night (Russian patch) is the only real game available on this machine.
+Keep the levels apart: *boots* ≠ *reaches the title* ≠ *loads a scenario* ≠
+*full playthrough*. Only a hardware run supports the last one; the synthetic
+suite only protects the storage rules FSN depends on.
 
 ## Tested games
 
@@ -20,6 +42,62 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
 | Sharin no Kuni, Himawari no Shoujo | plain archives; saving, touch and gamepad checked |
 | Tsukihime + Plus-Disc | own font (`umineko.ttf`) |
 | The Makings of a Lady – Purity Yours to Defile | `xp3filter.tjs` (`b.xor(0,l,h)`); existing saves from the game folder are migrated |
+
+## Compatibility matrix (CXDEC, 2026-11-04)
+
+Branch `compat/tinyfilter-2026-11-04`. Unmodified game folders, Linux desktop build, headless
+(`SDL_VIDEODRIVER=dummy`). “Runs its scripts” means the engine executed the game's TJS/KAG after
+decryption; rendering was **not** observed.
+
+| Game | Before | After | Verified | Remaining errors | Status |
+|---|---|---|---|---|---|
+| NekoPara Vol. 1 | `startup.tjs` ended in `Cannot convert given narrow string to wide string`; CX recovery 0/12 | `startup.tjs` decrypts and its scripts run; 8147 files found, 7917 active | `tinyfilter/adlr-xor` bound on `data.xp3`, `voice.xp3`, `emote.xp3`, `adultsonly.xp3` (12/12, 8/8 samples); 938 real entries decrypt to `adler32 == adlr` | stops at `Member "Motion" does not exist` (`motion.tjs:28`, needs `emoteplayer.dll`); `patch.xp3` is a decoy index (222 entries, one `adlr`) and is left unfiltered on purpose | **CXDEC works; boots into its scripts, not playable** |
+| Fate/stay night (Russian patch) | PASS | PASS | `project dir: …/fsn/data.xp3>`, same mounts | 0 script exceptions, 0 `cxdec` lines (no hashed-name archive) | **regression PASS** |
+| ATRI -My Dear Moments- | Cx auto-recovered, stops at `start.ks:25` on missing `layerEx*` | unchanged | 6 archives bind the auto-recovered scheme (12/12, `steam.xp3` 2/2) | 2 pre-existing `k2compat` background exceptions | **no regression** |
+
+## Compatibility matrix, round 2: Motion, TJS `typeof`, plugin layer (2026-11-04, same branch)
+
+Headless desktop runs (`SDL_VIDEODRIVER=dummy`); nothing here was observed with a real
+window or sound output.
+
+| Game | Before round 2 | After round 2 | Verified | Remaining | Status |
+|---|---|---|---|---|---|
+| NekoPara Vol. 1 | `Member "Motion" does not exist` (`motion.tjs:28`) | window is built, KAGZ environment initialises, the engine executes `title.ks` (line 13) | `Motion.*` registered and `emoteplayer.dll` linked; `typeof` of an undeclared global returns `"undefined"`; `windowEx.dll`/`menu.dll` members present | fatal `Image Load Error /Invalid image` while `buttonlayer.tjs:_copyButtonUIStates` loads `window@help__config%layer` (`kaglayer.tjs:69` → `Layer.loadImages`); emotes are not rendered (no E-mote runtime) | **starts, CXDEC + window OK, stops in the title UI** |
+| Fate/stay night | PASS | PASS | `data.xp3` project dir, 0 script exceptions | — | **regression PASS** |
+| ATRI -My Dear Moments- | 2 `k2compat` background exceptions | 2 (same) | Cx scheme still binds 12/12 | `layerEx*` gap unchanged | **no regression** |
+
+TJS change behind this: `typeof someGlobalThatDoesNotExist` used to throw `Member ... does not
+exist` because a global symbol was compiled as a plain `gpd`; the compiler now asks for
+`stTypeOf` there, so `VM_TYPEOFD` runs and yields `"undefined"` as in Kirikiri. Regression
+assertion: `tests/tjs/hello/startup.tjs`.
+
+Measurements (single run each, 75 s timeout, headless, one RSS sample at exit; no leak curve):
+NekoPara stops after 4.2 s in the title UI (RSS 157 MB), FSN runs 75.7 s with 0 exceptions
+(RSS 180 MB), ATRI runs 76.0 s with its 2 known exceptions (RSS 275 MB). Audio was not verified
+(`SDL_AUDIODRIVER=dummy`).
+
+Why the title UI fails: `uipsd/window.csv` maps `help_config` to `window@help__config%layer`. That is
+KAGZ's UI pseudo-storage (`<storage>@<piece>%layer`), resolved on Windows by the multi-image plugin
+(`multiimage.dll`, present in the game folder); kk4s hands the whole string to `Layer.loadImages`,
+which tries to decode it as an image and reports `Image Load Error /Invalid image`.
+
+Graphical mode does work on this machine (`DISPLAY=:0`, `renderer: opengl, window 1280x720`), so the
+desktop viewer can be run with real video; the runs above used `SDL_VIDEODRIVER=dummy`.
+
+## Compatibility matrix, round 3: PackinOne alpha API + long runs (2026-11-05)
+
+Same branch, Linux desktop, real window (`DISPLAY=:0`, `renderer: opengl, window 1280x720`), audio dummy.
+
+| Game | Before | After | Verified | Remaining | Status |
+|---|---|---|---|---|---|
+| ATRI -My Dear Moments- | fatal `start.ks:25` on `Member "fillAlpha"` / `clipAlphaRect` | opening plays; a 6.5-min run survived and quit cleanly (`TVPExitApplication` → `kk4s: shutdown`) | `PackinOne.dll` shim provides `Layer.fillAlpha` and `Layer.clipAlphaRect`; the game calls `fillAlpha` with 1 argument (alpha = 255); 8 exceptions in 390 s: 6 `generateWhiteNoise`, 2 known `k2compat` | `LayerExAffineSourceNoise.generateWhiteNoise` is not implemented, so affine noise layers draw nothing | **runs; user-confirmed playable on Switch** |
+| Fate/stay night | PASS | PASS | 86 s, 0 exceptions, two scenes rendered (Archer at the school gate; Rin with the in-game menu in Russian) | — | **regression PASS** |
+| NekoPara Vol. 1 | fatal `title.ks:13` | unchanged | stops after 5 s with 3 exceptions | `window@help__config%layer` still reaches `Layer.loadImages` (`kaglayer.tjs:69`) | **blocked, same cause** |
+
+The 6.5-min ATRI run: RSS stayed at 333 MB for the first 5 minutes, then rose to 577 MB (peak 821 MB, measured
+just after `quit`), so memory growth under load needs a longer curve before it can be called a leak. `kag.skipMode = 1`
+was accepted by the game but the frame did not change: synthetic `tap` events do not advance ATRI's message layer in
+this harness (the same taps do open FSN's menu), so the long run proves stability, not scenario progression.
 
 ## Working
 

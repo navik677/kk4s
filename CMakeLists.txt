@@ -131,6 +131,8 @@ set(SOURCES
     compat/kk4s_cx.cpp
     compat/kk4s_scripts.cpp
     compat/cxdec/cxdec.cpp
+    compat/cxdec/tinyfilter.cpp
+    compat/kk4s_motion.cpp
     compat/psb/psb.cpp
     compat/pbd/pbd.cpp
     compat/kk4s_plugins.cpp

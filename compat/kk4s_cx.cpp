@@ -1,7 +1,8 @@
-// kk4s: CXDEC scheme discovery and per-archive binding. See kk4s_cx.h.
+// kk4s: CXDEC filter discovery and per-archive binding. See kk4s_cx.h.
 #include "kk4s_cx.h"
 
 #include "cxdec/cxdec.h"
+#include "cxdec/tinyfilter.h"
 #include "kk4s_platform.h"
 
 #include <zlib.h>
@@ -36,10 +37,39 @@ bool LoadRelative(const std::string& name, std::vector<uint8_t>& out, void* ctx)
     return ReadAll(static_cast<DirCtx*>(ctx)->dir + "/" + name, out);
 }
 
+// A saved scheme (the Cx program interpreter).
+class CxContentDecoder : public ContentDecoder {
+public:
+    explicit CxContentDecoder(const cxdec::CxScheme& scheme)
+        : decoder_(scheme), name_("cx:" + scheme.name) {}
+    void Decrypt(uint32_t hash, uint64_t offset, uint8_t* buf, size_t count) override {
+        decoder_.Decrypt(hash, offset, buf, count);
+    }
+    const std::string& FamilyName() const override { return name_; }
+
+private:
+    cxdec::CxDecoder decoder_;
+    std::string name_;
+};
+
+// The scheme-free variant: one keystream byte per entry, derived from adlr.
+class TinyContentDecoder : public ContentDecoder {
+public:
+    void Decrypt(uint32_t hash, uint64_t, uint8_t* buf, size_t count) override {
+        cxdec::TinyFilterDecrypt(hash, buf, count);
+    }
+    const std::string& FamilyName() const override { return Name(); }
+    static const std::string& Name() {
+        static const std::string name = "tinyfilter/adlr-xor";
+        return name;
+    }
+};
+
 struct Registry {
     std::mutex mutex;
     bool loaded = false;
-    std::vector<std::unique_ptr<cxdec::CxDecoder>> decoders;  // one per scheme file
+    std::vector<std::unique_ptr<CxContentDecoder>> decoders;  // one per scheme file
+    std::unique_ptr<TinyContentDecoder> tiny;
     std::set<std::string> auto_attempted_archives;
 
     void LoadOnce() {
@@ -61,7 +91,7 @@ struct Registry {
                 continue;
             }
             s.name = n;
-            decoders.emplace_back(new cxdec::CxDecoder(s));
+            decoders.emplace_back(new CxContentDecoder(s));
         }
         closedir(d);
         Log("cxdec: %u scheme file(s) in %s", (unsigned)decoders.size(), dir.c_str());
@@ -75,7 +105,7 @@ Registry& Reg() {
     return r;
 }
 
-int CountValid(cxdec::CxDecoder& dec, const std::vector<CxSample>& samples) {
+int CountValid(ContentDecoder& dec, const std::vector<CxSample>& samples) {
     int ok = 0;
     std::vector<uint8_t> buf;
     for (const auto& s : samples) {
@@ -86,28 +116,46 @@ int CountValid(cxdec::CxDecoder& dec, const std::vector<CxSample>& samples) {
     return ok;
 }
 
+// Protectors insert decoy entries that never decrypt: accept a filter that
+// explains clearly most samples.
+int NeedCount(size_t samples) {
+    int need = (int)samples * 4 / 5;
+    if (need < 3) need = samples < 3 ? (int)samples : 3;
+    return need;
+}
+
 }  // namespace
 
-cxdec::CxDecoder* BindCxDecoder(const std::string& archive_name, const std::vector<CxSample>& samples) {
+ContentDecoder* BindCxDecoder(const std::string& archive_name, const std::vector<CxSample>& samples) {
     Registry& r = Reg();
     std::lock_guard<std::mutex> lock(r.mutex);
     r.LoadOnce();
     if (samples.empty()) return nullptr;
-    // Protectors insert decoy entries that never decrypt: accept a scheme that
-    // explains clearly most samples, and prefer the best one.
-    cxdec::CxDecoder* best = nullptr;
+    const int need = NeedCount(samples.size());
+
+    CxContentDecoder* best = nullptr;
     int best_ok = 0;
     for (auto& d : r.decoders) {
         int ok = CountValid(*d, samples);
         if (ok > best_ok) { best_ok = ok; best = d.get(); }
     }
-    int need = (int)samples.size() * 4 / 5;
-    if (need < 3) need = (int)samples.size() < 3 ? (int)samples.size() : 3;
     if (best && best_ok >= need) {
         Log("cxdec: %s uses scheme %s (%d/%u sample entries verified)", archive_name.c_str(),
-            best->Scheme().name.c_str(), best_ok, (unsigned)samples.size());
+            best->FamilyName().c_str(), best_ok, (unsigned)samples.size());
         g_any_bound = true;
         return best;
+    }
+
+    // Scheme-free variant: some TPMs only XOR every entry with one byte derived
+    // from its adlr. Validate it exactly like a scheme (adler32 == adlr on the
+    // archive's own entries); decoys are tolerated by the same threshold.
+    if (!r.tiny) r.tiny.reset(new TinyContentDecoder);
+    int tiny_ok = CountValid(*r.tiny, samples);
+    if (tiny_ok >= need) {
+        Log("cxdec: %s uses %s (%d/%u sample entries verified)", archive_name.c_str(),
+            r.tiny->FamilyName().c_str(), tiny_ok, (unsigned)samples.size());
+        g_any_bound = true;
+        return r.tiny.get();
     }
 
 #if defined(KK4S_DESKTOP)
@@ -124,13 +172,13 @@ cxdec::CxDecoder* BindCxDecoder(const std::string& archive_name, const std::vect
         cxdec::CxScheme recovered;
         std::string why;
         if (RecoverCxSchemeFromGame(game_dir, samples, recovered, why)) {
-            auto decoder = std::unique_ptr<cxdec::CxDecoder>(new cxdec::CxDecoder(recovered));
+            std::unique_ptr<CxContentDecoder> decoder(new CxContentDecoder(recovered));
             int verified = CountValid(*decoder, samples);
             if (verified >= need) {
-                cxdec::CxDecoder* result = decoder.get();
+                CxContentDecoder* result = decoder.get();
                 r.decoders.emplace_back(std::move(decoder));
                 Log("cxdec: recovered scheme %s from game files (%d/%u samples verified)",
-                    result->Scheme().name.c_str(), verified, (unsigned)samples.size());
+                    result->FamilyName().c_str(), verified, (unsigned)samples.size());
                 g_any_bound = true;
                 return result;
             }
@@ -142,10 +190,11 @@ cxdec::CxDecoder* BindCxDecoder(const std::string& archive_name, const std::vect
     }
 #endif
 
-    Log("cxdec: %s has hashed-name records (hnfn/eliF), but no CX scheme validates "
-        "(%u known, best %d/%u). "
-        "Create one with tools/cx_scheme_extract.py <game folder> %s/cx/<name>.cxscheme",
-        archive_name.c_str(), (unsigned)r.decoders.size(), best_ok, (unsigned)samples.size(), ProfilesDir().c_str());
+    Log("cxdec: %s has hashed-name records (hnfn/eliF), but no filter validates "
+        "(%u schemes, best %d/%u, tinyfilter %d/%u). "
+        "Create a scheme with tools/cx_scheme_extract.py <game folder> %s/cx/<name>.cxscheme",
+        archive_name.c_str(), (unsigned)r.decoders.size(), best_ok, (unsigned)samples.size(),
+        tiny_ok, (unsigned)samples.size(), ProfilesDir().c_str());
     return nullptr;
 }
 

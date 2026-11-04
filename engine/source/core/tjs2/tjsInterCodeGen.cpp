@@ -1726,6 +1726,17 @@ tjs_int tTJSInterCodeContext::GenNodeCode(tjs_int & frame, tTJSExprNode *node,
 			param2.SubType = stTypeOf;
 			return _GenNodeCode(frame, cnode, TJS_RT_NEEDED, 0, param2);
 		}
+		else if(cnode->GetOpecode() == T_SYMBOL && !AsGlobalContextMode &&
+			Namespace.Find(cnode->GetValue().AsStringNoAddRef()->operator const tjs_char *()) == -1)
+		{
+			// kk4s: a global symbol is compiled as a member access of "this" anyway;
+			// ask for stTypeOf so it becomes VM_TYPEOFD. A plain gpd throws
+			// "Member ... does not exist" for a missing global, while TJS's
+			// typeof must yield "undefined" (KAGZ games guard GdiPlus etc. this way).
+			tSubParam param2;
+			param2.SubType = stTypeOf;
+			return _GenNodeCode(frame, cnode, TJS_RT_NEEDED, 0, param2);
+		}
 		else
 		{
 			// normal operation

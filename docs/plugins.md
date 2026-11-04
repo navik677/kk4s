@@ -23,9 +23,16 @@ Status: **full** = same behaviour, **approx** = similar result, **stub** = does 
 | slideopen.dll | `initSlideOpen` / `drawSlideOpen` / `finishSlideOpen` | approx (cross-fade) |
 | firespark.dll | `*FireSpark` particles | stub |
 | extrans.dll | transitions wave, ripple, mosaic, turn, rotate* | approx: engine falls back to crossfade (logged once per name) |
+| menu.dll | `Window.menu` + `MenuItem` | full: engine menu model (`MenuItemIntf.cpp`), items and hierarchy behave as in Kirikiri |
+| | `Window.exSystemMenu` | approx: stored per window and readable by KAG's listeners, but there is no OS menu bar to display it in |
+| windowEx.dll | `Window.registerExEvent` / `unregisterExEvent` | approx: kk4s already delivers mouse/keyboard events to `Window`, so this marks the window and returns true; no separate event mask |
+| | `Window.disableResize`, `Window.disableMove` | approx: declared and stored, so KAGZ's plain assignments inside its methods work; kk4s windows have no OS decorations to drag, so there is nothing to disable |
+| emoteplayer.dll / motionplayer.dll | `Motion.ResourceManager` | full: storage lookup, PSB parse (`compat/psb`), byte-budget LRU cache, unload/clearCache |
+| | `Motion.Player` / `Motion.EmotePlayer` | partial: playback state machine (play/stop/skip/progress/time/playing, options, timelines list) is real; **E-mote rendering is not implemented** (`draw()` draws nothing, logged once per played motion), so emote animations appear static/absent. `MaskMode*`, `PlayFlag*`, `ShapeType*` are kk4s-internal values |
+| | `Motion.SeparateLayerAdaptor` | stub (binder adaptor does nothing) |
+| PackinOne.dll | `Layer.fillAlpha(alpha = 255)`, `Layer.clipAlphaRect(x, y, w, h, alpha = 255)` | full for the pixel semantics: fill the layer with `alpha`, or set it inside the rectangle and 0 outside, then update the layer; the argument count the game actually passes is logged on first use |
 
-Next candidates: layerExDraw / layerExImage / layerExRaster / layerExBtoA (ATRI's affine/PSD scene
-needs `Layer.fillAlpha` and `KAGLayer.clipAlphaRect`), layerExAlpha, real extrans transitions,
+Next candidates: KAGZ UI layer storages (`<name>%layer` passed to `Layer.loadImages`, NekoPara's next blocker at `title.ks:13`), emoteplayer / motionplayer (`Motion.ResourceManager` and friends, needed by KAGZ titles such as NekoPara before their scripts finish initialising), layerExDraw / layerExImage / layerExRaster / layerExBtoA (ATRI's affine/PSD scene needs `Layer.fillAlpha` and `KAGLayer.clipAlphaRect`), `LayerExAffineSourceNoise.generateWhiteNoise`, layerExDraw / layerExImage / layerExRaster / layerExBtoA (the remaining affine/PSD primitives; alpha fill/clip is now in the PackinOne shim), layerExAlpha, real extrans transitions,
 kagexopt, menu, fstat, scriptsEx.
 
 How to add one: write a `Link...()` function (TJS shim string or native `tTJSDispatch` functions), add it to `kPlugins` in `compat/kk4s_plugins.cpp`, document it here. To see what a DLL registers, list its UTF-16 strings — they are the TJS names:

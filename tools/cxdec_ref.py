@@ -13,6 +13,18 @@ See docs/cxdec.md.
 import os
 import struct
 M=0xffffffff
+
+# "TinyFilter" CXDEC variant (a TPM that does not generate programs at all):
+# every entry is XORed with one byte derived from its adlr. Reference for
+# compat/cxdec/tinyfilter.cpp; the constant belongs to the filter format.
+TINY_CONST=0x1548e29c
+def tiny_key(adlr):
+    x=(adlr^TINY_CONST)&M
+    k=((x>>24)^(x>>16)^(x>>8)^x)&0xff
+    return k if k else 0xd7
+
+def tiny_decrypt(adlr, buf):
+    return bytes(b^tiny_key(adlr) for b in buf)
 class Prog:
     LIMIT=0x80
     def __init__(s, seed, cb): s.seed=seed; s.cb=cb; s.code=[]; s.len=0

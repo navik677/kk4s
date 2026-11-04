@@ -38,10 +38,14 @@ decoder threads then read memory. If the filter is ever called on another thread
 
 ## Not supported yet
 
-- `cxdec.tpm` and other `.tpm` files (Windows decryption plugins) are ignored. A built-in x86
-  interpreter is planned so encrypted games work without `xp3filter.tjs`. Until then the log says
-  `compat: cxdec.tpm found but no xp3filter.tjs ...` and the game stops with "Cannot convert given
-  narrow string to wide string" (encrypted `startup.tjs`).
+- Running a Windows `.tpm` plugin is not supported; its decryption is reimplemented natively instead.
+  `compat/cxdec` has the Cx program interpreter and the scheme-free "TinyFilter" variant (see
+  [cxdec.md](cxdec.md)). A filter is bound to an archive only after that archive's own entries
+  validate (`adler32` of the decrypted data equals `adlr`). On desktop a Cx scheme is recovered
+  automatically from the game's TPM or its embedded module; on Switch a Cx game still needs
+  `<data>/profiles/cx/<name>.cxscheme`, while the TinyFilter variant needs no data at all. A game
+  whose `startup.tjs` no filter explains still stops with "Cannot convert given narrow string to
+  wide string".
 
 ## Tested
 
