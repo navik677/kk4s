@@ -197,7 +197,8 @@ static void TJS_INTF_METHOD ScriptExtractionFilter(tTVPXP3ExtractionFilterInfo* 
     // decrypted completely there (XP3Archive.cpp), so this should only run on
     // the main thread; log once if a stream was opened elsewhere.
     if (std::this_thread::get_id() != g_main_thread && !g_off_thread_logged.exchange(true))
-        kk4s::Log("compat: xp3 filter script called on a background thread (unsafe)");
+        kk4s::Log("compat: xp3 filter script called on a background thread (unsafe), thread=%llu",
+		          (unsigned long long)std::hash<std::thread::id>{}(std::this_thread::get_id()));
     std::lock_guard<std::recursive_mutex> lock(g_filter_mutex);
     if (!g_filter_func) return;
 

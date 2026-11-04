@@ -132,6 +132,7 @@ set(SOURCES
     compat/kk4s_scripts.cpp
     compat/cxdec/cxdec.cpp
     compat/psb/psb.cpp
+    compat/pbd/pbd.cpp
     compat/kk4s_plugins.cpp
     compat/kk4s_layerfx.cpp
     compat/cxdec/scheme_recover.cpp

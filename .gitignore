@@ -12,6 +12,10 @@ out/
 build.log
 *~
 
+# Python bytecode from the synthetic test fixtures
+__pycache__/
+*.pyc
+
 # local copies, not part of the repo
 krkrs-master/
 kirikiri-switch-prompt.md

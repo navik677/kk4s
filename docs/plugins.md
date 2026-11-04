@@ -24,7 +24,9 @@ Status: **full** = same behaviour, **approx** = similar result, **stub** = does 
 | firespark.dll | `*FireSpark` particles | stub |
 | extrans.dll | transitions wave, ripple, mosaic, turn, rotate* | approx: engine falls back to crossfade (logged once per name) |
 
-Next candidates: real extrans transitions, layerExDraw / layerExImage / layerExAlpha, kagexopt, menu, fstat, scriptsEx.
+Next candidates: layerExDraw / layerExImage / layerExRaster / layerExBtoA (ATRI's affine/PSD scene
+needs `Layer.fillAlpha` and `KAGLayer.clipAlphaRect`), layerExAlpha, real extrans transitions,
+kagexopt, menu, fstat, scriptsEx.
 
 How to add one: write a `Link...()` function (TJS shim string or native `tTJSDispatch` functions), add it to `kPlugins` in `compat/kk4s_plugins.cpp`, document it here. To see what a DLL registers, list its UTF-16 strings — they are the TJS names:
 

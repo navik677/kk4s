@@ -1,6 +1,6 @@
 # Status
 
-Last update: 2026-11-01.
+Last update: 2026-11-04.
 
 ## Builds (CI, every push to main)
 
@@ -32,6 +32,8 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
 - **Kirikiroid2 conventions**: `xp3filter.tjs`, `Storages.setXP3ArchiveExtractionFilter`,
   `Override2.tjs`, `AfterInit2.tjs` — see [kirikiroid-compat.md](kirikiroid-compat.md).
 - **Plugins**: native replacements for common DLLs — see [plugins.md](plugins.md).
+- **Data packs**: `Scripts.loadDataPack` (`TJS/ns0` and PackinOne `TJS/4s0` `.pbd`) returns real TJS
+  Array/Dictionary trees; decoder in `compat/pbd`, tests in `tests/pbd`.
 - **Fonts**: game-folder and system fonts (Nintendo shared fonts on Switch), fallback for unknown
   names, proportional Cyrillic for Japanese fonts that draw it full-width, face cache.
 - **Logs**: one per run, written by a background thread; engine script errors with TJS stack traces.
@@ -113,14 +115,20 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
   `firespark` / lens effects missing).
 - `.tpm` decryption plugins (e.g. `cxdec.tpm`) are not run: encrypted games need an `xp3filter.tjs`.
 - Universal runtime is the goal; ATRI is only the PC Steam-repack test fixture, not a product target.
-  Generic `hnfn` mapping, CXDEC decoding, and Steam compatibility are implemented. **Desktop now
-  recovers supported CX schemes at runtime** from PE/TPM data and validates them against XP3 adlr
-  samples; the test ATRI folder auto-recovered 12/12 without a prebuilt scheme profile. Switch still
-  requires a CX profile until the portable x86/PE analyzer is implemented. ATRI's later KAGZ
-  `AlphaMovie` and `fontScale` APIs are not implemented; on Switch it reaches `title:xrated, 0` and
-  fails in the generic Win32-dialog wrapper (`getNumberdId` gets `void`). This does not make ATRI a
-  product target: implement reusable KiriKiri Z APIs/plugins and test across unrelated games.
-  Details: [cxdec.md](cxdec.md), [handoff-native-cx.md](handoff-native-cx.md).
+  Generic `hnfn` mapping, CXDEC decoding, Steam compatibility and `Scripts.loadDataPack` are
+  implemented. **Desktop now recovers supported CX schemes at runtime** from PE/TPM data and
+  validates them against XP3 adlr samples; the test ATRI folder auto-recovered 12/12 without a
+  prebuilt scheme profile. Switch still requires a CX profile until the portable x86/PE analyzer is
+  implemented. On the 2026-11-04 Switch build ATRI enters the game and plays the opening
+  (PBD-backed `psd` layers, dialogue, sprites, BGM, achievements). It then prints its fatal-error
+  banner (`start.ks:25`) and exits to the launcher on `Member "clipAlphaRect" does not exist` in
+  `affinelayer.tjs onPaint`, preceded by `Member "fillAlpha" does not exist` in
+  `affinesourcenoise.tjs loadImages`; the same sequence reproduces on desktop, so it is generic, not
+  Switch-specific. The log still reports
+  `layerExDraw.dll`, `layerExImage.dll`, `layerExRaster.dll` and `layerExBtoA.dll` as ignored. The
+  next generic work is the `layerEx*` plugin API (alpha fill/clip primitives), not ATRI behavior.
+  This does not make ATRI a product target: implement reusable KiriKiri Z APIs/plugins and test
+  across unrelated games. Details: [cxdec.md](cxdec.md), [handoff-native-cx.md](handoff-native-cx.md).
 - XP3 script filters are **not thread-safe**. `8d4bef4` routes filtered game graphics/touchimages
   through synchronous main-thread loading. User-confirmed: Fate/FSN now plays through to the end and
   other tested games work well. This hardware regression is mandatory for further filter changes.

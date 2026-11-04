@@ -6,20 +6,22 @@ not the target. No per-game fixes, game files, keys or conversion; compatibility
 `compat/` or kk4s' own files. Full requirements: `docs/original-prompt.md`; milestones:
 `docs/roadmap.md`.
 
-## Where we are (2026-11-01)
+## Where we are (2026-11-04)
 
-`origin/main` is `c0d7705` (pushed at the user's request). Local `main` has an unpushed desktop
-CX scheme-recovery change (generic Capstone-backed PE/TPM analysis). The SD holds NRO `8d4bef4`
-(`4101BB85…D02997F`), verified over FTP. User confirms on Switch that Fate/FSN and the other tested
-games work well; **Fate is playable from beginning to end**. The generic XP3-filter threading fix is
-in that build. ATRI still does not reach its title menu on Switch.
+The SD holds NRO `F9F0F4D1FFA2F2299EFCC403D55F1C4E38771B603939F46EC384F21A134D82DE`
+(27,571,621 bytes), built from the work branch with the generic DataPack/XP3 work. User confirms on
+Switch that Fate/FSN and the other tested games work well; **Fate is playable from beginning to end**.
+The generic XP3-filter threading fix is in that build. ATRI now enters the game on Switch and plays
+the opening (PBD-backed layers, dialogue, sprites, BGM); it then exits to the launcher on missing
+`layerEx*` members (`clipAlphaRect`, `fillAlpha`).
 
 The current native repack work is engine-wide: `hnfn` names + generic CXDEC decoder/scheme binding,
-Steam-build argument detection and plugin compatibility. ATRI is used only to exercise that path;
-it is not an acceptance target by itself. The first known remaining Switch issue is the ATRI title
-startup/Win32-dialog path (latest log: `title:xrated, 0`, then `win32dialog.tjs getNumberdId` with
-`void` ID). Investigate the missing generic API/semantics, not ATRI-specific behavior. Full status and
-crash analysis: `docs/handoff-native-cx.md`, `docs/cxdec.md`.
+Steam-build argument detection, `Scripts.loadDataPack`, and plugin compatibility. ATRI is used only to
+exercise that path; it is not an acceptance target by itself. The first known remaining Switch blocker
+is the `layerEx*` plugin family: `layerExDraw.dll`, `layerExImage.dll`, `layerExRaster.dll` and
+`layerExBtoA.dll` are still ignored, and ATRI's affine/PSD layers call their primitives. Investigate
+the missing generic API/semantics, not ATRI-specific behavior. Full status and crash analysis:
+`docs/handoff-native-cx.md`, `docs/cxdec.md`.
 
 Works on the Switch (user-tested): launcher, exit to the launcher (engine threads stopped,
 detached thread stacks closed), in-game menu on L3 + R3, saves outside the game folder, FSN PC
@@ -80,11 +82,13 @@ paths, keys, offsets, names or behavior. Every compatibility fix must implement 
 API/semantic or a generally detectable plugin/platform behavior; test against the existing game set.
 
 - Generic native repack path is implemented: `hnfn` names, CXDEC decoder, and verified scheme binding.
-  ATRI's original folder reaches title setup on desktop, but **the user reports it still does not
-  reach the title menu on Switch**. Latest Switch log: `title:xrated, 0`, then
-  `win32dialog.tjs getNumberdId` indexes `itemMap` with `void`. Treat this as a missing/incorrect
-  KiriKiri Win32-dialog/log-window compatibility behavior, not an ATRI-specific defect. Investigate
-  the generic wrapper semantics and add a focused stub/API test.
+  `Scripts.loadDataPack` decodes real PackinOne `TJS/4s0` `.pbd` packs. ATRI's original folder now
+  enters the game on Switch and desktop; the 2026-11-04 logs then fail on
+  `Member "clipAlphaRect" does not exist` in `affinelayer.tjs onPaint` (after `fillAlpha` in
+  `affinesourcenoise.tjs loadImages`), print the game's fatal-error banner (`start.ks:25`) and exit.
+  The identical desktop failure proves this is the missing generic `layerEx*` plugin API
+  (`layerExDraw`/`layerExImage`/`layerExRaster`/`layerExBtoA` are still ignored), not an
+  ATRI-specific defect.
 - Steam detection (`steam_api.dll` plus `steam.tjs`/`steam.xp3`), `-steam=yes`, KZ release
   `-debugwin=no`, and the `krkrsteam.dll` compatibility object are in the engine layer. Achievements
   are logged, cloud is unavailable.
@@ -213,12 +217,14 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 
 ## Next steps (universal engine; ATRI is one test fixture)
 
-1. Fix the generic KiriKiri Z Win32-dialog/log-window contract exposed by ATRI's Switch startup:
-   latest log reaches `title:xrated, 0`, then `win32dialog.tjs getNumberdId` indexes `itemMap` with
-   `void`. Do not special-case ATRI; make the native `win32dialog.dll` compatibility layer obey the
-   script wrapper's contract, add a focused fixture/test, then retest ATRI and other KAGZ games.
-2. Implement the real generic `TextRenderBase` behavior (current `textrender.dll` is a no-op), then
-   add other KAGZ API/plugin compatibility only when evidence from multiple games supports it.
+1. Implement the generic `layerEx*` plugin API exposed by ATRI's Switch run: `layerExDraw.dll`
+   (`fillAlpha`), and whichever plugin provides `KAGLayer.clipAlphaRect`, plus the ignored
+   `layerExImage.dll` / `layerExRaster.dll` / `layerExBtoA.dll`. Do not special-case ATRI; implement
+   the plugin contracts (see `docs/plugins.md`), add focused fixtures/tests, then retest ATRI and
+   other KAGZ games.
+2. Implement the real generic `TextRenderBase` behavior (the API surface exists but `textrender.dll`
+   draws nothing), then add other KAGZ API/plugin compatibility only when evidence from multiple
+   games supports it.
 3. Broaden the regression suite across unrelated KAG/TJS2 games and language patches. Keep the
    confirmed Fate/FSN full playthrough and FSN Russian patch as mandatory regressions. All changes
    belong in engine/compat, never in game files or title-specific branches.
@@ -238,10 +244,11 @@ CXDEC decoding, Steam compatibility, PSB/psbfile, KAG/Scripts APIs and debugging
 Desktop now auto-recovers supported CX schemes from generic PE/TPM structures without a pre-made
 scheme profile (ATRI test: 12/12 validation); Switch still needs a profile pending the portable x86
 analyzer. ATRI confirms the PC scheme recovery path but remains only a test fixture: on Switch it
-still fails in the generic
-`win32dialog.tjs`/KAGZ title setup, and on PC this fixture exposes missing generic KAGZ plugins.
-User-confirmed regressions: Fate/FSN and the other tested games work on Switch; Fate has a complete
-beginning-to-end playthrough. The FSN TJS-filter crash was traced to running its XP3 filter on the
-async image thread; `8d4bef4` routes filtered graphic loading through the main thread. Full details,
-known limits and remaining generic compatibility gaps are in `docs/handoff-native-cx.md` and
-`docs/cxdec.md`. Never optimize for ATRI at the expense of the universal compatibility goal.
+now enters the game and fails on missing generic `layerEx*` members
+(`layerExDraw`/`layerExImage`/`layerExRaster`/`layerExBtoA` are ignored; `clipAlphaRect`, `fillAlpha`),
+and desktop reproduces the same gap. User-confirmed regressions: Fate/FSN and the other tested games
+work on Switch; Fate has a complete beginning-to-end playthrough. The FSN TJS-filter crash was traced
+to running its XP3 filter on the async image thread; `8d4bef4` routes filtered graphic loading through
+the main thread. Full details, known limits and remaining generic compatibility gaps are in
+`docs/handoff-native-cx.md` and `docs/cxdec.md`. Never optimize for ATRI at the expense of the
+universal compatibility goal.

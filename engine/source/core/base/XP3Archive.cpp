@@ -32,6 +32,7 @@
 #endif
 #include <algorithm>
 #include <map>
+#include <set>
 
 bool TVPAllowExtractProtectedStorage = true;
 
@@ -378,11 +379,19 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 		st->SetPosition(11 + offset);
 
 		// read all XP3 indices
+		std::set<tjs_uint64> visited_index_offsets;
 		while(true)
 		{
-			if(indexdata) delete [] indexdata;
+			// Clear the pointer as well as freeing the buffer: an exception
+			// before the next allocation must not free it a second time in
+			// the catch block below.
+			if(indexdata) { delete [] indexdata; indexdata = NULL; }
 
 			tjs_uint64 index_ofs = st->ReadI64LE();
+			// A malformed index chain can point back to an already read
+			// block; without this check the loop below never terminates.
+			if(!visited_index_offsets.insert(index_ofs).second)
+				TVPThrowExceptionMessage(TVPReadError);
 			st->SetPosition(index_ofs + offset);
 
 			// read index to memory
@@ -452,12 +461,16 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 			std::map<tjs_uint32, std::vector<ttstr> > hashed_names;
 			{
 				tjs_uint ch_pos = 0;
-				while(ch_pos + 12 <= index_size)
+				while((tjs_uint64)ch_pos + 12 <= index_size)
 				{
 					tjs_uint32 tag = (tjs_uint32)ReadI32FromMem(indexdata + ch_pos);
 					tjs_uint64 ch_size = (tjs_uint64)ReadI64FromMem(indexdata + ch_pos + 4);
-					if(ch_size > index_size ||
-						ch_pos + 12 + (tjs_uint)ch_size > index_size)
+					if(ch_size > index_size)
+						break;
+					// Compute the end in 64-bit: ch_pos + 12 + ch_size can
+					// wrap a 32-bit offset for a large/corrupt index.
+					tjs_uint64 ch_end = (tjs_uint64)ch_pos + 12 + ch_size;
+					if(ch_end > index_size)
 						break;
 					if(tag == 0x6e666e68 || tag == 0x46696c65) // 'hnfn' or 'eliF'
 					{
@@ -474,7 +487,7 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 							}
 						}
 					}
-					ch_pos += 12 + (tjs_uint)ch_size;
+					ch_pos = (tjs_uint)ch_end;
 				}
 			}
 
@@ -496,6 +509,7 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 
 				// read info sub-chunk
 				tArchiveItem item;
+				if(ch_info_size < 22) TVPThrowExceptionMessage(TVPReadError);
 				tjs_uint32 flags = ReadI32FromMem(indexdata + ch_info_start + 0);
 				if(!TVPAllowExtractProtectedStorage && (flags & TVP_XP3_FILE_PROTECTED))
 					TVPThrowExceptionMessage( TVPSpecifiedStorageHadBeenProtected );
@@ -503,6 +517,8 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 				item.ArcSize = ReadI64FromMem(indexdata + ch_info_start + 12);
 
 				tjs_int len = ReadI16FromMem(indexdata + ch_info_start + 20);
+				if(len < 0 || (tjs_uint)(22 + 2 * len) > ch_info_size)
+					TVPThrowExceptionMessage(TVPReadError);
 				ttstr name = TVPStringFromBMPUnicode(
 						(const tjs_uint16 *)(indexdata + ch_info_start + 22), len);
 				item.Name = name;
@@ -519,10 +535,12 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 					TVPThrowExceptionMessage(TVPReadError);
 
 				// read segm sub-chunk
-				tjs_int segment_count = ch_segm_size / 28;
+				tjs_uint segment_count = ch_segm_size / 28;
 				tjs_uint64 offset_in_archive = 0;
-				for(tjs_int i = 0; i<segment_count; i++)
+				for(tjs_uint i = 0; i<segment_count; i++)
 				{
+					// Unsigned arithmetic: i * 28 fits in ch_segm_size and
+					// cannot overflow a signed int for a large index.
 					tjs_uint pos_base = i * 28 + ch_segm_start;
 					tTVPXP3ArchiveSegment seg;
 					tjs_uint32 flags = ReadI32FromMem(indexdata + pos_base);
@@ -555,6 +573,7 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 					TVPThrowExceptionMessage(TVPReadError);
 
 				// read 'aldr' sub-chunk
+				if(ch_adlr_size < 4) TVPThrowExceptionMessage(TVPReadError);
 				item.FileHash = ReadI32FromMem(indexdata + ch_adlr_start);
 
 			// kk4s: resolve names from either hashed-name table. Entries without
@@ -724,12 +743,21 @@ bool tTVPXP3Archive::FindChunk(const tjs_uint8 *data, const tjs_uint8 * name,
 	tjs_uint pos = 0;
 	while(pos < size)
 	{
+		// A chunk header (4-byte tag + 8-byte size) must fit in the
+		// remaining range; otherwise the index is truncated/corrupt.
+		if(size - pos < 12)
+			break;
 		bool found = !memcmp(data + start, name, 4);
 		start += 4;
 		tjs_uint64 r_size = ReadI64FromMem(data + start);
 		start += 8;
 		tjs_uint size_chunk = (tjs_uint)r_size;
 		if(size_chunk != r_size)
+			TVPThrowExceptionMessage(TVPReadError);
+		// The child body must not extend past its parent range. This also
+		// keeps `pos` from wrapping (size_chunk is 32-bit) and walking off
+		// the index buffer when a size is corrupt.
+		if(size_chunk > size - pos - 12)
 			TVPThrowExceptionMessage(TVPReadError);
 		if(found)
 		{
@@ -964,11 +992,21 @@ tTVPXP3ArchiveStream::tTVPXP3ArchiveStream(tTVPXP3Archive *owner,
 	Segments = segments;
 	SegmentData = NULL;
 	CurSegmentNum = 0;
-	CurSegment = &(Segments->operator [](0));
+	CurSegment = NULL;
 	SegmentPos = 0;
-	SegmentRemain = CurSegment->OrgSize;
+	SegmentRemain = 0;
 	SegmentOpened = false;
 	CurPos = 0;
+
+	// A valid 'segm' chunk normally holds at least one segment, but an entry
+	// may legitimately describe an empty file with no segment records. Treat
+	// such an entry as a zero-length stream instead of dereferencing
+	// Segments[0]; SeekToPosition/OpenNextSegment/Read are null-safe too.
+	if(Segments && !Segments->empty())
+	{
+		CurSegment = &(*Segments)[0];
+		SegmentRemain = CurSegment->OrgSize;
+	}
 
 	LastOpenedSegmentNum = -1;
 
@@ -991,6 +1029,7 @@ void tTVPXP3ArchiveStream::EnsureSegment()
 {
 	// ensure accessing to current segment
 	if(SegmentOpened) return;
+	if(!CurSegment) return; // no segments (empty file entry)
 
 	if(LastOpenedSegmentNum == CurSegmentNum)
 	{
@@ -1059,6 +1098,13 @@ void tTVPXP3ArchiveStream::SeekToPosition(tjs_uint64 pos)
 	// pos must between zero thru OrgSize
 	if(CurPos == pos) return;
 
+	// no segments: only the (empty) stream position moves
+	if(Segments->empty())
+	{
+		CurPos = pos;
+		return;
+	}
+
 	// do binary search to determine current segment number
 	tjs_int st = 0;
 	tjs_int et = (tjs_int)Segments->size();
@@ -1079,6 +1125,8 @@ void tTVPXP3ArchiveStream::SeekToPosition(tjs_uint64 pos)
 	SegmentOpened = false;
 
 	SegmentPos = pos - CurSegment->Offset;
+	if(SegmentPos > CurSegment->OrgSize)
+		SegmentPos = CurSegment->OrgSize; // corrupt segment offset/size
 	SegmentRemain = CurSegment->OrgSize - SegmentPos;
 	CurPos = pos;
 }
@@ -1086,6 +1134,8 @@ void tTVPXP3ArchiveStream::SeekToPosition(tjs_uint64 pos)
 bool tTVPXP3ArchiveStream::OpenNextSegment()
 {
 	// open next segment
+	if(Segments->empty())
+		return false; // no segments (empty file entry)
 	if(CurSegmentNum == (tjs_int)(Segments->size() -1))
 		return false; // no more segments
 	CurSegmentNum ++;
