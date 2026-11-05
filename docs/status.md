@@ -6,6 +6,9 @@ Last update: 2026-11-05.
 
 - **ATRI -My Dear Moments-** (Steam release, original folder): runs on the console.
 - Other tested games (Sharin, Tsukihime, The Makings of a Lady, FSN): work; **Fate/FSN is not broken**.
+- **Yosuga no Sora** and **11 eyes** start on the Switch (user, 2026-11-06, after `ddb8adf`: Yosuga needs its
+  `ヨスガノソラ.cf` on the SD card, 11 eyes may sit in a wrapper folder). The screen-mode switch
+  (original / stretch / fill) was installed with that build; the user said it works.
 - **Aspect (user-reported 2026-11-05):** Fate/FSN and Tsukihime now show **4:3 with black bars** on the 16:9 screen
   after `806395c` (letterbox, default on). Before it they filled 16:9. The user wants 16:9 for these titles.
   Planned: a 16:9 stretch or an upscaler, plus a switch between original 4:3 and 16:9 (see `docs/roadmap.md`).
