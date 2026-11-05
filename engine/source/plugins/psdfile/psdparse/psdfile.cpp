@@ -18,6 +18,10 @@
     #define WIN32_LEAN_AND_MEAN
   #endif
   #include <windows.h>
+#elif defined(__SWITCH__)
+  // kk4s: no mmap in libnx; the file is read into memory instead
+  #include <cstdio>
+  #include <cstdlib>
 #else
   #include <fcntl.h>
   #include <unistd.h>
@@ -70,6 +74,27 @@ struct PSDFile::Mapping {
     if (hMap)                       CloseHandle(hMap);
     if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
   }
+#elif defined(__SWITCH__)
+  void  *ptr    = nullptr;
+  size_t length = 0;
+
+  static std::unique_ptr<Mapping> open(const char *path) {
+    auto m = std::unique_ptr<Mapping>(new Mapping());
+    FILE *f = fopen(path, "rb");
+    if (!f) return nullptr;
+    if (fseek(f, 0, SEEK_END) == 0) {
+      long n = ftell(f);
+      if (n > 0 && fseek(f, 0, SEEK_SET) == 0 && (m->ptr = malloc((size_t)n)) != nullptr) {
+        m->length = (size_t)n;
+        if (fread(m->ptr, 1, m->length, f) != m->length) { free(m->ptr); m->ptr = nullptr; }
+      }
+    }
+    fclose(f);
+    if (!m->ptr) return nullptr;
+    return m;
+  }
+
+  ~Mapping() { free(ptr); }
 #else
   void  *ptr    = nullptr;
   size_t length = 0;
