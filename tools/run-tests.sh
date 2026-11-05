@@ -17,7 +17,8 @@
 #              playing a scenario and played with the pad (tests/kag3, ~60 s)
 #   decoders   PBD / PSB / CXDEC decoders vs their Python references (no engine),
 #              the x86 interpreter vs native code and the .tpm loader on
-#              synthetic filter plugins (need i686-w64-mingw32-gcc)
+#              synthetic filter plugins (need i686-w64-mingw32-gcc),
+#              the E-mote runtime unit tests and its core-purity guard
 #
 # Engine groups boot a synthetic game headlessly (SDL_VIDEODRIVER=dummy) and
 # write their logs to $KK4S_TEST_WORK (default build-tests/). No game content is
@@ -115,6 +116,9 @@ group_decoders() {
         -o "$WORK/cxdec_test" || ok=0
     "$cxx" -std=c++17 -O2 -I compat tests/cxdec/tinyfilter_test.cpp compat/cxdec/tinyfilter.cpp -lz \
         -o "$WORK/tinyfilter_test" || ok=0
+    "$cxx" -std=c++17 -O2 -Wall -Wextra -I compat -I tests/emote tests/emote/emote_tests.cpp \
+        compat/emote/*.cpp compat/emote/profiles/*.cpp compat/emote/adapters/*.cpp compat/psb/psb.cpp -lz \
+        -o "$WORK/emote_tests" || ok=0
     if [ "$ok" -ne 1 ]; then
         echo "FAIL decoder helpers did not build"
         failed=$((failed + 1))
@@ -158,6 +162,10 @@ group_decoders() {
     run psb   python3 tests/psb/run_tests.py "$WORK/psb_dump"
     run cxdec "$WORK/cxdec_test" tests/cxdec/vectors.txt
     run tinyfilter "$WORK/tinyfilter_test" tests/cxdec/tiny_vectors.txt
+    # E-mote runtime: synthetic unit tests + no game-specific code in the core.
+    # The real-resource check (tests/emote/run_real.py) needs a game copy and is run by hand.
+    run emote        "$WORK/emote_tests"
+    run emote-purity python3 tests/emote/check_core_purity.py
 }
 
 case "$GROUP" in

@@ -138,6 +138,23 @@ set(SOURCES
     compat/cxdec/tinyfilter.cpp
     compat/kk4s_motion.cpp
     compat/psb/psb.cpp
+    # universal E-mote runtime (docs/universal_emote_runtime.md); pure C++,
+    # not wired into Motion.* yet
+    compat/emote/emote.cpp
+    compat/emote/emote_status.cpp
+    compat/emote/psb_value.cpp
+    compat/emote/psb_document.cpp
+    compat/emote/cipher_profile.cpp
+    compat/emote/profiles/builtin_profiles.cpp
+    compat/emote/profiles/nekopara_vol1.cpp
+    compat/emote/emote_model.cpp
+    compat/emote/model_adapter.cpp
+    compat/emote/adapters/emote_v3.cpp
+    compat/emote/easing.cpp
+    compat/emote/animation_runtime.cpp
+    compat/emote/scene.cpp
+    compat/emote/render_contract.cpp
+    compat/emote/emote_assets.cpp
     compat/pbd/pbd.cpp
     compat/kk4s_plugins.cpp
     compat/kk4s_layerfx.cpp
