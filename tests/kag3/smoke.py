@@ -27,11 +27,12 @@ TEMPLATE = Path(__file__).resolve().parent / "template"
 
 STEPS = [
     "start", "text", "trans_crossfade", "trans_universal", "trans_scroll", "move", "quake",
-    "font", "macro kk4s", "if", "call", "return", "se", "bgm", "emb", "save 1",
-    "link choice1", "yesno",
+    "font", "macro kk4s", "if", "call", "return", "se", "bgm", "emb", "savepoint first", "save 1",
+    "link choice1", "yesno", "savepoint loaded", "load restored=1",
 ]
 
 SCENARIO = """*start|スタート
+[eval exp="global.kk4s_loaded = false"]
 [eval exp="dm('KAG3_STEP start')"]
 [image storage="bg_red" layer=base page=fore]
 [cm]
@@ -80,8 +81,13 @@ SCENARIO = """*start|スタート
 [cm]
 [emb exp="'埋め込み'"]の文字[l][er]
 [eval exp="dm('KAG3_STEP emb')"]
-[eval exp="kag.saveBookMark(0, false)"]
+[eval exp="f.state = 1"]
+*save_here|セーブ地点
+[eval exp="dm('KAG3_STEP savepoint ' + (global.kk4s_loaded === true ? 'loaded' : 'first'))"]
+[jump target=*after_load cond="global.kk4s_loaded === true"]
+[save place=0 ask=false]
 [eval exp="dm('KAG3_STEP save ' + (Storages.isExistentStorage(kag.getBookMarkFileNameAtNum(0)) ? 1 : 0))"]
+[eval exp="f.state = 2"]
 [cm]
 選んでください。[r]
 [link target=*choice1]一つ目[endlink][r]
@@ -96,6 +102,11 @@ SCENARIO = """*start|スタート
 [cm]
 [eval exp="global.kk4s_answer = askYesNo('続けますか？')"]
 [eval exp="dm('KAG3_STEP yesno')"]
+[eval exp="global.kk4s_loaded = true"]
+[load place=0 ask=false]
+[s]
+*after_load
+[eval exp="dm('KAG3_STEP load restored=' + f.state)"]
 [eval exp="dm('KAG3 PASS')"]
 [s]
 """
