@@ -50,7 +50,7 @@ check("md5", Storages.getMD5HashString("md5.bin") == "900150983cd24fb0d6963f7d28
 var d = new Date();
 d.setTime(1000000000000);	// 2001-09-09
 check("setTime", Storages.setTime(file, %[ mtime: d ]));
-check("getTime round-trip", Storages.getTime(file).mtime.getTime() == 1000000000000);
+check("getTime round-trip (whole seconds)", Storages.getTime(file).mtime.getTime() == 1000000000000);
 check("FILETIME", Storages.getLastModifiedFileTime(file) == 1000000000000 * 10000 + 116444736000000000);
 
 check("attrib dir", (Storages.getFileAttributes(root + "sub/") & 0x10) != 0);

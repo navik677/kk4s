@@ -31,8 +31,8 @@ extern bool TVPKAGParserExMode; // engine/source/core/utils/KAGParser.cpp
 #include <string>
 #include <dirent.h>
 #include <sys/stat.h>
-#include <sys/time.h>
 #include <unistd.h>
+#include <utime.h>
 #include <vector>
 
 namespace kk4s {
@@ -239,14 +239,16 @@ static bool CopyStorage(const ttstr& from, const ttstr& to, bool fail_if_exists)
 // Timestamps are milliseconds since 1970 (Date.setTime); FILETIME values are
 // 100 ns ticks since 1601 like on Windows.
 
-static const tjs_int64 kFiletimeEpoch = 116444736000000000LL; // 1601 -> 1970 in 100 ns
-
-static tjs_int64 MsOf(const struct timespec& t) { return (tjs_int64)t.tv_sec * 1000 + t.tv_nsec / 1000000; }
+// Times are whole seconds: st_mtime / st_atime / st_ctime exist on Linux, MinGW
+// and the Switch's newlib alike (st_mtim does not).
+static tjs_int64 MsOf(time_t t) { return (tjs_int64)t * 1000; }
 
 // Windows-style attributes of a native path (0 if missing).
 static tjs_int AttributesOf(const std::string& path, const struct stat& sb) {
     tjs_int a = S_ISDIR(sb.st_mode) ? 0x10 : 0x20;               // DIRECTORY / ARCHIVE
-    if (access(path.c_str(), W_OK) != 0) a |= 0x01;               // READONLY
+#ifndef __SWITCH__
+    if (!(sb.st_mode & S_IWUSR)) a |= 0x01;                       // READONLY (no permissions on the SD card)
+#endif
     const char* base = strrchr(path.c_str(), '/');
     base = base ? base + 1 : path.c_str();
     if (base[0] == '.' && strcmp(base, ".") && strcmp(base, "..")) a |= 0x02; // HIDDEN
@@ -259,19 +261,25 @@ static bool StatArray(const std::string& path, tTJSVariant* r) {
     if (path.empty() || stat(path.c_str(), &sb) != 0) return false;
     if (!r) return true;
     iTJSDispatch2* arr = TJSCreateArrayObject();
-    tTJSVariant v[5] = {(tjs_int64)(S_ISDIR(sb.st_mode) ? 0 : sb.st_size), MsOf(sb.st_mtim), MsOf(sb.st_atim),
-                        MsOf(sb.st_ctim), AttributesOf(path, sb)};
+    tTJSVariant v[5] = {(tjs_int64)(S_ISDIR(sb.st_mode) ? 0 : sb.st_size), MsOf(sb.st_mtime), MsOf(sb.st_atime),
+                        MsOf(sb.st_ctime), AttributesOf(path, sb)};
     for (int i = 0; i < 5; ++i) arr->PropSetByNum(TJS_MEMBERENSURE, i, &v[i], arr);
     *r = tTJSVariant(arr, arr);
     arr->Release();
     return true;
 }
 
-static void SetFileTimesMs(const std::string& path, tjs_int64 mtime_ms, tjs_int64 atime_ms) {
-    struct timeval tv[2];
-    tv[0].tv_sec = (time_t)(atime_ms / 1000); tv[0].tv_usec = (suseconds_t)((atime_ms % 1000) * 1000);
-    tv[1].tv_sec = (time_t)(mtime_ms / 1000); tv[1].tv_usec = (suseconds_t)((mtime_ms % 1000) * 1000);
-    utimes(path.c_str(), tv);
+// The Switch's SD card file system cannot set times through libnx; false there.
+static bool SetFileTimesMs(const std::string& path, tjs_int64 mtime_ms, tjs_int64 atime_ms) {
+#ifdef __SWITCH__
+    (void)path; (void)mtime_ms; (void)atime_ms;
+    return false;
+#else
+    struct utimbuf t;
+    t.actime = (time_t)(atime_ms / 1000);
+    t.modtime = (time_t)(mtime_ms / 1000);
+    return utime(path.c_str(), &t) == 0;
+#endif
 }
 
 static bool InsideGameDir(const std::string& path) {
@@ -319,8 +327,8 @@ static void LinkFstatExtras(iTJSDispatch2* st) {
             iTJSDispatch2* item = TJSCreateArrayObject();
             tjs_string wide;
             ttstr wname = TVPUtf8ToUtf16(wide, name) ? ttstr(wide.c_str()) : ttstr(name.c_str());
-            tTJSVariant v[6] = {wname, (tjs_int64)(S_ISDIR(sb.st_mode) ? 0 : sb.st_size), MsOf(sb.st_mtim),
-                                MsOf(sb.st_atim), MsOf(sb.st_ctim), AttributesOf(full, sb)};
+            tTJSVariant v[6] = {wname, (tjs_int64)(S_ISDIR(sb.st_mode) ? 0 : sb.st_size), MsOf(sb.st_mtime),
+                                MsOf(sb.st_atime), MsOf(sb.st_ctime), AttributesOf(full, sb)};
             for (int i = 0; i < 6; ++i) item->PropSetByNum(TJS_MEMBERENSURE, i, &v[i], item);
             tTJSVariant iv(item, item);
             item->Release();
@@ -337,9 +345,9 @@ static void LinkFstatExtras(iTJSDispatch2* st) {
         struct stat sb;
         bool ok = !path.empty() && stat(path.c_str(), &sb) == 0 && !InsideGameDir(path);
         if (ok) {
-            tjs_int64 m = p[1]->Type() == tvtVoid ? MsOf(sb.st_mtim) : p[1]->AsInteger();
-            tjs_int64 a = p[2]->Type() == tvtVoid ? MsOf(sb.st_atim) : p[2]->AsInteger();
-            SetFileTimesMs(path, m, a);
+            tjs_int64 m = p[1]->Type() == tvtVoid ? MsOf(sb.st_mtime) : p[1]->AsInteger();
+            tjs_int64 a = p[2]->Type() == tvtVoid ? MsOf(sb.st_atime) : p[2]->AsInteger();
+            ok = SetFileTimesMs(path, m, a);
         }
         if (r) *r = (tjs_int)ok;
         return TJS_S_OK;
@@ -347,7 +355,14 @@ static void LinkFstatExtras(iTJSDispatch2* st) {
     DefineFunction(st, TJS_W("truncateFile"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
         if (n < 2) return TJS_E_BADPARAMCOUNT;
         std::string path = NativePath(*p[0]);
-        bool ok = !path.empty() && !InsideGameDir(path) && truncate(path.c_str(), (off_t)p[1]->AsInteger()) == 0;
+        bool ok = false;
+        if (!path.empty() && !InsideGameDir(path)) {
+            FILE* f = fopen(path.c_str(), "r+b");
+            if (f) {
+                ok = ftruncate(fileno(f), (off_t)p[1]->AsInteger()) == 0;
+                fclose(f);
+            }
+        }
         TVPClearStorageCaches();
         if (r) *r = (tjs_int)ok;
         return TJS_S_OK;
@@ -358,10 +373,14 @@ static void LinkFstatExtras(iTJSDispatch2* st) {
         struct stat sb;
         if (path.empty() || stat(path.c_str(), &sb) != 0) return false;
         tjs_int attr = (tjs_int)p[1]->AsInteger();
+#ifndef __SWITCH__ // the SD card has no permissions to change
         if ((attr & 0x01) && !InsideGameDir(path)) {
             mode_t m = set ? (sb.st_mode & ~(mode_t)0222) : (sb.st_mode | S_IWUSR);
             chmod(path.c_str(), m);
         }
+#else
+        (void)attr; (void)set;
+#endif
         return true;
     };
     DefineFunction(st, TJS_W("setFileAttributes"), [change_attr](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
