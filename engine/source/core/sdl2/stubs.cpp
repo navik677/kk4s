@@ -228,6 +228,19 @@ protected:
 	tTJSNI_Window *TJSNativeInstance;
 	bool hasDrawn = false;
 	bool isBeingDeleted = false;
+	bool unlinked = false; // kk4s: left the window list (InvalidateClose or destructor)
+
+	// kk4s: leave the window list; input and drawing go to the most recent
+	// window that is still alive. Called once, from InvalidateClose or the destructor.
+	void kk4sUnlink() {
+		if (unlinked) return;
+		unlinked = true;
+		if (_lastWindowLayer == this) _lastWindowLayer = _prevWindow;
+		if (_nextWindow) _nextWindow->_prevWindow = _prevWindow;
+		if (_prevWindow) _prevWindow->_nextWindow = _nextWindow;
+		if (_currentWindowLayer == this) _currentWindowLayer = _lastWindowLayer;
+		_prevWindow = _nextWindow = nullptr;
+	}
 	int curWindowW = 640, curWindowH = 480;
 
 public:
@@ -259,23 +272,8 @@ public:
 	}
 
 	virtual ~TVPWindowLayer() {
-		if (_lastWindowLayer == this) _lastWindowLayer = _prevWindow;
-		if (_nextWindow) _nextWindow->_prevWindow = _prevWindow;
-		if (_prevWindow) {_prevWindow->_nextWindow = _nextWindow;}
-
-		if (_currentWindowLayer == this) {
-			// TVPWindowLayer *anotherWin = _lastWindowLayer;
-			// while (anotherWin && !anotherWin->isVisible()) {
-			// 	anotherWin = anotherWin->_prevWindow;
-			// }
-			// if (anotherWin && anotherWin->isVisible()) {
-			// 	anotherWin->setPosition(0, 0);
-			// 	//anotherWin->setVisible(true);
-			// }
-			_currentWindowLayer = _lastWindowLayer;
-			// SDL_SetWindowSize(window, _currentWindowLayer->curWindowW, _currentWindowLayer->curWindowH);
-		}
-		SDL_DestroyTexture(framebuffer);
+		kk4sUnlink();
+		if (framebuffer) SDL_DestroyTexture(framebuffer);
 		framebuffer = NULL;
 
 
@@ -477,7 +475,19 @@ public:
 	virtual void UpdateOverlay() = 0;
 #endif
 	virtual void InvalidateClose() override {
+		// kk4s: the TJS window object is being invalidated (KAG's YesNoDialog does
+		// `invalidate win` after showModal()). Its native instance is freed right
+		// after, so forget it and hand input/drawing back to the previous window.
+		// Before, the dialog stayed the current window with a dangling instance:
+		// the next pad press was posted to freed memory (crash), or ignored, which
+		// on the Switch looked like a frozen game after every yes/no prompt.
 		isBeingDeleted = true;
+		TJSNativeInstance = nullptr;
+		kk4sUnlink();
+		if (framebuffer && !in_mode_) {
+			SDL_DestroyTexture(framebuffer);
+			framebuffer = NULL;
+		}
 	}
 	virtual bool GetWindowActive() override {
 		return _currentWindowLayer == this;
@@ -739,6 +749,8 @@ public:
 	}
 	// One button changed (Switch: libnx, PC: SDL controller events).
 	void kk4sPadChange(unsigned bit, bool down) {
+		// kk4s: never post to a closed window (its native instance is gone)
+		if (isBeingDeleted || !TJSNativeInstance) return;
 		unsigned before = kk4sPadHeld;
 		kk4sPadHeld = down ? (kk4sPadHeld | bit) : (kk4sPadHeld & ~bit);
 		if (bit & kk4s::kPadMenuCombo) {
