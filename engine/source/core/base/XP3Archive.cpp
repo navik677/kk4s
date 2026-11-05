@@ -21,6 +21,7 @@
 #include "kk4s_platform.h" // kk4s
 #include "kk4s_cx.h" // kk4s
 #include "kk4s_xp3crypt.h" // kk4s
+#include "kk4s_tpm.h" // kk4s
 #include "cxdec/cxdec.h" // kk4s
 #include <SDL.h> // kk4s: SDL_GetTicks
 
@@ -660,7 +661,7 @@ bool tTVPXP3Archive::Kk4sReadRaw(tTJSBinaryStream *st, const tArchiveItem &item,
 }
 //---------------------------------------------------------------------------
 // kk4s: an archive with plain names and no script filter. If its small entries
-// do not match their adlr as they are, try the keyless .tpm schemes
+// do not match their adlr as they are, try the game's .tpm and the keyless schemes
 // (compat/kk4s_xp3crypt.h). A plain archive is recognised after three entries
 // that match, so ordinary games only pay for reading three small files.
 void tTVPXP3Archive::Kk4sBindSimple()
@@ -687,7 +688,10 @@ void tTVPXP3Archive::Kk4sBindSimple()
 	}
 	delete st;
 	if(plain >= 3 || samples.size() < 2) return;
-	Kk4sCx = kk4s::compat::BindSimpleCrypt(Name.AsNarrowStdString(), samples);
+	// kk4s: the game's own .tpm filter first (run in the x86 interpreter,
+	// compat/kk4s_tpm.h), then the keyless families
+	Kk4sCx = kk4s::compat::BindTpmFilter(Name.AsNarrowStdString(), samples);
+	if(!Kk4sCx) Kk4sCx = kk4s::compat::BindSimpleCrypt(Name.AsNarrowStdString(), samples);
 }
 //---------------------------------------------------------------------------
 // kk4s: pick sample entries, read their raw (still encrypted) bytes and let
