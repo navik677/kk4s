@@ -1,0 +1,577 @@
+
+#include "psdwrite.h"
+
+#include <cstring>
+
+namespace psd {
+
+// ===========================================================================
+// FileWriter
+// ===========================================================================
+
+FileWriter::FileWriter(const char *path) : fp_(nullptr) {
+#ifdef _WIN32
+  // fopen は ANSI 限定なので UTF-8 → UTF-16 → _wfopen で開く。
+  std::wstring w = utf8ToWide(path);
+  if (w.empty()) return;
+  fp_ = _wfopen(w.c_str(), L"wb");
+#else
+  fp_ = std::fopen(path, "wb");
+#endif
+}
+
+FileWriter::~FileWriter() { close(); }
+
+void FileWriter::close() {
+  if (fp_) { std::fclose(fp_); fp_ = nullptr; }
+}
+
+size_t FileWriter::putData(const void *data, size_t n) {
+  if (!fp_ || n == 0) return 0;
+  return std::fwrite(data, 1, n, fp_);
+}
+
+int64_t FileWriter::tell() const {
+  if (!fp_) return -1;
+#ifdef _WIN32
+  return _ftelli64(fp_);
+#else
+  return (int64_t)ftello(fp_);
+#endif
+}
+
+bool FileWriter::seek(int64_t pos) {
+  if (!fp_) return false;
+#ifdef _WIN32
+  return _fseeki64(fp_, pos, SEEK_SET) == 0;
+#else
+  return fseeko(fp_, (off_t)pos, SEEK_SET) == 0;
+#endif
+}
+
+// ===========================================================================
+// writePSD
+// ===========================================================================
+//
+// PSD ファイルは 5 セクションで構成される。各セクションには長さフィールドが
+// 先頭に付いていることが多いので、書き込み時は「placeholder 0 を書く →
+// 中身を書く → 戻ってサイズを埋める」の patch-back パターンを多用する。
+//
+//   1. File Header (26 bytes 固定)
+//   2. Color Mode Data (4 byte length + content)
+//   3. Image Resources (4 byte length + 各リソースは 8BIM + id + Pascal name +
+//      4 byte data size + data + 偶数 padding の繰り返し)
+//   4. Layer and Mask Information (4 byte length + Layer Info subsection +
+//      Global Layer Mask Info subsection + 任意の追加 info)
+//   5. Image Data (compression word + interleaved planes)
+//
+// Round-trip 戦略:
+//   * 構造的に再現可能なフィールド (header, layer record, blend key, …) は
+//     parsed フィールドから再シリアライズ
+//   * 詳細パースが煩雑な block (layer mask / blending range / additional
+//     layer info の生バイト, global layer mask info の生バイト, channel image
+//     data の RLE/raw bytes, merged image bytes) は parse 時に保持した
+//     IteratorBase からそのまま転送
+//
+// "patch-back" ヘルパ: ラムダ的に使いたいので明示マクロは使わず、ローカル
+// で position を保存して後で書き戻す方式。
+
+namespace {
+
+inline void writeHeader(WriterBase &w, const Header &h) {
+  w.putData("8BPS", 4);
+  w.putUint16BE((uint16_t)h.version);
+  w.putZero(6);  // reserved
+  w.putUint16BE((uint16_t)h.channels);
+  w.putUint32BE((uint32_t)h.height);
+  w.putUint32BE((uint32_t)h.width);
+  w.putUint16BE((uint16_t)h.depth);
+  w.putUint16BE((uint16_t)h.mode);
+}
+
+inline void writeColorModeData(WriterBase &w, const Data &data) {
+  if (data.colorModeIterator && data.colorModeSize > 0) {
+    w.putUint32BE((uint32_t)data.colorModeSize);
+    w.copyAllFrom(data.colorModeIterator);
+  } else {
+    w.putUint32BE(0);
+  }
+}
+
+inline void writeImageResources(WriterBase &w, const Data &data) {
+  int64_t sizePos = w.tell();
+  w.putUint32BE(0); // placeholder
+  int64_t bodyStart = w.tell();
+  for (const auto &res : data.imageResourceList) {
+    w.putData("8BIM", 4);
+    w.putUint16BE(res.id);
+    int nameLen = (int)res.name.size();
+    if (nameLen > 255) nameLen = 255;
+    w.putCh(nameLen);
+    if (nameLen > 0) w.putData(res.name.data(), (size_t)nameLen);
+    // pascal: length byte + chars, total padded to even
+    int total = 1 + nameLen;
+    if (total & 1) w.putZero(1);
+    w.putUint32BE((uint32_t)res.size);
+    if (res.data && res.size > 0) w.copyAllFrom(res.data);
+    // data section padded to even
+    if (res.size & 1) w.putZero(1);
+  }
+  int64_t bodyEnd = w.tell();
+  // patch back
+  w.seek(sizePos);
+  w.putUint32BE((uint32_t)(bodyEnd - bodyStart));
+  w.seek(bodyEnd);
+}
+
+// 8 バイト double を big-endian で書く (mask feather / descriptor 用)。
+inline void putDoubleBE(WriterBase &w, double d) {
+  pun64 v; v.f = d;
+  w.putUint32BE((uint32_t)(v.i >> 32));
+  w.putUint32BE((uint32_t)(v.i & 0xffffffffu));
+}
+
+// descriptor の 4cc/文字列 ID を書く。readId は size==0 を 4 と解釈するので、
+// 4 文字 ID は size=0 (4cc 形式)、それ以外は size=len で書く。ただし元が
+// 「長さ 4 を明示」した文字列 ID だった (explicitLen) ならそのとおりに書く。
+inline void writeDescId(WriterBase &w, const std::string &id, bool explicitLen = false) {
+  if (id.size() == 4 && !explicitLen) { w.putUint32BE(0); w.putData(id.data(), 4); }
+  else { w.putUint32BE((uint32_t)id.size());
+         if (!id.empty()) w.putData(id.data(), id.size()); }
+}
+
+// descriptor の Unicode 文字列を書く (charCount(4) + UTF-16BE)。
+inline void writeDescUnicode(WriterBase &w, const u16str &s) {
+  w.putUint32BE((uint32_t)s.size());
+  for (char16_t ch : s) w.putUint16BE((uint16_t)ch);
+}
+
+// DescriptorReference の各参照アイテムを書く (load の逆)。
+inline void writeReferenceItem(WriterBase &w, ReferenceItem *r) {
+  w.putUint32BE((uint32_t)r->type);
+  if (auto *x = dynamic_cast<ReferenceProperty*>(r)) {
+    writeDescUnicode(w, x->name); writeDescId(w, x->classId, r->idLongMask & 1);
+    writeDescId(w, x->keyId, r->idLongMask & 2);
+  } else if (auto *x = dynamic_cast<ReferenceClass*>(r)) {
+    writeDescUnicode(w, x->name); writeDescId(w, x->classId, r->idLongMask & 1);
+  } else if (auto *x = dynamic_cast<ReferenceEnumRef*>(r)) {
+    writeDescUnicode(w, x->name); writeDescId(w, x->classId, r->idLongMask & 1);
+    writeDescId(w, x->typeId, r->idLongMask & 2); writeDescId(w, x->enumId, r->idLongMask & 4);
+  } else if (auto *x = dynamic_cast<ReferenceOffset*>(r)) {
+    writeDescUnicode(w, x->name); writeDescId(w, x->classId, r->idLongMask & 1);
+    w.putInt32BE(x->offset);
+  } else if (auto *x = dynamic_cast<ReferenceIdentifier*>(r)) {
+    w.putInt32BE(x->identifier);
+  } else if (auto *x = dynamic_cast<ReferenceIndex*>(r)) {
+    w.putInt32BE(x->index);
+  } else if (auto *x = dynamic_cast<ReferenceName*>(r)) {
+    writeDescUnicode(w, x->name);
+  }
+}
+
+// layer mask サブブロックの本体 (4 バイト長の後ろ) をフィールドから直列化する。
+// parseLayerMask と対で、real セクションは size>=36、パラメータは flags bit4 で
+// 判定される。編集された density/feather に合わせて flags bit4 を張り直す。
+inline void serializeLayerMask(WriterBase &w, const LayerMask &m) {
+  w.putInt32BE(m.top);  w.putInt32BE(m.left);
+  w.putInt32BE(m.bottom); w.putInt32BE(m.right);
+  w.putCh(m.defaultColor);
+  bool params = (m.userMaskDensity >= 0) || m.hasUserFeather ||
+                (m.vectorMaskDensity >= 0) || m.hasVectorFeather;
+  int flags = m.flags;
+  if (params) flags |= 0x10; else flags &= ~0x10;
+  w.putCh(flags);
+  if (m.hasReal) {
+    w.putCh(m.realFlags);
+    w.putCh(m.realUserMaskBackground);
+    w.putInt32BE(m.enclosingTop);    w.putInt32BE(m.enclosingLeft);
+    w.putInt32BE(m.enclosingBottom); w.putInt32BE(m.enclosingRight);
+  }
+  if (params) {
+    int pf = 0;
+    if (m.userMaskDensity   >= 0) pf |= 0x01;
+    if (m.hasUserFeather)         pf |= 0x02;
+    if (m.vectorMaskDensity >= 0) pf |= 0x04;
+    if (m.hasVectorFeather)       pf |= 0x08;
+    w.putCh(pf);
+    if (pf & 0x01) w.putCh(m.userMaskDensity);
+    if (pf & 0x02) putDoubleBE(w, m.userMaskFeather);
+    if (pf & 0x04) w.putCh(m.vectorMaskDensity);
+    if (pf & 0x08) putDoubleBE(w, m.vectorMaskFeather);
+  }
+}
+
+// luni (Unicode layer name) 追加情報ブロックを書く。
+// レイヤレコードの tagged block は整列パディング無し (padding=1)。
+inline void writeLuniBlock(WriterBase &w, const u16str &name) {
+  w.putData("8BIM", 4);
+  w.putUint32BE((uint32_t)'luni');
+  uint32_t dataLen = 4 + 2 * (uint32_t)name.size();  // charCount(4) + UTF16BE
+  w.putUint32BE(dataLen);
+  w.putUint32BE((uint32_t)name.size());
+  for (char16_t ch : name) w.putUint16BE((uint16_t)ch);
+}
+
+// extra data をフィールドから再構築する (改名等で useRawBytes==false のとき)。
+// mask / blending ranges は生バイト (maskRaw/blendRaw) をそのまま転送し、
+// pascal 名を書き直し、additional info は各エントリを複製する。ただし 'luni' は
+// lay.layerNameUnicode で置き換える (無ければ末尾に追加)。
+inline void writeLayerExtraFromFields(WriterBase &w, const LayerInfo &lay, bool psb) {
+  const LayerExtraData &ex = lay.extraData;
+  // layer mask: 編集済みならフィールドから直列化、そうでなければ生バイトを転送。
+  if (ex.layerMask.present && ex.layerMask.edited) {
+    int64_t p = w.tell();
+    w.putUint32BE(0);                          // 長さプレースホルダ
+    int64_t s = w.tell();
+    serializeLayerMask(w, ex.layerMask);
+    int64_t e = w.tell();
+    w.seek(p); w.putUint32BE((uint32_t)(e - s)); w.seek(e);
+  } else if (ex.maskRaw) {
+    w.putUint32BE((uint32_t)ex.maskRaw->size()); w.copyAllFrom(ex.maskRaw);
+  } else {
+    w.putUint32BE(0);
+  }
+  // blending ranges
+  if (ex.blendRaw) { w.putUint32BE((uint32_t)ex.blendRaw->size()); w.copyAllFrom(ex.blendRaw); }
+  else             { w.putUint32BE(0); }
+  // pascal 名 (長さバイト込みで 4 バイト境界へパディング)
+  std::string pn = ex.layerName;
+  if (pn.size() > 255) pn.resize(255);
+  w.putCh((int)pn.size());
+  if (!pn.empty()) w.putData(pn.data(), pn.size());
+  int total = 1 + (int)pn.size();
+  int pad = (4 - (total & 3)) & 3;
+  w.putZero((size_t)pad);
+  // additional layer info。luni / iOpa は値が変わったときだけ書き直し、同じなら
+  // 元のブロックをそのまま転送する (Photoshop は luni に末尾 NUL や詰め物を含める
+  // ことがあり、作り直すとバイト列が変わる)。
+  auto sameName = [&](const AdditionalLayerInfo &a) {
+    if (!a.data) return false;
+    IteratorBase *r = a.data->clone();
+    r->init();
+    u16str s;
+    r->getUnicodeString(s);
+    delete r;
+    while (!s.empty() && s.back() == 0) s.pop_back();
+    u16str cur = lay.layerNameUnicode;
+    while (!cur.empty() && cur.back() == 0) cur.pop_back();
+    return s == cur;
+  };
+  auto sameFill = [&](const AdditionalLayerInfo &a) {
+    if (!a.data) return false;
+    IteratorBase *r = a.data->clone();
+    r->init();
+    int v = r->getCh();
+    delete r;
+    return v == (lay.fill_opacity & 0xff);
+  };
+  bool wroteLuni = false, wroteIOpa = false;
+  for (const auto &a : ex.additionalLayers) {
+    if (a.key == 'luni' && sameName(a)) {
+      wroteLuni = true;
+      w.putData(a.sigType == 1 ? "8B64" : "8BIM", 4);
+      w.putUint32BE((uint32_t)a.key);
+      w.putUint32BE((uint32_t)a.size);
+      w.copyAllFrom(a.data);
+    } else if (a.key == 'iOpa' && sameFill(a)) {
+      wroteIOpa = true;
+      w.putData(a.sigType == 1 ? "8B64" : "8BIM", 4);
+      w.putUint32BE((uint32_t)a.key);
+      w.putUint32BE((uint32_t)a.size);
+      w.copyAllFrom(a.data);
+    } else if (a.key == 'luni') {
+      writeLuniBlock(w, lay.layerNameUnicode);   // 新しい名前で置換
+      wroteLuni = true;
+    } else if (a.key == 'iOpa') {
+      w.putData("8BIM", 4);                      // fill opacity を新値で置換
+      w.putUint32BE((uint32_t)'iOpa');
+      w.putUint32BE(4);                          // 1 byte 値 + 3 filler (Photoshop 形式)
+      w.putCh(lay.fill_opacity & 0xff);
+      w.putZero(3);
+      wroteIOpa = true;
+    } else {
+      w.putData(a.sigType == 1 ? "8B64" : "8BIM", 4);
+      w.putUint32BE((uint32_t)a.key);
+      w.putLengthBE((uint64_t)(uint32_t)a.size, psb && isLongLengthKey(a.key));
+      if (a.data) w.copyAllFrom(a.data);
+    }
+  }
+  if (!wroteLuni && !lay.layerNameUnicode.empty())
+    writeLuniBlock(w, lay.layerNameUnicode);
+  if (!wroteIOpa && lay.fill_opacity != 255) {   // 既存 iOpa 無し & 非既定なら追加
+    w.putData("8BIM", 4);
+    w.putUint32BE((uint32_t)'iOpa');
+    w.putUint32BE(4);
+    w.putCh(lay.fill_opacity & 0xff);
+    w.putZero(3);
+  }
+  // ブロック列の後ろに残っていたバイト (詰め物など) を元どおり付ける
+  if (ex.tailRaw) w.copyAllFrom(ex.tailRaw);
+}
+
+inline void writeLayerRecord(WriterBase &w, const LayerInfo &lay, bool psb) {
+  w.putInt32BE(lay.top);
+  w.putInt32BE(lay.left);
+  w.putInt32BE(lay.bottom);
+  w.putInt32BE(lay.right);
+  w.putUint16BE((uint16_t)lay.channels.size());
+  for (const auto &ch : lay.channels) {
+    w.putInt16BE((int16_t)ch.id);
+    w.putLengthBE((uint64_t)(uint32_t)ch.length, psb);   // PSB は 8 バイト
+  }
+  w.putData("8BIM", 4);
+  // blendModeKey は parse 時に getInt32(true) で読んだ値 (host int)。書く時も
+  // 同じ BE で出すと元のディスク表現に戻る。
+  w.putUint32BE((uint32_t)lay.blendModeKey);
+  w.putCh(lay.opacity);
+  w.putCh(lay.clipping);
+  w.putCh(lay.flag);
+  w.putZero(1); // filler
+
+  // extra data: size + content
+  int64_t extraSizePos = w.tell();
+  w.putUint32BE(0); // placeholder
+  int64_t extraStart = w.tell();
+  if (lay.extraData.useRawBytes && lay.extraData.rawBytes) {
+    w.copyAllFrom(lay.extraData.rawBytes);       // 未編集: 生バイトをそのまま
+  } else {
+    writeLayerExtraFromFields(w, lay, psb);      // 編集済み: フィールドから再構築
+  }
+  int64_t extraEnd = w.tell();
+  w.seek(extraSizePos);
+  w.putUint32BE((uint32_t)(extraEnd - extraStart));
+  w.seek(extraEnd);
+}
+
+// layer info の本体 (レイヤ数 + レコード群 + チャンネル画像データ)。通常の
+// layer info と Lr16 / Lr32 ブロックの中身で共通。末尾の詰め物は呼び出し側。
+inline void writeLayerInfoBody(WriterBase &w, const Data &data) {
+  const bool psb = data.header.isPSB();
+  int16_t count = (int16_t)data.layerList.size();
+  if (data.mergedAlpha) count = (int16_t)(-count);
+  w.putInt16BE(count);
+  for (const auto &lay : data.layerList) writeLayerRecord(w, lay, psb);
+  // channel image data.
+  //   未編集 (layersDirty==false): 元の連結ブロブをそのまま転送 → 末尾パディング
+  //     まで含めてバイト一致のラウンドトリップを保証。
+  //   編集済み (layersDirty==true): 連結ブロブは編集後のレイヤ順/枚数と合わない
+  //     ので、各 channel の imageData (compression word + 圧縮データ, ちょうど
+  //     channel.length バイト) をレイヤ毎に個別に書き出して再構築する。末尾は
+  //     下の even パディングで詰める。
+  if (!data.layersDirty && data.channelImageData) {
+    w.copyAllFrom(data.channelImageData);
+  } else {
+    for (const auto &lay : data.layerList) {
+      for (const auto &ch : lay.channels) {
+        if (ch.imageData && ch.length > 0) w.copyNFrom(ch.imageData, (size_t)ch.length);
+      }
+    }
+  }
+}
+
+inline void writeLayerInfo(WriterBase &w, const Data &data) {
+  const bool psb = data.header.isPSB();
+  // レイヤが Lr16 / Lr32 側にある文書: こちらは元の本体 (多くは空) をそのまま。
+  if (data.layerSourceKey != 0) {
+    if (data.layerInfoRaw) {
+      w.putLengthBE((uint64_t)(uint32_t)data.layerInfoRaw->size(), psb);
+      w.copyAllFrom(data.layerInfoRaw);
+    } else {
+      w.putLengthBE(0, psb);
+    }
+    return;
+  }
+  // 元から空 (長さ 0) で、レイヤも無いまま: 空のまま書く (レイヤ数 0 の本体を
+  // 作ると元のファイルと一致しなくなる)。
+  if (data.layerInfoOrigSize == 0 && data.layerList.empty() && !data.layersDirty) {
+    w.putLengthBE(0, psb);
+    return;
+  }
+  int64_t sizePos = w.tell();
+  w.putLengthBE(0, psb); // placeholder
+  int64_t bodyStart = w.tell();
+  writeLayerInfoBody(w, data);
+  int64_t bodyEnd = w.tell();
+  // PSD 仕様: layer info の長さは 2 の倍数 padding が必要。ただし元と同じ長さに
+  // なったとき (未編集ならチャンネルデータを末尾の詰め物ごと転送している) は
+  // 元のまま。奇数長のまま書く書き手もある。
+  if (((bodyEnd - bodyStart) & 1) && (bodyEnd - bodyStart) != data.layerInfoOrigSize) {
+    w.putZero(1); bodyEnd++;
+  }
+  w.seek(sizePos);
+  w.putLengthBE((uint64_t)(bodyEnd - bodyStart), psb);
+  w.seek(bodyEnd);
+}
+
+// 文書末尾の追加情報ブロック列を書く。元の範囲をそのまま転送するのが基本で、
+//   * レイヤ一覧を持つブロック (Lr16 / Lr32) はレイヤから書き直す
+//   * globalBlockPatches にあるキーは差し替え (空なら削除)
+// とする。ブロックとして読めなかった残り (globalBlocksEnd 以降) もそのまま。
+inline void writeGlobalBlocks(WriterBase &w, const Data &data) {
+  IteratorBase *t = data.layerAndMaskTrailing;
+  if (!t) return;
+  const bool psb = data.header.isPSB();
+  auto copyRange = [&](int off, int len) {
+    if (len <= 0) return;
+    t->init();
+    IteratorBase *r = t->cloneRange(off, len);
+    if (r) { w.copyAllFrom(r); delete r; }
+  };
+  for (const auto &b : data.globalBlocks) {
+    if (b.key == data.layerSourceKey) {
+      const bool wide = psb && isLongLengthKey(b.key);
+      w.putData(b.sigType == 1 ? "8B64" : "8BIM", 4);
+      w.putUint32BE((uint32_t)b.key);
+      int64_t sizePos = w.tell();
+      w.putLengthBE(0, wide);
+      int64_t start = w.tell();
+      writeLayerInfoBody(w, data);
+      int64_t end = w.tell();
+      uint64_t len = (uint64_t)(end - start);
+      w.seek(sizePos);
+      w.putLengthBE(len, wide);
+      w.seek(end);
+      // 長さが元と同じなら元の詰め物を、変わったら 4 の倍数へ。
+      int pad = (len == (uint64_t)(uint32_t)b.dataLength) ? b.padding : (int)((4 - (len & 3)) & 3);
+      w.putZero((size_t)pad);
+      continue;
+    }
+    auto pit = data.globalBlockPatches.find(b.key);
+    if (pit != data.globalBlockPatches.end()) {
+      if (!pit->second.empty()) w.putData(pit->second.data(), pit->second.size());
+      continue;
+    }
+    copyRange(b.offset, b.total());
+  }
+  copyRange(data.globalBlocksEnd, t->size() - data.globalBlocksEnd);
+}
+
+inline void writeGlobalLayerMaskInfo(WriterBase &w, const Data &data) {
+  if (data.globalLayerMaskInfoRaw) {
+    int64_t sizePos = w.tell();
+    w.putUint32BE(0);
+    int64_t start = w.tell();
+    w.copyAllFrom(data.globalLayerMaskInfoRaw);
+    int64_t end = w.tell();
+    w.seek(sizePos);
+    w.putUint32BE((uint32_t)(end - start));
+    w.seek(end);
+  } else if (data.hasGlobalMaskField) {
+    w.putUint32BE(0); // 空ブロック
+  }
+  // 元のファイルに長さフィールドごと無いなら書かない (layer info の後ろに
+  // 2 バイトの詰め物だけが続くファイルがある。それは trailing として転送される)
+}
+
+inline void writeLayerAndMask(WriterBase &w, const Data &data) {
+  const bool psb = data.header.isPSB();
+  // 元からセクションごと空で、レイヤも追加情報も無いまま: 空のまま書く。
+  if (data.layerMaskOrigSize == 0 && data.layerList.empty() && !data.layersDirty) {
+    w.putLengthBE(0, psb);
+    return;
+  }
+  int64_t sizePos = w.tell();
+  w.putLengthBE(0, psb);
+  int64_t bodyStart = w.tell();
+  writeLayerInfo(w, data);
+  writeGlobalLayerMaskInfo(w, data);
+  writeGlobalBlocks(w, data);
+  int64_t bodyEnd = w.tell();
+  w.seek(sizePos);
+  w.putLengthBE((uint64_t)(bodyEnd - bodyStart), psb);
+  w.seek(bodyEnd);
+}
+
+inline void writeImageData(WriterBase &w, const Data &data) {
+  if (data.imageData) w.copyAllFrom(data.imageData);
+}
+
+} // anonymous namespace
+
+// ---- generic descriptor 直列化 (psddesc の load の逆) --------------------
+
+void writeDescriptorBody(WriterBase &w, const Descriptor *d) {
+  writeDescUnicode(w, d->name);
+  writeDescId(w, d->classId, d->idLongMask & 1);
+  // keyOrder が揃っていれば元のディスク順で、無ければ map 順で書く。
+  if (d->keyOrder.size() == d->itemMap.size()) {
+    w.putUint32BE((uint32_t)d->keyOrder.size());
+    for (const auto &key : d->keyOrder) {
+      auto it = d->itemMap.find(key);
+      if (it == d->itemMap.end()) continue;
+      writeDescId(w, key, d->longKeys.count(key) != 0);
+      writeDescriptorItem(w, it->second);
+    }
+  } else {
+    w.putUint32BE((uint32_t)d->itemMap.size());
+    for (const auto &kv : d->itemMap) {
+      writeDescId(w, kv.first, d->longKeys.count(kv.first) != 0);
+      writeDescriptorItem(w, kv.second);
+    }
+  }
+}
+
+void writeDescriptorItem(WriterBase &w, DescriptorItem *it) {
+  // 型ごとに [type 4cc] + 値。DescriptorReference と DescriptorRawData は type
+  // タグを共有するので dynamic_cast でディスパッチする (descItemToPy と同様)。
+  if (auto *x = dynamic_cast<DescriptorObjectArray*>(it)) { // ObAr (要素数 + 本体)
+    w.putUint32BE((uint32_t)'ObAr');
+    w.putUint32BE(x->itemsCount);
+    writeDescriptorBody(w, x);
+  } else if (auto *x = dynamic_cast<Descriptor*>(it)) {     // Objc / GlbO
+    w.putUint32BE((uint32_t)x->type);
+    writeDescriptorBody(w, x);
+  } else if (auto *x = dynamic_cast<DescriptorList*>(it)) { // VlLs
+    w.putUint32BE((uint32_t)'VlLs');
+    w.putUint32BE((uint32_t)x->items.size());
+    for (auto *i : x->items) writeDescriptorItem(w, i);
+  } else if (auto *x = dynamic_cast<DescriptorDouble*>(it)) {
+    w.putUint32BE((uint32_t)'doub'); putDoubleBE(w, x->val);
+  } else if (auto *x = dynamic_cast<DescriptorUnitFloat*>(it)) {
+    w.putUint32BE((uint32_t)'UntF'); w.putUint32BE((uint32_t)x->unit); putDoubleBE(w, x->val);
+  } else if (auto *x = dynamic_cast<DescriptorString*>(it)) {
+    w.putUint32BE((uint32_t)'TEXT'); writeDescUnicode(w, x->val);
+  } else if (auto *x = dynamic_cast<DescriptorEnumerated*>(it)) {
+    w.putUint32BE((uint32_t)'enum');
+    writeDescId(w, x->typeId, x->idLongMask & 1); writeDescId(w, x->enumId, x->idLongMask & 2);
+  } else if (auto *x = dynamic_cast<DescriptorInteger*>(it)) {
+    w.putUint32BE((uint32_t)'long'); w.putInt32BE(x->val);
+  } else if (auto *x = dynamic_cast<DescriptorBoolean*>(it)) {
+    w.putUint32BE((uint32_t)'bool'); w.putCh(x->val ? 1 : 0);
+  } else if (auto *x = dynamic_cast<DescriptorClass*>(it)) { // type / GlbC
+    w.putUint32BE((uint32_t)x->type); writeDescUnicode(w, x->name);
+    writeDescId(w, x->classId, x->idLongMask & 1);
+  } else if (auto *x = dynamic_cast<DescriptorAlias*>(it)) {
+    w.putUint32BE((uint32_t)'alis');
+    w.putUint32BE((uint32_t)x->alias.size());
+    if (!x->alias.empty()) w.putData(x->alias.data(), x->alias.size());
+  } else if (auto *x = dynamic_cast<DescriptorReference*>(it)) {  // 'obj '
+    w.putUint32BE((uint32_t)'obj ');
+    w.putUint32BE((uint32_t)x->items.size());
+    for (auto *r : x->items) writeReferenceItem(w, r);
+  } else if (auto *x = dynamic_cast<DescriptorLargeInteger*>(it)) { // 'comp'
+    w.putUint32BE((uint32_t)'comp');
+    w.putUint64BE((uint64_t)x->val);
+  } else if (auto *x = dynamic_cast<DescriptorUnitFloats*>(it)) {   // 'UnFl'
+    w.putUint32BE((uint32_t)'UnFl');
+    w.putUint32BE((uint32_t)x->unit);
+    w.putUint32BE((uint32_t)x->values.size());
+    for (double v : x->values) putDoubleBE(w, v);
+  } else if (auto *x = dynamic_cast<DescriptorRawData*>(it)) {    // 'tdta'
+    w.putUint32BE((uint32_t)'tdta');
+    w.putUint32BE((uint32_t)x->bytes.size());
+    if (!x->bytes.empty()) w.putData(x->bytes.data(), x->bytes.size());
+  }
+}
+
+bool writePSD(WriterBase &w, const Data &data) {
+  if (!w.ok()) return false;
+  writeHeader(w, data.header);
+  writeColorModeData(w, data);
+  writeImageResources(w, data);
+  writeLayerAndMask(w, data);
+  writeImageData(w, data);
+  return w.ok();
+}
+
+} // namespace psd

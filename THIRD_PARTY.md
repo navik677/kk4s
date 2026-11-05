@@ -43,3 +43,11 @@ marked `kk4s:`).
 
 wamsoft/saveStruct and its json `Writer.hpp` (W.Dee / miahmie / GoWatanabe),
 Kirikiri license, adapted to krkrs' streams.
+
+## psdfile / psdparse (`engine/source/plugins/psdfile/`)
+
+- psdfile glue (`main.cpp`, `psdclass*`): wamsoft/psdfile by GoWatanabe,
+  Kirikiri license; kk4s changes marked `kk4s:` (RGBA layer order, krkrs
+  streams, packed BMP header, no license-registry call).
+- `psdparse/`: wamsoft/psdparse, MIT License, Copyright (c) 2026 wamsoft
+  (`psdparse/LICENSE`, upstream commit in `psdparse/UPSTREAM.txt`).

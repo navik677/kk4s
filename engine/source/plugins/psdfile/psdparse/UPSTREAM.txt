@@ -1,0 +1,2 @@
+a85a9eee5b6bc7fc4ea6d3b05e77d35484b3c7a1 Tue Oct 20 01:10:12 2026 +0900
+https://github.com/wamsoft/psdparse (MIT), psdparse/ minus psd_cli.cpp, CRLF normalised

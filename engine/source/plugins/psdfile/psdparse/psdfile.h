@@ -1,0 +1,464 @@
+#ifndef __psdfile_h__
+#define __psdfile_h__
+
+#include "psdbase.h"
+#include "psddata.h"
+#include "psdengine.h"   // RunStyleEdit (setLayerRunStyle 用)
+#include <cstdint>
+#include <functional>
+#include <istream>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace psd {
+  // イメージ取得モード
+  enum ImageMode {
+    IMAGE_MODE_IMAGE,       // マスクをくりこまないイメージデータ
+    IMAGE_MODE_MASK,        // マスク情報のみのイメージデータ(グレー)
+    IMAGE_MODE_MASKEDIMAGE, // マスクをアルファに繰り込んだイメージデータ
+  };
+
+  // 合成の途中結果の入れ物。CompositeOptions::cache で渡すと、次の合成で
+  // 次のものを使い回す (表示の切り替えを繰り返す画面向け)。
+  //   - フォルダの中身 (独立して描いた面)
+  //   - トップレベルの途中まで描いた画像 (切り替えたレイヤより下は描き直さない)
+  // 使い回すかどうかは、対象範囲のレイヤの状態 (表示・不透明度・描画モード・
+  // 位置・マスク・画素データ) と合成の指定を照らして決める。文書を編集したら
+  // clear() を呼ぶこと (照らし合わせは保険で、画素の中身までは見ない)。
+  // 通過フォルダは、中身を独立して描いても結果が変わらないとき (通常の描画
+  // モードだけで効果も調整レイヤもない) だけ使い回す。このときの結果は
+  // 使い回さない場合と丸め誤差 (各チャンネル 1 程度) だけ違うことがある。
+  class CompositeCache {
+  public:
+    CompositeCache();
+    ~CompositeCache();
+    CompositeCache(const CompositeCache &) = delete;
+    CompositeCache &operator=(const CompositeCache &) = delete;
+    void clear();
+    // 覚えておく画素の合計バイト数の上限 (既定 512MB)。超えたら古いものから捨てる
+    void setLimit(int64_t bytes);
+    int64_t limit() const;
+    int64_t bytes() const;     // いま覚えている画素のバイト数
+    int entries() const;       // いま覚えている面の数
+    struct Impl;
+    Impl *impl() { return impl_.get(); }
+  private:
+    std::unique_ptr<Impl> impl_;
+  };
+
+  // 文書合成 (PSDFile::compositeImage) の指定
+  struct CompositeOptions {
+    bool effects = true;            // レイヤー効果を描く
+    bool background = false;        // 不透明な背景色の上へ合成する (false なら透明)
+    uint8_t backgroundColor[3] = {255, 255, 255};   // R, G, B
+    int64_t maxPixels = 1LL << 28;  // これより大きい文書は合成しない
+    // レイヤ番号ごとの表示の上書き (-1 は文書のまま / 0 隠す / 1 表示)。
+    // 足りない分は文書のまま。文書 (layerList) は書き換えない
+    std::vector<int8_t> visibility;
+    // レイヤ番号ごとに効果を描かない (1 のレイヤは効果なし)。足りない分は効果あり
+    std::vector<uint8_t> noEffects;
+    // 下書き: 効果と調整レイヤを省いて速く描く (省いた数は CompositeStats::draftSkipped)
+    bool draft = false;
+    // 途中結果の使い回し (nullptr なら使わない)
+    CompositeCache *cache = nullptr;
+  };
+
+  // PSDFile::shapeMask で取り出す部分
+  enum ShapePart {
+    SHAPE_PART_FILL = 0,     // パスの塗り (ベクタマスクの形)
+    SHAPE_PART_STROKE = 1,   // シェイプの線 ('vstk')
+    SHAPE_PART_BOTH = 2,     // 塗り ∪ 線
+  };
+
+  // 合成で再現できなかったもの (結果が Photoshop と違いうる箇所) の数
+  struct CompositeStats {
+    int skippedAdjustments = 0;     // 調整レイヤ (未対応)
+    int unsupportedClipBase = 0;    // グループを下地にしたクリッピング (未対応)
+    int unsupportedEffects = 0;     // 再現できない効果
+    int draftSkipped = 0;           // 下書きで省いた効果 / 調整レイヤ
+    int cacheHits = 0;              // 使い回したフォルダの中身
+    int cacheMisses = 0;            // 描いて覚えたフォルダの中身
+    int reusedTopLevel = 0;         // 途中の画像を使い回して描かずに済んだトップレベルの塊
+  };
+
+  // PSD ファイルクラス
+  //
+  //   load(path)            : ファイルを mmap で開く (全読み込みしない)。
+  //                           IteratorBase 経由のレイヤ画像取得は OS のページ
+  //                           キャッシュ越しに必要なバイトだけ読まれる。
+  //   loadFromMemory(p, n)  : 呼び出し元のバイト列を内部 vector にコピー保持。
+  //                           ファイルアクセスを介さずロードしたいケース用。
+  //   loadFromReader(reader): 汎用エントリ。任意の IteratorBase 実装を受ける。
+  //                           reader が指す storage は PSDFile のライフタイム
+  //                           中、呼び出し元が維持する責任を負う。
+  //                           (組み込み先の独自ストリームは
+  //                            StreamReader::Source でラップして流し込む)
+  class PSDFile : public Data {
+  public:
+    PSDFile();
+    ~PSDFile();
+
+    bool isLoaded;
+
+    // filename は UTF-8。Win32 では内部で UTF-16 に変換してから OS API を叩く。
+    bool load(const char *filename);
+    bool loadFromMemory(const uint8_t *data, size_t size);
+    bool loadFromReader(IteratorBase &reader);
+    // 任意の seekable な std::istream を全領域のサイズ付きで受ける。
+    // istream の所有権はとらない -- 呼び出し元が PSDFile より長く維持する責任。
+    bool loadFromStream(std::istream &stream);
+    // 同上の所有権ありバージョン: stream を内部に取り込んで PSDFile が
+    // 解放されるまで維持する (Python など、stream を別に管理しづらい状況用)。
+    bool loadFromStream(std::unique_ptr<std::istream> stream);
+
+    // PSDFile を空に戻す。mmap を unmap し、vector を解放する。
+    void clearData() override;
+
+    // 現在ロード済みの内容を PSD ファイルとして path (UTF-8) に書き出す。
+    // 失敗 (open エラー / 未ロード) で false。
+    bool save(const char *filename);
+
+    // --- 構造編集 (E1/E2) ---------------------------------------------------
+    // いずれも layerList を操作するだけの軽量操作で、実バイトの再構築は
+    // save() 時に遅延実行される (channel.imageData / extraData.rawBytes の参照を
+    // 保持したまま並べ替え、書き出し時にそれぞれを個別に転送する)。
+    //
+    // 注意: 合成画像 (composite) は編集後は古いままになる。ファイルは正しく
+    // 開けるが、プレビューは編集後の状態を反映せず、Photoshop が開いて再合成
+    // するまで旧状態のままとなる。
+
+    // レイヤを 1 枚削除。index は layerList のインデックス。範囲外で false。
+    bool deleteLayer(int index);
+    // レイヤを from から to へ移動する (to は削除後リストでの挿入位置)。
+    // フォルダを渡した場合、区切りと中身は付いてこない (塊で動かすなら
+    // moveLayerSibling / moveLayerRange を使う)。
+    bool moveLayer(int from, int to);
+
+    // index のレイヤを「同じ階層の隣の兄弟」と入れ替える。
+    // up=true で Photoshop の表示上ひとつ上へ (layerList では後ろへ)。
+    // フォルダは区切り + 中身をまとめた塊として動き、兄弟がフォルダなら
+    // その塊ごと飛び越える。階層をまたぐ移動はしない。
+    // 端まで来ていて動かせない場合や範囲外なら false。
+    // 移動後の自分のインデックスを newIndexOut へ返す。
+    bool moveLayerSibling(int index, bool up, int *newIndexOut = nullptr);
+
+    // layerList 上の [from, from+count) を to の位置へ動かす (低水準)。
+    // to は「取り除く前」のインデックスで指定する。
+    bool moveLayerRange(int from, int count, int to);
+    // レイヤを複製し、複製 (元の直後に挿入) の新インデックスを返す。失敗 -1。
+    int  duplicateLayer(int index);
+    // 別の PSD からレイヤをこのファイルへコピー挿入する。destIndex<0 で末尾。
+    // コピーしたレイヤの画素/追加情報は src のストレージを参照するので、
+    // src はこのファイルの save() が終わるまで生存している必要がある。
+    // 色モード/ビット深度が一致している前提。新インデックスを返す。失敗 -1。
+    int  copyLayerFrom(const PSDFile &src, int srcIndex, int destIndex = -1);
+
+    // --- 画素編集 (E4) ------------------------------------------------------
+    // 8bit RGB 文書のみ対応。入力は BGRA インターリーブ (layer_image と同じ並び、
+    // width*height*4 バイト)。チャンネルは PackBits(RLE) で符号化して保持し、
+    // save() 時にレイヤ毎の再構築経路で書き出される。
+
+    // 既存レイヤ index の画素を差し替える。bbox は left/top を保ち width/height を
+    // 更新する。マスク等の extra data は変更しない (サイズ不一致に注意)。失敗 false。
+    bool setLayerPixels(int index, const uint8_t *bgra, int width, int height);
+
+    // レイヤのマスク画素 (グレースケール, width*height バイト) を差し替える。
+    // マスク矩形も (top,left,w,h) に設定する (幾何編集を兼ねる)。マスクが無ければ
+    // 新規作成 (既定色 0)。8bit のみ。失敗で false。カラーチャンネルは保持。
+    bool setLayerMaskPixels(int index, const uint8_t *gray,
+                            int top, int left, int width, int height);
+
+    // 新規画像レイヤを (left,top) に追加する。destIndex<0 で末尾に挿入。
+    // 新しいレイヤのインデックスを返す。失敗で -1。
+    int  addLayer(const char *nameUtf8, int left, int top,
+                  const uint8_t *bgra, int width, int height,
+                  int blendModeKey = 'norm', int opacity = 255, int destIndex = -1);
+
+    // layerList の [from, from+count) をひとつのフォルダにまとめる。
+    //
+    // PSD のフォルダは「区切りレイヤ (lsct=3, 名前 "</Layer group>") を中身の下に、
+    // フォルダレイヤ (lsct=1 開 / 2 閉) を中身の上に」置いた 2 枚組で表現される。
+    // どちらも矩形が空 (0x0) のダミーレイヤ。この関数はその 2 枚を挿入する。
+    //
+    // closed=true で折り畳んだ状態、blendModeKey は 'pass' (通過) が Photoshop の
+    // 新規グループ既定。成功でフォルダレイヤのインデックスを返す。失敗で -1。
+    // count=0 なら空フォルダを from の位置に作る。
+    int  addFolder(const char *nameUtf8, int from, int count,
+                   bool closed = false, int blendModeKey = 'pass',
+                   int opacity = 255);
+
+    // --- extra data 項目編集 (E3) -------------------------------------------
+    // レイヤ index を改名する。pascal 名 (UTF-8 バイト) と luni (Unicode) の
+    // 両方を更新し、save() 時に extra data をフィールドから再構築する
+    // (mask/blending ranges は生バイトを保持するので不変)。失敗で false。
+    bool setLayerName(int index, const char *nameUtf8);
+
+    // マスク値の編集 (マスクを持つレイヤのみ、失敗で false)。矩形/画素は変えない。
+    bool setMaskDisabled(int index, bool disabled);
+    bool setMaskDensity(int index, int density);       // ユーザーマスク濃度 0..255
+    bool setMaskFeather(int index, double feather);     // ユーザーマスクぼかし(px)
+    bool setMaskDefaultColor(int index, int color);     // 0..255
+
+    // 塗り不透明度 (iOpa) の編集。0..255。失敗で false。
+    bool setFillOpacity(int index, int opacity);
+
+    // 追加レイヤ情報ブロック (key) の生バイトを差し替える (無ければ末尾に追加)。
+    // 効果 (lfx2) の再直列化バイトの流し込み等に使う。extra data は save 時に
+    // フィールドから再構築される (useRawBytes=false)。失敗で false。
+    bool setAdditionalInfoBytes(int index, int key, const uint8_t *data, int size);
+
+    // --- テキストレイヤ編集 (E6) --------------------------------------------
+    // テキストレイヤの 'TySh' ブロックは
+    //   prefix (56B: version + transform + textVer + descVer)
+    //   + descriptor ('Txt ' と EngineData を含む)
+    //   + suffix (warp + bounds)
+    // という構造で、本文の実体は descriptor 内の EngineData (Adobe 独自の
+    // ミニ言語) 側にある。以下の API は EngineData を psdengine の
+    // editEngineData* で書き換えてから TySh を再直列化し、
+    // setAdditionalInfoBytes で差し替える。触っていないレイヤのバイトは
+    // そのまま保たれる。
+    //
+    // 失敗時は errorOut (非 null なら) に理由を入れて false を返す。
+
+    // 本文を newText へ差し替える (段落区切りは \r)。スタイルは先頭ランに
+    // 畳まれ、descriptor の 'Txt ' も同じ内容へ更新される。
+    bool setLayerText(int index, const u16str &newText,
+                      std::string *errorOut = nullptr);
+    // UTF-8 版。内部で UTF-16 へ変換する。
+    bool setLayerTextUtf8(int index, const char *utf8,
+                          std::string *errorOut = nullptr);
+
+    // 既存ラン runIndex のスタイル値を編集する (本文と長さは変えない)。
+    // RunStyleEdit の has* が true のフィールドだけ上書きされる。
+    bool setLayerRunStyle(int index, int runIndex, const RunStyleEdit &edit,
+                          std::string *errorOut = nullptr);
+
+    // 本文とラン構成 / 段落構成をまとめて差し替える (書式付きテキストの編集)。
+    // setLayerText はランを 1 つに畳んでしまうので、部分ごとに書式を変えたい
+    // 場合はこちらを使う。詳細は psdengine.h の editEngineDataRichText 参照。
+    //
+    // formattingUnchanged: 「ラン構成も書式も変わっておらず、変わったのは本文
+    // (と各ランの長さ) だけ」だと呼び出し側が保証する場合に true。書式を毎回
+    // **絶対値**で渡す呼び出し側 (指定が無い = 元のまま、を使わない設計) では、
+    // 指定の有無から本文だけの編集かどうかを判別できないため。true のときだけ
+    // Txt2 への追随を試みる (それ以外は Txt2 を落として TySh へ倒す)。
+    bool setLayerRichText(int index, const u16str &newText,
+                          const std::vector<TextRunSpec> &runs,
+                          const std::vector<TextParagraphSpec> &paragraphs,
+                          std::string *errorOut = nullptr,
+                          bool formattingUnchanged = false);
+
+    // 段落の行揃えだけ変える (paraIndex < 0 で全段落)。0=左 1=右 2=中央。
+    bool setLayerJustification(int index, int paraIndex, int justification,
+                               std::string *errorOut = nullptr);
+
+    // 段落の書式 (行揃え / インデント / 段落前後のアキ / 自動行送り / ハイフネー
+    // ション) のうち spec で指定したものだけ変える (paraIndex < 0 で全段落)。
+    // spec.length は見ない。
+    bool setLayerParagraphStyle(int index, int paraIndex, const TextParagraphSpec &spec,
+                                std::string *errorOut = nullptr);
+
+    // このテキストレイヤの EngineData が持つフォント名 (ResourceDict/FontSet)。
+    // UI のフォント候補に使う。テキストレイヤでなければ false。
+    bool getLayerFonts(int index, std::vector<std::string> &outUtf8Names,
+                       std::string *errorOut = nullptr) const;
+
+    // --- テキストの配置と流し込み枠 -----------------------------------------
+    // 位置は TySh prefix のアフィン変換 (xx, xy, yx, yy, tx, ty) が持ち、
+    // 流し込み枠は descriptor の 'bounds' が「変換のローカル座標」で持つ。
+    // 文書上の見た目の位置は tx/ty + bounds になる。
+
+    // 変換行列を取り出す / 差し替える。
+    bool getLayerTextTransform(int index, double m[6],
+                               std::string *errorOut = nullptr) const;
+    bool setLayerTextTransform(int index, const double m[6],
+                               std::string *errorOut = nullptr);
+
+    // テキストレイヤを平行移動する。変換の tx/ty と、レイヤ矩形 (とマスク矩形)
+    // を同じだけずらすので、PSD 内蔵のラスタも一緒に動く。
+    // Photoshop で開き直せば新しい位置で描き直される。
+    bool moveTextLayer(int index, double dx, double dy,
+                       std::string *errorOut = nullptr);
+
+    // 流し込み枠 (descriptor の 'bounds')。変換のローカル座標。
+    // 枠を変えて実際に流し込みが変わるのは段落テキスト (box text) のみで、
+    // ポイントテキストでは Photoshop 側が字形から枠を作り直す。
+    bool getLayerTextBounds(int index, double &l, double &t, double &r, double &b,
+                            std::string *errorOut = nullptr) const;
+    bool setLayerTextBounds(int index, double l, double t, double r, double b,
+                            std::string *errorOut = nullptr);
+
+    // TySh ブロック全体 (prefix + descriptor) を触る低水準口。
+    // 上記の配置 / 枠の API はこれを土台にしている。
+    bool editTyShBlock(int index,
+                       const std::function<bool(std::vector<uint8_t> &prefix,
+                                                Descriptor &desc)> &fn,
+                       std::string *errorOut = nullptr);
+
+    // 上記 2 つの共通実体。EngineData のバイト列を editEngine で変換する。
+    // 独自の EngineData 変換を差し込みたいとき用。newTxt が非 null なら
+    // descriptor の 'Txt ' もその値へ更新する。
+    bool editTextLayer(int index,
+                       const std::function<bool(const std::string &in,
+                                                std::string &out)> &editEngine,
+                       const u16str *newTxt = nullptr,
+                       std::string *errorOut = nullptr);
+
+    // 合成済み画像 (merged/composite セクション) を差し替える。入力は BGRA
+    // インターリーブ (width*height*4)、canvas サイズ一致が必須。header.channels に
+    // 応じて RGB(3) か RGBA(4) の raw プレーンで書き出す。8bit RGB のみ。
+    // Python 側で合成した結果を PSD のプレビューに反映するのに使う。失敗で false。
+    bool setMergedImage(const uint8_t *bgra, int width, int height);
+
+    // 合成済み画像を単色で置き換える (RLE 圧縮なので巨大なキャンバスでも小さい)。
+    // Photoshop が「PSD 互換を優先」を切って保存したときと同じ形 = 中身のない
+    // プレビュー。テキストを書き換えると合成は古くなるが、psdparse は再合成でき
+    // ないので、**古い絵をそのまま配るかわりに空にする**ために使う。
+    // Photoshop はレイヤから合成し直すので、Photoshop での表示には影響しない。
+    bool setMergedImageSolid(uint8_t r = 255, uint8_t g = 255, uint8_t b = 255);
+
+    // --- 新規作成 (E5) ------------------------------------------------------
+    // この PSDFile を空の 8bit RGB 文書 (幅×高さ, 白の合成画像) として初期化する。
+    // 以後 addLayer(...) でレイヤを足して save() できる。成功で true。
+    // (合成画像は白のまま。レイヤ追加後も再合成はされない — Photoshop が開いて
+    //  再合成するまで白。)
+    bool createBlank(int width, int height, int mode = COLOR_MODE_RGB);
+
+    // 宣言されている寸法が、実際のデータ量から見て展開できる大きさか。壊れた
+    // ファイルが巨大な幅・高さ・チャンネル長を宣言していても、出力バッファを
+    // 確保する前にこれで弾ける (getMergedImage / getLayerImage も中で確かめる)。
+    bool canDecodeMergedImage();
+    // 合成画像に透明度があるか (色チャンネルの次のチャンネルが透明度か)。
+    // getMergedImage は透明度があれば白を外した色を返し、無ければ不透明で返す。
+    bool mergedHasTransparency() const;
+    bool canDecodeLayerImage(const LayerInfo &layer, ImageMode mode);
+
+    // 文書をレイヤから合成する (保存されている合成画像ではなく、いまのレイヤの
+    // 状態から作る)。結果は width*height*4 の BGRA (ストレートアルファ)。
+    bool compositeImage(std::vector<uint8_t> &bgra, const CompositeOptions &opt = CompositeOptions(),
+                        CompositeStats *stats = nullptr);
+
+    // レイヤ 1 枚を効果込みで透明な面へ描く (下地とは重ねない)。結果は効果の
+    // はみ出しを含む矩形で、left / top は文書上の位置。ゲームなど、合成を自前で
+    // 行う側が「Photoshop で見えるレイヤ 1 枚分」を受け取るのに使う。
+    // 影など下地に対するブレンドは透明な下地に対して行われる (= 通常と同じ)。
+    // フォルダは中身を合成し、フォルダの不透明度・マスク・効果を掛けた 1 枚を
+    // 返す (文書の範囲内で、透明でない部分を囲む矩形)。フォルダ自身の表示 /
+    // 非表示は見ない (中のレイヤの表示は見る)。中身が空なら false。
+    bool renderLayer(int index, std::vector<uint8_t> &bgra, int &left, int &top,
+                     int &width, int &height, const CompositeOptions &opt = CompositeOptions(),
+                     CompositeStats *stats = nullptr);
+
+    // 文書上の点 (x, y) で、いちばん上に見えている画素レイヤの番号を返す
+    // (無ければ -1)。表示は opt.visibility の上書きを含めて、親フォルダまで
+    // 見る。レイヤのマスク・不透明度・塗りの不透明度、親フォルダの不透明度と
+    // マスク、クリッピング (下地が見えていない所は当たらない) を考える。効果
+    // (影など) の部分は当たらない。不透明度を掛けたアルファが minAlpha 以上なら当たり。
+    int layerAtPoint(int x, int y, const CompositeOptions &opt = CompositeOptions(), int minAlpha = 1);
+
+    // レイヤのベクタマスク (シェイプのパス) をラスタライズした被覆率 (0..255、
+    // アンチエイリアス付き)。線はシェイプの線 ('vstk') の幅 / 位置 / 端 / 角 /
+    // 破線で描く。マスクの濃度・ぼかしは掛けない (形そのもの)。結果の矩形は
+    // パスと線を含む大きさで、left / top は文書上の位置 (文書の外にはみ出しうる)。
+    // ベクタマスクが無い / 取り出す部分が無い / maxPixels を超えるなら false。
+    bool shapeMask(int index, ShapePart part, std::vector<uint8_t> &mask, int &left, int &top,
+                   int &width, int &height, int64_t maxPixels = 1LL << 28);
+
+    // 画像データ取得インタフェース (バッファピッチが０の場合は full fill)
+    bool getMergedImage(void *buf, const ColorFormat &format, int bufPitchByte);
+    bool getLayerImage(const LayerInfo &layer, void *buf, const ColorFormat &format,
+                       int bufPitchByte, ImageMode mode);
+    bool getLayerImageById(int layerId, void *buf, const ColorFormat &format,
+                           int bufPitchByte, ImageMode mode);
+
+    // --- Txt2 (文書ぜんたいの Text Engine Data) の扱い ------------------------
+    //
+    // Photoshop CS3 以降は、文書ぜんたいのテキストエンジン状態を Txt2 として
+    // 持ち、**レイヤ毎の TySh より優先して読む**。したがって TySh だけ書き換え
+    // ても編集は Photoshop に届かない (psdtext 側で実測)。どう辻褄を合わせるか
+    // をここで選ぶ。
+    enum TextEngineDataPolicy {
+      // 既定。本文とラン長の編集は Txt2 にも反映する。書式 / 行揃え / 枠 /
+      // 位置のように反映できない編集が来たら、その時点で Txt2 を削除して
+      // TySh へフォールバックさせる (古い本文を見せるより安全なため)。
+      TEXTENGINE_SYNC = 0,
+      // 編集の有無にかかわらず Txt2 を削除する。書式ごと組み替えるならこちら。
+      TEXTENGINE_REMOVE,
+      // 何もしない。Photoshop からは編集が見えなくなるので、意図がある場合だけ。
+      TEXTENGINE_KEEP,
+    };
+    void setTextEngineDataPolicy(TextEngineDataPolicy p);
+    TextEngineDataPolicy textEngineDataPolicy() const { return textPolicy_; }
+    // 追随できない編集に当たって Txt2 を落としたら true (ツール側の通知用)。
+    bool textEngineDataDropped() const { return textEngineDropped_; }
+    // Txt2 を明示的に削除する。
+    bool dropTextEngineData();
+    // レイヤの TySh が持つ TextIndex (Txt2 内の本文の並び順) を読む。
+    bool getLayerTextIndex(int index, int &out) const;
+
+    // --- 合成画像のチャンネル --------------------------------------------------
+    //
+    // 合成画像のチャンネル plane (0 から header.channels-1) を 8bit のグレーで
+    // 返す (width*height バイト)。アルファ / スポットチャンネルは alphaChannels
+    // の plane を渡す。16bit は上位バイト、32bit は 0..1 をそのまま 0..255 へ。
+    bool getMergedChannel(int plane, std::vector<uint8_t> &out);
+
+    // --- パターン ----------------------------------------------------------------
+    //
+    // patterns[index] の画素を BGRA (4 バイト/px) で返す。色は 8bit の表示値
+    // (16bit は上位バイト、32bit は線形光を sRGB へ)。透明度が無ければ不透明。
+    bool getPatternImage(int index, std::vector<uint8_t> &bgra, int &width, int &height);
+
+    // --- スマートオブジェクトの埋め込みファイル ------------------------------
+    //
+    // linkedFiles[index] の中身 (埋め込みファイル、または外部ファイルの写し) を
+    // 読み出す。中身を持たない (外部リンクのみ / エイリアス) なら false。
+    bool getLinkedFileData(int index, std::string &out);
+
+    // --- 文書末尾の追加情報 (Txt2 など) --------------------------------------
+    //
+    // レイヤ&マスク情報の末尾にある、文書ぜんたいに効く追加情報ブロック
+    // ('8BIM'|'8B64' + key + length + data)。psdparse は普段ここを素通しするが、
+    // Txt2 (文書ぜんたいの Text Engine Data) だけは触る必要がある。
+    // **Photoshop は Txt2 をレイヤ毎の TySh より優先して読む**ので、TySh だけ
+    // 書き換えても編集が Photoshop に届かない。
+    //
+    // 元のファイルに無いキーは足せない (false)。レイヤ一覧を持つ Lr16 / Lr32 は
+    // 保存時にレイヤから書き直すので、ここからは差し替えられない。
+    bool hasDocumentAdditionalInfo(int key);
+    bool getDocumentAdditionalInfo(int key, std::string &out);
+    bool setDocumentAdditionalInfo(int key, const char *data, size_t size);
+    bool removeDocumentAdditionalInfo(int key);
+
+  private:
+    // Txt2 の扱い。既定は本文編集への追随。
+    TextEngineDataPolicy textPolicy_ = TEXTENGINE_SYNC;
+    bool                 textEngineDropped_ = false;
+
+    // 本文編集を Txt2 へ写す。写せなければ Txt2 を落とす。
+    bool syncTextEngineData(int index, const u16str &newText,
+                            const std::vector<int> &paragraphLengths,
+                            const std::vector<int> &styleLengths);
+    // 書式 / 位置の編集など、写せない変更が起きたときの後始末。
+    void invalidateTextEngineData();
+
+    // 合成画像の全チャンネルを展開する (各プレーンは header.depth の生サンプル)。
+    bool decodeMergedPlanes(std::vector<std::vector<uint8_t>> &planes);
+
+    // OS マップ領域 (path から load した場合)。pimpl で windows.h 等の漏出を防ぐ。
+    struct Mapping;
+    std::unique_ptr<Mapping> mapping_;
+    // ユーザー渡しバイト列の保持 (loadFromMemory 用)。
+    std::vector<uint8_t> ownedBuffer_;
+    // 所有権版 loadFromStream で取り込んだ istream を維持する。
+    std::unique_ptr<std::istream> ownedStream_;
+
+    // clearData/state 初期化は呼ばず、与えられた stream をパースするだけ。
+    // 両 loadFromStream overload からの共有実体。
+    bool parseFromStream_(std::istream &stream);
+  };
+
+} // namespace psd
+
+#endif

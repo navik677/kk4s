@@ -295,6 +295,35 @@ set(SOURCES
     engine/source/plugins/AlphaMovie.cpp
     engine/source/plugins/csvParser.cpp
     engine/source/plugins/KAGParserEx/kagparserex.cpp
+    engine/source/plugins/psdfile/main.cpp
+    engine/source/plugins/psdfile/psdclass.cpp
+    engine/source/plugins/psdfile/psdclass_loadstream.cpp
+    engine/source/plugins/psdfile/psdclass_meta.cpp
+    engine/source/plugins/psdfile/psdclass_render.cpp
+    engine/source/plugins/psdfile/psdparse/bmp.cpp
+    engine/source/plugins/psdfile/psdparse/psdadjust.cpp
+    engine/source/plugins/psdfile/psdparse/psdchannels.cpp
+    engine/source/plugins/psdfile/psdparse/psdcomposite.cpp
+    engine/source/plugins/psdfile/psdparse/psddesc.cpp
+    engine/source/plugins/psdfile/psdparse/psdengine.cpp
+    engine/source/plugins/psdfile/psdparse/psdfile.cpp
+    engine/source/plugins/psdfile/psdparse/psdfx.cpp
+    engine/source/plugins/psdfile/psdparse/psdfx_adjust.cpp
+    engine/source/plugins/psdfile/psdparse/psdfx_effects.cpp
+    engine/source/plugins/psdfile/psdparse/psdfx_paint.cpp
+    engine/source/plugins/psdfile/psdparse/psdfx_parallel.cpp
+    engine/source/plugins/psdfile/psdparse/psdfx_path.cpp
+    engine/source/plugins/psdfile/psdparse/psdfx_simd_avx2.cpp
+    engine/source/plugins/psdfile/psdparse/psdimage.cpp
+    engine/source/plugins/psdfile/psdparse/psdlayer.cpp
+    engine/source/plugins/psdfile/psdparse/psdlinked.cpp
+    engine/source/plugins/psdfile/psdparse/psdmisc.cpp
+    engine/source/plugins/psdfile/psdparse/psdparse.cpp
+    engine/source/plugins/psdfile/psdparse/psdpath.cpp
+    engine/source/plugins/psdfile/psdparse/psdpattern.cpp
+    engine/source/plugins/psdfile/psdparse/psdresource.cpp
+    engine/source/plugins/psdfile/psdparse/psdshape.cpp
+    engine/source/plugins/psdfile/psdparse/psdwrite.cpp
     engine/source/plugins/extrans/extrans.cpp
     engine/source/plugins/extrans/mosaic.cpp
     engine/source/plugins/extrans/ripple.cpp

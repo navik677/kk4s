@@ -84,6 +84,7 @@ group_io() {
     run savestruct   python3 tests/savestruct/smoke.py "$EXE"
     run csvvar       python3 tests/csvvar/smoke.py "$EXE"
     run kagparserex  python3 tests/kagparserex/smoke.py "$EXE"
+    run psdfile      python3 tests/psdfile/smoke.py "$EXE"
     run windowex     python3 tests/windowex/smoke.py "$EXE"
     run natives      python3 tests/natives/smoke.py "$EXE"
     run aspect       python3 tests/aspect/smoke.py "$EXE"

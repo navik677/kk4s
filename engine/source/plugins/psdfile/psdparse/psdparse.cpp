@@ -1,0 +1,843 @@
+#include "psdparse.h"
+#include "psdlayer.h"
+#include "psdresource.h"
+
+#include <cstring>
+#include <iostream>
+#include <stack>
+#include <vector>
+
+namespace psd {
+
+// パース完了した生データから必要な構造を展開する
+bool
+Data::processParsed()
+{
+  bool success = true;
+
+  // イメージリソースを展開
+  for (uint32_t i = 0; i < imageResourceList.size(); i++) {
+    ImageResourceInfo &res = imageResourceList[i];
+
+    switch (res.id) {
+    case 1032:  // 0x0408 -- (Photoshop 4.0) Grid and guides information. See See Grid and guides resource format.
+      success = loadResourceGridAndGuide(*this, res);
+      break;
+    case 1050:  // 0x041A -- (Photoshop 6.0) Slices. See See Slices resource format.
+      success = loadResourceSlice(*this, res);
+      break;
+    case 1046:  // 0x0416 -- (Photoshop 6.0) Indexed Color Table Count. 2 bytes for the number of colors in table that are actually defined
+      success = loadResourceColorTableCount(*this, res);
+      break;
+    case 1047:  // 0x0417 -- (Photoshop 6.0) Transparency Index. 2 bytes for the index of transparent color, if any.
+      success = loadResourceTransparencyIndex(*this, res);
+      break;
+    case 1065:  // 0x0429 -- (Photoshop CS) Layer Comps. 4 bytes (descriptor version = 16), Descriptor (see See Descriptor structure)
+      success = loadResourceLayerComps(*this, res);
+      break;
+    case 1025:  // 0x0401 -- Work path (not saved). See See Path resource format.
+      success = loadResourcePath(*this, res);
+      break;
+
+    case 1005: { // 0x03ED -- ResolutionInfo。 hRes/vRes は Fixed 16.16 の dpi。
+      if (res.data) {
+        int32_t h = res.data->getInt32();   // hRes (Fixed 16.16)
+        (void)res.data->getInt16();         // hResUnit
+        (void)res.data->getInt16();         // widthUnit
+        int32_t v = res.data->getInt32();   // vRes (Fixed 16.16)
+        if (h > 0) header.hres = (double)(uint32_t)h / 65536.0;
+        if (v > 0) header.vres = (double)(uint32_t)v / 65536.0;
+      }
+      break;
+    }
+
+    default: // 未実装はそのままスルー
+    case 1000:  // 0x03E8 -- (Obsolete--Photoshop 2.0 only ) Contains five 2-byte values: number of channels, rows, columns, depth, and mode
+    case 1001:  // 0x03E9 -- Macintosh print manager print info record
+    case 1003:  // 0x03EB -- (Obsolete--Photoshop 2.0 only ) Indexed color table
+    case 1006:  // 0x03EE -- Names of the alpha channels as a series of Pascal strings.
+    case 1007:  // 0x03EF -- (Obsolete) See ID 1077DisplayInfo structure. See Appendix A in Photoshop API Guide.pdf.
+    case 1008:  // 0x03F0 -- The caption as a Pascal string.
+    case 1009:  // 0x03F1 -- Border information. Contains a fixed number (2 bytes real, 2 bytes fraction) for the border width, and 2 bytes for border units (1 = inches, 2 = cm, 3 = points, 4 = picas, 5 = columns).
+    case 1010:  // 0x03F2 -- Background color. See See Color structure.
+    case 1011:  // 0x03F3 -- Print flags. A series of one-byte boolean values (see Page Setup dialog): labels, crop marks, color bars, registration marks, negative, flip, interpolate, caption, print flags.
+    case 1012:  // 0x03F4 -- Grayscale and multichannel halftoning information
+    case 1013:  // 0x03F5 -- Color halftoning information
+    case 1014:  // 0x03F6 -- Duotone halftoning information
+    case 1015:  // 0x03F7 -- Grayscale and multichannel transfer function
+    case 1016:  // 0x03F8 -- Color transfer functions
+    case 1017:  // 0x03F9 -- Duotone transfer functions
+    case 1018:  // 0x03FA -- Duotone image information
+    case 1019:  // 0x03FB -- Two bytes for the effective black and white values for the dot range
+    case 1020:  // 0x03FC -- (Obsolete)
+    case 1021:  // 0x03FD -- EPS options
+    case 1022:  // 0x03FE -- Quick Mask information. 2 bytes containing Quick Mask channel ID; 1- byte boolean indicating whether the mask was initially empty.
+    case 1023:  // 0x03FF -- (Obsolete)
+    case 1024:  // 0x0400 -- Layer state information. 2 bytes containing the index of target layer (0 = bottom layer).
+    case 1026:  // 0x0402 -- Layers group information. 2 bytes per layer containing a group ID for the dragging groups. Layers in a group have the same group ID.
+    case 1027:  // 0x0403 -- (Obsolete)
+    case 1028:  // 0x0404 -- IPTC-NAA record. Contains the File Info... information. See the documentation in the IPTC folder of the Documentation folder.
+    case 1029:  // 0x0405 -- Image mode for raw format files
+    case 1030:  // 0x0406 -- JPEG quality. Private.
+    case 1033:  // 0x0409 -- (Photoshop 4.0) Thumbnail resource for Photoshop 4.0 only. See See Thumbnail resource format.
+    case 1034:  // 0x040A -- (Photoshop 4.0) Copyright flag. Boolean indicating whether image is copyrighted. Can be set via Property suite or by user in File Info...
+    case 1035:  // 0x040B -- (Photoshop 4.0) URL. Handle of a text string with uniform resource locator. Can be set via Property suite or by user in File Info...
+    case 1036:  // 0x040C -- (Photoshop 5.0) Thumbnail resource (supersedes resource 1033). See See Thumbnail resource format.
+    case 1037:  // 0x040D -- (Photoshop 5.0) Global Angle. 4 bytes that contain an integer between 0 and 359, which is the global lighting angle for effects layer. If not present, assumed to be 30.
+    case 1038:  // 0x040E -- (Obsolete) See ID 1073 below. (Photoshop 5.0) Color samplers resource. See See Color samplers resource format.
+    case 1039:  // 0x040F -- (Photoshop 5.0) ICC Profile. The raw bytes of an ICC (International Color Consortium) format profile. See ICC1v42_2006-05.pdf in the Documentation folder and icProfileHeader.h in Sample Code\Common\Includes .
+    case 1040:  // 0x0410 -- (Photoshop 5.0) Watermark. One byte.
+    case 1041:  // 0x0411 -- (Photoshop 5.0) ICC Untagged Profile. 1 byte that disables any assumed profile handling when opening the file. 1 = intentionally untagged.
+    case 1042:  // 0x0412 -- (Photoshop 5.0) Effects visible. 1-byte global flag to show/hide all the effects layer. Only present when they are hidden.
+    case 1043:  // 0x0413 -- (Photoshop 5.0) Spot Halftone. 4 bytes for version, 4 bytes for length, and the variable length data.
+    case 1044:  // 0x0414 -- (Photoshop 5.0) Document-specific IDs seed number. 4 bytes: Base value, starting at which layer IDs will be generated (or a greater value if existing IDs already exceed it). Its purpose is to avoid the case where we add layers, flatten, save, open, and then add more layers that end up with the same IDs as the first set.
+    case 1045:  // 0x0415 -- (Photoshop 5.0) Unicode Alpha Names. Unicode string
+    case 1049:  // 0x0419 -- (Photoshop 6.0) Global Altitude. 4 byte entry for altitude
+    case 1051:  // 0x041B -- (Photoshop 6.0) Workflow URL. Unicode string
+    case 1052:  // 0x041C -- (Photoshop 6.0) Jump To XPEP. 2 bytes major version, 2 bytes minor version, 4 bytes count. Following is repeated for count: 4 bytes block size, 4 bytes key, if key = 'jtDd' , then next is a Boolean for the dirty flag; otherwise it's a 4 byte entry for the mod date.
+    case 1053:  // 0x041D -- (Photoshop 6.0) Alpha Identifiers. 4 bytes of length, followed by 4 bytes each for every alpha identifier.
+    case 1054:  // 0x041E -- (Photoshop 6.0) URL List. 4 byte count of URLs, followed by 4 byte long, 4 byte ID, and Unicode string for each count.
+    case 1057:  // 0x0421 -- (Photoshop 6.0) Version Info. 4 bytes version, 1 byte hasRealMergedData , Unicode string: writer name, Unicode string: reader name, 4 bytes file version.
+    case 1058:  // 0x0422 -- (Photoshop 7.0) EXIF data 1. See http://www.kodak.com/global/plugins/acrobat/en/service/digCam/exifStandard2.pdf
+    case 1059:  // 0x0423 -- (Photoshop 7.0) EXIF data 3. See http://www.kodak.com/global/plugins/acrobat/en/service/digCam/exifStandard2.pdf
+    case 1060:  // 0x0424 -- (Photoshop 7.0) XMP metadata. File info as XML description. See http://www.adobe.com/devnet/xmp/
+    case 1061:  // 0x0425 -- (Photoshop 7.0) Caption digest. 16 bytes: RSA Data Security, MD5 message-digest algorithm
+    case 1062:  // 0x0426 -- (Photoshop 7.0) Print scale. 2 bytes style (0 = centered, 1 = size to fit, 2 = user defined). 4 bytes x location (floating point). 4 bytes y location (floating point). 4 bytes scale (floating point)
+    case 1064:  // 0x0428 -- (Photoshop CS) Pixel Aspect Ratio. 4 bytes (version = 1 or 2), 8 bytes double, x / y of a pixel. Version 2, attempting to correct values for NTSC and PAL, previously off by a factor of approx. 5%.
+    case 1066:  // 0x042A -- (Photoshop CS) Alternate Duotone Colors. 2 bytes (version = 1), 2 bytes count, following is repeated for each count: [ Color: 2 bytes for space followed by 4 * 2 byte color component ], following this is another 2 byte count, usually 256, followed by Lab colors one byte each for L, a, b. This resource is not read or used by Photoshop.
+    case 1067:  // 0x042B -- (Photoshop CS)Alternate Spot Colors. 2 bytes (version = 1), 2 bytes channel count, following is repeated for each count: 4 bytes channel ID, Color: 2 bytes for space followed by 4 * 2 byte color component. This resource is not read or used by Photoshop.
+    case 1069:  // 0x042D -- (Photoshop CS2) Layer Selection ID(s). 2 bytes count, following is repeated for each count: 4 bytes layer ID
+    case 1070:  // 0x042E -- (Photoshop CS2) HDR Toning information
+    case 1071:  // 0x042F -- (Photoshop CS2) Print info
+    case 1072:  // 0x0430 -- (Photoshop CS2) Layer Group(s) Enabled ID. 1 byte for each layer in the document, repeated by length of the resource. NOTE: Layer groups have start and end markers
+    case 1073:  // 0x0431 -- (Photoshop CS3) Color samplers resource. Also see ID 1038 for old format. See See Color samplers resource format.
+    case 1074:  // 0x0432 -- (Photoshop CS3) Measurement Scale. 4 bytes (descriptor version = 16), Descriptor (see See Descriptor structure)
+    case 1075:  // 0x0433 -- (Photoshop CS3) Timeline Information. 4 bytes (descriptor version = 16), Descriptor (see See Descriptor structure)
+    case 1076:  // 0x0434 -- (Photoshop CS3) Sheet Disclosure. 4 bytes (descriptor version = 16), Descriptor (see See Descriptor structure)
+    case 1077:  // 0x0435 -- (Photoshop CS3) DisplayInfo structure to support floating point clors. Also see ID 1007. See Appendix A in Photoshop API Guide.pdf .
+    case 1078:  // 0x0436 -- (Photoshop CS3) Onion Skins. 4 bytes (descriptor version = 16), Descriptor (see See Descriptor structure)
+    case 1080:  // 0x0438 -- (Photoshop CS4) Count Information. 4 bytes (descriptor version = 16), Descriptor (see See Descriptor structure) Information about the count in the document. See the Count Tool.
+    case 1082:  // 0x043A -- (Photoshop CS5) Print Information. 4 bytes (descriptor version = 16), Descriptor (see See Descriptor structure) Information about the current print settings in the document. The color management options.
+    case 1083:  // 0x043B -- (Photoshop CS5) Print Style. 4 bytes (descriptor version = 16), Descriptor (see See Descriptor structure) Information about the current print style in the document. The printing marks, labels, ornaments, etc.
+    case 1084:  // 0x043C -- (Photoshop CS5) Macintosh NSPrintInfo. Variable OS specific info for Macintosh. NSPrintInfo. It is recommened that you do not interpret or use this data.
+    case 1085:  // 0x043D -- (Photoshop CS5) Windows DEVMODE. Variable OS specific info for Windows. DEVMODE. It is recommened that you do not interpret or use this data.
+    case 1086:  // 0x043E -- (Photoshop CS6) Auto Save File Path. Unicode string. It is recommened that you do not interpret or use this data.
+    case 1087:  // 0x043F -- (Photoshop CS6) Auto Save Format. Unicode string. It is recommened that you do not interpret or use this data.
+    case 1088:  // 0x0440 -- (Photoshop CC) Path Selection State. 4 bytes (descriptor version = 16), Descriptor (see See Descriptor structure) Information about the current path selection state.
+    // case 2000-2997:  // 0x07D0-0x0BB6 -- Path Information (saved paths). See See Path resource format.
+    case 2999:  // 0x0BB7 -- Name of clipping path. See See Path resource format.
+    case 3000:  // 0x0BB8 -- (Photoshop CC) Origin Path Info. 4 bytes (descriptor version = 16), Descriptor (see See Descriptor structure) Information about the origin path data.
+    // case 4000-4999:  // 0x0FA0-0x1387 -- Plug-In resource(s). Resources added by a plug-in. See the plug-in API found in the SDK documentation
+    case 7000:  // 0x1B58 -- Image Ready variables. XML representation of variables definition
+    case 7001:  // 0x1B59 -- Image Ready data sets
+    case 8000:  // 0x1F40 -- (Photoshop CS3) Lightroom workflow, if present the document is in the middle of a Lightroom workflow.
+    case 10000:  // 0x2710 -- Print flags information. 2 bytes version ( = 1), 1 byte center crop marks, 1 byte ( = 0), 4 bytes bleed width value, 2 bytes bleed width scale.
+      if (res.id >= 2000 && res.id <= 2997) {
+        success = loadResourcePath(*this, res);   // 保存パス
+      }
+      if (res.id >= 4000 && res.id <= 4999) {
+      }
+      break;
+    }
+  }
+
+  // 保存パスの Unicode 名 (文書末尾の 'pths')
+  loadUnicodePathNames(*this);
+  // スマートオブジェクトの埋め込み / リンクファイル (文書末尾の lnk2 など)
+  loadLinkedFiles(*this);
+  // パターン (文書末尾の Patt / Pat2 / Pat3)
+  loadPatterns(*this);
+  // アルファ / スポットチャンネルの名前と表示設定
+  loadAlphaChannels(*this);
+  // 注釈 (文書末尾の Anno)
+  loadAnnotations(*this);
+
+  // カラーテーブル
+  if (header.mode == COLOR_MODE_INDEXED &&
+      colorModeIterator &&
+      colorModeSize == 768) {
+    for (int i = 0; i < 256; i++) {
+      colorTable.colors.push_back(ColorRgba());
+      colorTable.colors[i].r = colorModeIterator->getCh();
+      colorTable.colors[i].a = 0xff;
+    }
+    for (int i = 0; i < 256; i++) {
+      colorTable.colors[i].g = colorModeIterator->getCh();
+    }
+    for (int i = 0; i < 256; i++) {
+      colorTable.colors[i].b = colorModeIterator->getCh();
+    }
+    if (colorTable.transparencyIndex >= 0 && colorTable.transparencyIndex < 256) {
+      colorTable.colors[colorTable.transparencyIndex].a = 0x0;
+    }
+  }
+  
+  // レイヤを展開
+  int offset = 0;
+  for (uint32_t i = 0; i < layerList.size(); i++) {
+    LayerInfo &layer = layerList[i];
+
+    // 基本情報のセットアップ
+    layer.owner = this;
+    layer.layerName = layer.extraData.layerName;
+    layer.layerType = LAYER_TYPE_NORMAL;
+    layer.layerId   = -1;
+    layer.fill_opacity = 255;
+    
+    // チャネルイメージイテレータをチャネル毎に頭出しコピー
+    for (uint32_t ch = 0; ch < layer.channels.size(); ch++) {
+      ChannelInfo &channel = layer.channels[ch];
+      channel.imageData = channelImageData->cloneOffset(offset);
+      offset += channel.length;
+    }
+
+    // 追加レイヤ情報を展開
+    LayerExtraData &extra = layerList[i].extraData;
+    for (uint32_t j = 0; j < extra.additionalLayers.size(); j++) {
+      AdditionalLayerInfo &additional = extra.additionalLayers[j];
+      switch (additional.key) {
+      // --- 調整レイヤ ---
+      case 'grdm': // Gradient settings (Photoshop 6.0)
+      case 'levl': // Levels
+      case 'curv': // Curves
+      case 'hue ': // Old Hue/saturation, Photoshop 4.0
+      case 'hue2': // New Hue/saturation, Photoshop 5.0
+      case 'blnc': // Color Balance
+      case 'nvrt': // Invert
+      case 'post': // Posterize
+      case 'thrs': // Threshold
+      case 'selc': // Selective color
+      case 'brit': // Brightness and Contrast
+      case 'mixr': // Channel Mixer
+      case 'clrL': // Color Lookup (Photoshop CS6)
+      case 'phfl': // Photo Filter
+      case 'blwh': // Black White (Photoshop CS3)
+      case 'vibA': // Vibrance (Photoshop CS3)
+      case 'expA': // Exposure
+        // TODO success = loadLayerXXXX();
+        layer.layerType = LAYER_TYPE_ADJUST;
+        break;
+
+      // --- 塗りつぶしレイヤ ---
+      case 'SoCo': // Solid color sheet setting (Photoshop 6.0)
+      case 'GdFl': // Gradient fill setting (Photoshop 6.0)
+      case 'PtFl': // Pattern fill setting (Photoshop 6.0)
+        // TODO success = loadLayerXXXX();
+        layer.layerType = LAYER_TYPE_FILL;
+        break;
+
+      // --- 基本的なレイヤ情報 ---
+      case 'lsct': // Section divider setting (Photoshop 6.0)
+        success = loadLayerSectionDivider(layer, additional);
+        break;
+      case 'lsdk': // *UNDOCUMENTED* key (may be incorrect..)
+        success = loadLayerSectionDivider(layer, additional);
+        break;
+      case 'luni': // Unicode layer name (Photoshop 5.0)
+        success = loadLayerUnicodeName(layer, additional);
+        break;
+      case 'lyid': // Layer ID (Photoshop 5.0)
+        success = loadLayerId(layer, additional);
+        break;
+      case 'shmd': // Metadata setting (Photoshop 6.0)
+        success = loadLayerMetadata(layer, additional);
+        break;
+      case 'iOpa': // fill opacity
+        success = loadLayerFillOpacity(layer, additional);
+        break;
+      case 'TySh': // Type tool object setting (Photoshop 6.0) — テキストレイヤ
+        success = loadLayerTypeTool(layer, additional);
+        break;
+      case 'artb': // Artboard data (CC)
+      case 'artd':
+      case 'abdd':
+        if (!layer.artboard.present || additional.key == 'artb')
+          success = loadLayerArtboard(layer, additional);
+        break;
+      case 'SoLd': // Placed Layer Data (Photoshop CS3)
+      case 'SoLE':
+      case 'PlLd': // Placed Layer (旧形式。CS3 以降も SoLd と並べて書かれる)
+        success = loadLayerSmartObject(layer, additional);
+        break;
+      case 'vmsk': // Vector mask setting (Photoshop 6.0)
+      case 'vsms': // シェイプレイヤのベクタマスク (CS6 以降)
+        if (!layer.vectorMask.present || additional.key == 'vmsk')
+          success = loadLayerVectorMask(layer, additional);
+        break;
+
+      // --- 未対応 ---
+      case 'lrFX': // Effects Layer (Photoshop 5.0)
+      case 'tySh': // Type Tool Info (Photoshop 5.0 and 5.5 only)
+      case 'lfx2': // Object-based effects layer info (Photoshop 6.0)
+      case 'Patt': // Patterns (Photoshop 6.0 and CS (8.0))
+      case 'Pat2':
+      case 'Pat3':
+      case 'Anno': // Annotations (Photoshop 6.0)
+      case 'clbl': // Blend clipping elements (Photoshop 6.0)
+      case 'infx': // Blend interior elements (Photoshop 6.0)
+      case 'knko': // Knockout setting (Photoshop 6.0)
+      case 'lspf': // Protected setting (Photoshop 6.0)
+      case 'lclr': // Sheet color setting (Photoshop 6.0)
+      case 'fxrp': // Reference point (Photoshop 6.0)
+      case 'brst': // Channel blending restrictions setting (Photoshop 6.0)
+      case 'ffxi': // Foreign effect ID (Photoshop 6.0)
+      case 'lnsr': // Layer name source setting (Photoshop 6.0)
+      case 'shpa': // Pattern data (Photoshop 6.0)
+      case 'lyvr': // Layer version (Photoshop 7.0)
+      case 'tsly': // Transparency shapes layer (Photoshop 7.0)
+      case 'lmgm': // Layer mask as global mask (Photoshop 7.0)
+      case 'vmgm': // Vector mask as global mask (Photoshop 7.0)
+      case 'lnkD': // Linked Layer
+      case 'lnk2':
+      case 'lnk3':
+      case 'CgEd': // Content Generator Extra Data (Photoshop CS5)
+      case 'Txt2': // Text Engine Data (Photoshop CS3)
+      case 'pths': // Unicode Path Name (Photoshop CS6)
+      case 'anFX': // Animation Effects (Photoshop CS6)
+      case 'FMsk': // Filter Mask (Photoshop CS3)
+      case 'vstk': // Vector Stroke Data (Photoshop CS6)
+      case 'vscg': // Vector Stroke Content Data (Photoshop CS6)
+      case 'sn2P': // Using Aligned Rendering (Photoshop CS6)
+      case 'vogk': // Vector Origination Data (Photoshop CC)
+      case 'Mtrn': // Saving Merged Transparency
+      case 'Mt16':
+      case 'Mt32':
+      case 'LMsk': // User Mask
+      case 'FXid': // Filter Effects
+      case 'FEid':
+        break;
+      }
+    }
+  } // end of additionals
+
+  relinkGroups();
+
+  // テキストの長さ (FontSize / 行送り / インデント等) を px に正規化する
+  // (レイヤ解析後・解像度確定後)。
+  for (uint32_t li = 0; li < layerList.size(); li++) {
+    TextLayerData &td = layerList[li].textData;
+    if (td.present) normalizeTextUnits(td, header.hres);
+  }
+
+  return success;
+}
+
+// レイヤIDからレイヤを取得
+LayerInfo *
+Data::getLayerById(int layerId)
+{
+  for (uint32_t i = 0; i < layerList.size(); i++) {
+    if (layerList[i].layerId == layerId) {
+      return &layerList[i];
+    }
+  }
+  return 0;
+}
+
+// ===========================================================================
+// hand-rolled binary parser (replacement for the Boost.Spirit grammar)
+// ===========================================================================
+
+namespace {
+
+// RAII helper: open a size-prefixed sub-block. The sub IteratorBase is
+// strictly bounded to [outer.pos, outer.pos+blockSize) via cloneRange so that
+// sub-parsers cannot bleed past the declared size even if internal length
+// fields are garbage. When the SubBlock goes out of scope, outer advances by
+// exactly blockSize regardless of what the sub consumed.
+class SubBlock {
+public:
+  SubBlock(IteratorBase &outer, int blockSize)
+    : outer_(&outer), sub_(nullptr), size_(blockSize) {
+    if (size_ < 0) size_ = 0;
+    sub_ = outer.cloneRange(0, size_);
+  }
+  ~SubBlock() {
+    delete sub_;
+    outer_->advance(size_);
+  }
+  SubBlock(const SubBlock&) = delete;
+  SubBlock& operator=(const SubBlock&) = delete;
+  IteratorBase &reader() { return *sub_; }
+  int size() const { return size_; }
+private:
+  IteratorBase *outer_;
+  IteratorBase *sub_;
+  int size_;
+};
+
+// PSB では一部の長さフィールドが 8 バイトになる。int に収まらない値
+// (2GB 超) は扱えないので、残りバイト数で頭打ちにする (呼び出し側の
+// cloneRange / SubBlock が範囲外へはみ出さないように)。
+inline uint32_t readLength(IteratorBase &r, bool wide) {
+  uint64_t v = wide ? (uint64_t)r.getInt64(true) : (uint64_t)(uint32_t)r.getInt32(true);
+  int avail = r.rest();
+  if (avail < 0) avail = 0;
+  if (v > (uint64_t)avail) v = (uint64_t)avail;
+  return (uint32_t)v;
+}
+
+inline bool matchSig(IteratorBase &r, const char *sig4) {
+  char buf[4];
+  if (r.getData(buf, 4) != 4) return false;
+  return std::memcmp(buf, sig4, 4) == 0;
+}
+
+bool parseHeader(IteratorBase &r, Header &h) {
+  if (!matchSig(r, "8BPS")) return false;
+  h.version  = r.getInt16(true);
+  r.advance(6); // reserved
+  h.channels = r.getInt16(true);
+  h.height   = r.getInt32(true);
+  h.width    = r.getInt32(true);
+  h.depth    = r.getInt16(true);
+  h.mode     = r.getInt16(true);
+  return true;
+}
+
+void parseColorModeData(IteratorBase &r, Data &data) {
+  uint32_t size = (uint32_t)r.getInt32(true);
+  data.colorModeSize = (int)size;
+  if (size > 0) {
+    // 範囲をちょうど size に切る (cloneOffset だとファイル末尾まで伸び、保存時に
+    // 残り全部を書き出してしまう。32bit の HDR toning や Indexed のパレットで発生)。
+    data.colorModeIterator = r.cloneRange(0, (int)size);
+    r.advance((int)size);
+  }
+}
+
+// イメージリソース 1 件。8BIM 以外で始まったら false を返して呼び出し側がループを止める。
+bool parseOneImageResource(IteratorBase &r, Data &data) {
+  if (r.rest() < 11) return false;
+  char sig[4];
+  r.getData(sig, 4);
+  if (std::memcmp(sig, "8BIM", 4) != 0) return false;
+  uint16_t id = (uint16_t)r.getInt16(true);
+  int nameLen = r.getCh();
+  if (nameLen < 0) nameLen = 0;
+  std::vector<char> nameBuf((size_t)nameLen);
+  if (nameLen > 0) r.getData(nameBuf.data(), nameLen);
+  // pascal string (1 length byte + chars) padded to make total even
+  int namePad = (nameLen & 1) ? 0 : 1;
+  r.advance(namePad);
+  uint32_t dataSize   = (uint32_t)r.getInt32(true);
+  int avail = r.rest();
+  if (dataSize > (uint32_t)avail) dataSize = (uint32_t)avail;
+  uint32_t paddedSize = (dataSize + 1u) & ~1u;
+  if (paddedSize > (uint32_t)avail) paddedSize = (uint32_t)avail;
+  std::string nameStr;
+  if (nameLen > 0) nameStr.assign(nameBuf.data(), (size_t)nameLen);
+  ImageResourceInfo info(id, nameStr, (int)dataSize,
+                         r.cloneRange(0, (int)dataSize));
+  data.imageResourceList.push_back(info);
+  r.advance((int)paddedSize);
+  return true;
+}
+
+void parseImageResources(IteratorBase &outer, Data &data) {
+  uint32_t totalSize = (uint32_t)outer.getInt32(true);
+  if (totalSize == 0) return;
+  SubBlock blk(outer, (int)totalSize);
+  IteratorBase &r = blk.reader();
+  while (r.rest() > 0) {
+    int before = r.rest();
+    if (!parseOneImageResource(r, data)) break;
+    if (r.rest() >= before) break; // no progress -- bail
+  }
+}
+
+void parseLayerMask(IteratorBase &r, LayerMask &m, int size) {
+  if (size <= 0) { m = LayerMask(); return; }
+  // Field order matches psd-tools' MaskData._read_body (the Adobe spec is
+  // wrong here): rect, defaultColor, flags, [real section if size>=36],
+  // [parameters if flags bit4]. There is NO filler byte after flags.
+  // ただし実ファイルには「本物のマスク」の部分が無く、flags の直後にパラメータ
+  // だけが続いて 36 バイト以上になるものもある (パラメータの大きさで判定する)。
+  std::vector<uint8_t> b((size_t)size, 0);
+  const int got = r.getData(b.data(), size);
+  if (got < 18) { m = LayerMask(); return; }
+  size_t pos = 0;
+  auto u8 = [&]() -> int { return pos < (size_t)got ? b[pos++] : (pos++, 0); };
+  auto i32 = [&]() -> int32_t {
+    uint32_t v = 0;
+    for (int k = 0; k < 4; k++) v = (v << 8) | (uint32_t)u8();
+    return (int32_t)v;
+  };
+  auto f64 = [&]() -> double {
+    pun64 v; v.i = 0;
+    for (int k = 0; k < 8; k++) v.i = (v.i << 8) | (uint64_t)u8();
+    return v.f;
+  };
+  auto paramSize = [](int pf) {
+    return 1 + ((pf & 1) ? 1 : 0) + ((pf & 2) ? 8 : 0) + ((pf & 4) ? 1 : 0) + ((pf & 8) ? 8 : 0);
+  };
+  m.top    = i32();
+  m.left   = i32();
+  m.bottom = i32();
+  m.right  = i32();
+  m.defaultColor = u8();
+  m.flags        = u8();
+  const bool params = (m.flags & 0x10) != 0;
+  const bool paramsOnly = params && got > 18 && 18 + paramSize(b[18]) == size;
+  auto readParams = [&]() {
+    m.hasParameters = true;
+    m.paramFlags    = u8();
+    if (m.paramFlags & 0x01) m.userMaskDensity = u8();
+    if (m.paramFlags & 0x02) { m.userMaskFeather = f64(); m.hasUserFeather = true; }
+    if (m.paramFlags & 0x04) m.vectorMaskDensity = u8();
+    if (m.paramFlags & 0x08) { m.vectorMaskFeather = f64(); m.hasVectorFeather = true; }
+  };
+  if (size >= 36 && !paramsOnly) {
+    m.hasReal                = true;
+    m.realFlags              = u8();
+    m.realUserMaskBackground = u8();
+    m.enclosingTop           = i32();
+    m.enclosingLeft          = i32();
+    m.enclosingBottom        = i32();
+    m.enclosingRight         = i32();
+  }
+  if (params) readParams();
+  m.width  = m.right  - m.left;
+  m.height = m.bottom - m.top;
+  m.present = true;
+}
+
+void parseLayerBlendingRange(IteratorBase &r, LayerBlendingRange &b) {
+  b.present = true;
+  b.grayBlendSource = r.getInt32(true);
+  b.grayBlendDest   = r.getInt32(true);
+  while (r.rest() >= 8) {
+    LayerBlendingChannel ch;
+    ch.source = r.getInt32(true);
+    ch.dest   = r.getInt32(true);
+    b.channels.push_back(ch);
+  }
+}
+
+void parseLayerExtraData(IteratorBase &r, LayerExtraData &ex, bool psb) {
+  // layer mask
+  {
+    uint32_t s = (uint32_t)r.getInt32(true);
+    if (s > 0) ex.maskRaw = r.cloneRange(0, (int)s);   // 生バイトを保持 (再構築用)
+    SubBlock blk(r, (int)s);
+    parseLayerMask(blk.reader(), ex.layerMask, (int)s);
+  }
+  // layer blending ranges
+  {
+    uint32_t s = (uint32_t)r.getInt32(true);
+    if (s > 0) ex.blendRaw = r.cloneRange(0, (int)s);  // 生バイトを保持 (再構築用)
+    SubBlock blk(r, (int)s);
+    if (s > 0) parseLayerBlendingRange(blk.reader(), ex.layerBlendingRange);
+    else       std::memset(&ex.layerBlendingRange, 0, sizeof(LayerBlendingRange));
+  }
+  // layer name (pascal string padded to 4-byte boundary including length byte)
+  {
+    int nameLen = r.getCh();
+    if (nameLen < 0) nameLen = 0;
+    std::vector<char> buf((size_t)nameLen);
+    if (nameLen > 0) {
+      r.getData(buf.data(), nameLen);
+      ex.layerName.assign(buf.data(), (size_t)nameLen);
+    }
+    int total = 1 + nameLen;
+    int pad = (4 - (total & 3)) & 3;
+    r.advance(pad);
+  }
+  // additional layer info entries. Bail if a malformed entry would not make
+  // forward progress -- this prevents infinite loops on garbage input.
+  while (r.rest() >= 12) {
+    int posBefore = r.size() - r.rest();
+    char sig[4];
+    r.getData(sig, 4);
+    int sigType;
+    if (std::memcmp(sig, "8BIM", 4) == 0)      sigType = 0;
+    else if (std::memcmp(sig, "8B64", 4) == 0) sigType = 1;
+    else break;
+    int key = r.getInt32(true);
+    uint32_t dataSize = readLength(r, psb && isLongLengthKey(key));
+    ex.additionalLayers.push_back(
+        AdditionalLayerInfo(sigType, key, (int)dataSize,
+                            r.cloneRange(0, (int)dataSize)));
+    r.advance((int)dataSize);
+    // レイヤレコードの tagged block は padding=1 (整列パディング無し)。
+    // (global additional info は 4 整列だが、そちらはこの経路を通らない)。
+    int posAfter = r.size() - r.rest();
+    if (posAfter <= posBefore) break;
+  }
+  // ブロックとして読めなかった残り (最後のブロックの後ろの詰め物など)
+  if (r.rest() > 0) ex.tailRaw = r.cloneRange(0, r.rest());
+}
+
+void parseLayerRecord(IteratorBase &r, Data &data) {
+  const bool psb = data.header.isPSB();
+  data.layerList.push_back(LayerInfo());
+  LayerInfo &lay = data.layerList.back();
+  lay.top    = r.getInt32(true);
+  lay.left   = r.getInt32(true);
+  lay.bottom = r.getInt32(true);
+  lay.right  = r.getInt32(true);
+  lay.width  = lay.right  - lay.left;
+  lay.height = lay.bottom - lay.top;
+  uint16_t channelCount = (uint16_t)r.getInt16(true);
+  for (uint16_t i = 0; i < channelCount && r.rest() >= 6; i++) {
+    int16_t  id  = r.getInt16(true);
+    // PSB ではチャンネル長が 8 バイト。
+    int64_t  len = psb ? r.getInt64(true) : (int64_t)(uint32_t)r.getInt32(true);
+    if (len < 0 || len > 0x7fffffff) len = 0x7fffffff;
+    lay.channels.push_back(ChannelInfo(id, (int)len));
+  }
+  char sig[4];
+  r.getData(sig, 4); // "8BIM"
+  // blend mode key is 4 ASCII bytes; reading as BE int yields the multichar
+  // literal value (e.g. 'norm' = 0x6E6F726D) regardless of host endianness.
+  lay.blendModeKey = r.getInt32(true);
+  lay.blendMode    = blendKeyToMode(lay.blendModeKey);
+  lay.opacity      = r.getCh();
+  lay.clipping     = r.getCh();
+  lay.flag         = r.getCh();
+  (void)r.getCh(); // filler
+  uint32_t extraSize = (uint32_t)r.getInt32(true);
+  // ラウンドトリップ save 用に extraSize 全域の生バイトもキャプチャ。
+  // SubBlock とは別 clone なので干渉しない。
+  if (extraSize > 0) lay.extraData.rawBytes = r.cloneRange(0, (int)extraSize);
+  SubBlock blk(r, (int)extraSize);
+  if (extraSize > 0) parseLayerExtraData(blk.reader(), lay.extraData, psb);
+}
+
+// layer info の本体 (長さフィールドの後ろ): レイヤ数 + レコード群 + チャンネル
+// 画像データ。通常の layer info と、Lr16 / Lr32 ブロックの中身はこの形。
+void parseLayerInfo(IteratorBase &r, Data &data) {
+  int16_t count = r.getInt16(true);
+  data.mergedAlpha = count < 0;
+  int n = count < 0 ? -count : count;
+  // レイヤ数は壊れていることがある。データが尽きたら止める (1 件は最低 34 バイト)
+  for (int i = 0; i < n && r.rest() >= 34; i++) parseLayerRecord(r, data);
+  // remaining bytes are the channel image data block (raw, used lazily by image decode)
+  data.channelImageData = r.cloneOffset(0);
+  r.advance(r.rest());
+}
+
+void parseGlobalLayerMaskInfo(IteratorBase &r, GlobalLayerMaskInfo &g) {
+  g.overlayColorSpace = r.getInt16(true);
+  g.color1 = r.getInt16(true);
+  g.color2 = r.getInt16(true);
+  g.color3 = r.getInt16(true);
+  g.color4 = r.getInt16(true);
+  g.opacity = r.getInt16(true);
+  g.kind    = r.getCh();
+  g.present = true;
+  // trailing filler bytes are ignored
+}
+
+// layerAndMaskTrailing を追加情報ブロックの並びとして読み、位置を
+// data.globalBlocks に記録する。
+//
+// 詰め物は書き手によって 4 の倍数だったり 2 の倍数だったり無かったりするので、
+// 長さを 4 の倍数へ切り上げた位置 (Photoshop の書き方) を第一候補に、次の
+// シグネチャか末尾がちょうど来る詰め物の長さを探して記録する。どれも合わ
+// なければそこで読むのをやめ、残りは未解釈のまま転送する。
+void scanGlobalBlocks(Data &data) {
+  IteratorBase *t = data.layerAndMaskTrailing;
+  const bool psb = data.header.isPSB();
+  const int total = t->size();
+  std::vector<uint8_t> head(16);
+  auto readAt = [&](int p, uint8_t *dst, int n) {
+    if (p < 0 || p + n > total) return false;
+    t->init();
+    IteratorBase *h = t->cloneRange(p, n);
+    int got = h ? h->getData(dst, n) : 0;
+    delete h;
+    return got == n;
+  };
+  auto isSig = [&](int p) {
+    uint8_t s[4];
+    if (!readAt(p, s, 4)) return false;
+    return std::memcmp(s, "8BIM", 4) == 0 || std::memcmp(s, "8B64", 4) == 0;
+  };
+  auto zeros = [&](int p, int n) {
+    uint8_t z[3];
+    if (n == 0) return true;
+    if (!readAt(p, z, n)) return false;
+    for (int i = 0; i < n; i++) if (z[i] != 0) return false;
+    return true;
+  };
+  int p = 0;
+  while (p + 12 <= total && isSig(p)) {
+    GlobalBlockInfo b;
+    if (!readAt(p, head.data(), 8)) break;
+    b.sigType = std::memcmp(head.data(), "8B64", 4) == 0 ? 1 : 0;
+    b.key     = (int)(((uint32_t)head[4] << 24) | ((uint32_t)head[5] << 16) |
+                      ((uint32_t)head[6] << 8) | (uint32_t)head[7]);
+    b.offset  = p;
+    const int lenBytes = (psb && isLongLengthKey(b.key)) ? 8 : 4;
+    if (!readAt(p + 8, head.data(), lenBytes)) break;
+    uint64_t len = 0;
+    for (int i = 0; i < lenBytes; i++) len = (len << 8) | head[(size_t)i];
+    b.dataOffset = p + 8 + lenBytes;
+    if (len > (uint64_t)(total - b.dataOffset)) break;
+    b.dataLength = (int)len;
+    const int end = b.dataOffset + b.dataLength;
+    const int pads[5] = { (4 - (b.dataLength & 3)) & 3, 0, 1, 2, 3 };
+    int pad = -1;
+    for (int k : pads) {
+      int next = end + k;
+      if (next > total || !zeros(end, k)) continue;
+      if (next == total || isSig(next)) { pad = k; break; }
+    }
+    if (pad < 0) break;
+    b.padding = pad;
+    data.globalBlocks.push_back(b);
+    p = end + pad;
+  }
+  data.globalBlocksEnd = p;
+}
+
+void parseLayerAndMask(IteratorBase &outer, Data &data) {
+  const bool psb = data.header.isPSB();
+  uint32_t total = readLength(outer, psb);
+  data.layerMaskOrigSize = (int)total;
+  if (total == 0) return;
+  SubBlock blk(outer, (int)total);
+  IteratorBase &r = blk.reader();
+  // layer info
+  {
+    uint32_t s = readLength(r, psb);
+    data.layerInfoOrigSize = (int)s;
+    // 16/32bit 文書ではレイヤが Lr16 / Lr32 側にあるので、こちらの本体を
+    // 保存時にそのまま書き戻せるよう保持しておく (要らなければ後で捨てる)。
+    if (s > 0) data.layerInfoRaw = r.cloneRange(0, (int)s);
+    SubBlock layerBlk(r, (int)s);
+    if (s > 0) parseLayerInfo(layerBlk.reader(), data);
+  }
+  // global layer mask info (長さフィールドごと無いファイルもある)
+  data.hasGlobalMaskField = r.rest() >= 4;
+  if (r.rest() >= 4) {
+    uint32_t s = (uint32_t)r.getInt32(true);
+    // ラウンドトリップ save 用に raw bytes を保持。
+    if (s > 0) data.globalLayerMaskInfoRaw = r.cloneRange(0, (int)s);
+    SubBlock gblk(r, (int)s);
+    if (s > 0) parseGlobalLayerMaskInfo(gblk.reader(), data.globalLayerMaskInfo);
+  }
+  // 残りは文書ぜんたいの追加情報ブロック (Lr16/Lr32, Txt2, lnk2 など)。
+  // ラウンドトリップ save のため生バイトとして保持し、ブロックの位置だけ読む。
+  if (r.rest() > 0) {
+    data.layerAndMaskTrailing = r.cloneRange(0, r.rest());
+    scanGlobalBlocks(data);
+  }
+  // 16/32bit 文書: layer info 本体が空で、レイヤは Lr16 / Lr32 にある。
+  if (data.layerList.empty()) {
+    for (const auto &b : data.globalBlocks) {
+      if (b.key != 'Lr16' && b.key != 'Lr32' && b.key != 'Layr') continue;
+      data.layerSourceKey = b.key;
+      data.layerAndMaskTrailing->init();
+      IteratorBase *body = data.layerAndMaskTrailing->cloneRange(b.dataOffset, b.dataLength);
+      if (body) {
+        if (b.dataLength > 0) parseLayerInfo(*body, data);
+        delete body;
+      }
+      break;
+    }
+  }
+  if (data.layerSourceKey == 0) {
+    delete data.layerInfoRaw;
+    data.layerInfoRaw = 0;
+  }
+}
+
+void parseImageData(IteratorBase &r, Data &data) {
+  if (r.rest() <= 0) return;
+  data.imageData = r.cloneOffset(0);
+  r.advance(r.rest());
+}
+
+}  // anonymous namespace
+
+bool parsePSD(IteratorBase &reader, Data &data) {
+  if (!parseHeader(reader, data.header)) return false;
+  parseColorModeData(reader, data);
+  parseImageResources(reader, data);
+  parseLayerAndMask(reader, data);
+  parseImageData(reader, data);
+  return true;
+}
+
+// グループ情報 (parent / parentIndex) を layerList の並びから再計算する。
+//
+// layerList は下から上の順で、グループは
+//   [区切り(HIDDEN)] [子...] [フォルダ(FOLDER)]
+// という連続した並びで表現される。末尾から走査して FOLDER で push、
+// HIDDEN で pop することで入れ子を復元する。
+void Data::relinkGroups() {
+  std::stack<LayerInfo*> parent;
+  std::stack<int>        parentIdx;
+  parent.push(0);
+  parentIdx.push(-1);
+  for (int i = (int)layerList.size() - 1; i >= 0; i--) {
+    LayerInfo *layer = &layerList[i];
+    layer->parent = parent.top();
+    layer->parentIndex = parentIdx.top();
+    switch (layer->layerType) {
+    case LAYER_TYPE_FOLDER:
+      parent.push(layer);
+      parentIdx.push(i);
+      break;
+    case LAYER_TYPE_HIDDEN:
+      // 両スタックとも番兵 (sentinel) を残してガードする。編集で FOLDER/HIDDEN
+      // の対応が崩れた PSD (グループ区切りの片方だけ削除等) でも underflow で
+      // クラッシュしないように。
+      if (parent.size()    > 1) parent.pop();
+      if (parentIdx.size() > 1) parentIdx.pop();
+      break;
+    default:
+      break;
+    }
+  }
+}
+
+// parentIndex の直下にある子の index を、layerList と同じ順 (下から上) で返す。
+// 区切りレイヤ (LAYER_TYPE_HIDDEN) は PSD の符号化上の都合なので含めない。
+std::vector<int> Data::childIndices(int parentIndex) const {
+  std::vector<int> out;
+  const int n = (int)layerList.size();
+  if (parentIndex >= n) return out;
+  for (int i = 0; i < n; i++) {
+    const LayerInfo &l = layerList[(size_t)i];
+    if (l.layerType == LAYER_TYPE_HIDDEN) continue;
+    if (l.parentIndex == parentIndex) out.push_back(i);
+  }
+  return out;
+}
+
+// index が占める範囲を返す。フォルダなら対応する区切りまで遡る。
+bool Data::groupSpan(int index, int &startOut, int &countOut) const {
+  int n = (int)layerList.size();
+  if (index < 0 || index >= n) return false;
+
+  if (layerList[(size_t)index].layerType != LAYER_TYPE_FOLDER) {
+    startOut = index;
+    countOut = 1;
+    return true;
+  }
+  // 自分より下 (低いインデックス) へ降りて、対応する区切りを探す。
+  // 途中の入れ子グループは FOLDER で深さ +1 / HIDDEN で -1 として読み飛ばす。
+  int depth = 0;
+  for (int i = index - 1; i >= 0; i--) {
+    LayerType t = layerList[(size_t)i].layerType;
+    if (t == LAYER_TYPE_FOLDER) {
+      depth++;
+    } else if (t == LAYER_TYPE_HIDDEN) {
+      if (depth == 0) {
+        startOut = i;
+        countOut = index - i + 1;
+        return true;
+      }
+      depth--;
+    }
+  }
+  // 区切りが見つからない (壊れた PSD)。自分だけを範囲とする。
+  startOut = index;
+  countOut = 1;
+  return true;
+}
+
+}  // namespace psd

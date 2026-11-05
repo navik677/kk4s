@@ -1,0 +1,40 @@
+// psdfile.dll (tests/psdfile/smoke.py): test.psd is written by
+// tests/psdfile/make_psd.py next to this script before the run.
+Plugins.link("psdfile.dll");
+var fails = 0;
+function expect(name, got, want) {
+    if (got !== want) {
+        fails++;
+        Debug.message("PSD FAIL " + name + ": got [" + got + "] want [" + want + "]");
+    }
+}
+class W extends Window {
+    function W() {
+        super.Window();
+        setInnerSize(64, 64);
+        add(new Layer(this, null));
+        primaryLayer.setImageSize(64, 64);
+    }
+}
+var w = new W();
+var psd = new PSD();
+expect("load", !!psd.load("test.psd"), true);
+expect("size", psd.width + "x" + psd.height, "8x8");
+expect("layers", psd.layer_count, 2);
+var names = [];
+for (var i = 0; i < psd.layer_count; i++) names.add(psd.getLayerName(i));
+expect("names", names.join(","), "red,blue");
+
+var l = new Layer(w, w.primaryLayer);
+psd.getLayerData(l, 0); // red
+expect("red layer", l.imageWidth + "x" + l.imageHeight + " %06x".sprintf(l.getMainPixel(1, 1)), "4x4 ff0000");
+
+var m = new Layer(w, w.primaryLayer);
+psd.getBlend(m);
+expect("merged", "%06x %06x %06x".sprintf(m.getMainPixel(0, 0), m.getMainPixel(2, 2), m.getMainPixel(5, 5)), "ffffff ff0000 0000ff");
+
+var s = new Layer(w, w.primaryLayer);
+s.loadImages("psd://test.psd/root/blue.bmp");
+expect("psd:// storage", s.imageWidth + "x" + s.imageHeight + " %06x".sprintf(s.getMainPixel(0, 0)), "2x2 0000ff");
+
+Debug.message(fails ? "PSD: " + fails + " failure(s)" : "PSD PASS");
