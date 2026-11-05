@@ -8,6 +8,48 @@ not the target. No per-game fixes, game files, keys or conversion; compatibility
 
 ## Where we are (2026-11-05)
 
+### Session 4 (PC, Windows) — Kirikiroid2 packs and Russian games; E-mote runtime started
+
+Branch `work/game-compat-patchtjs` (based on `feature/universal-emote-runtime`, which contains the
+`research/emote-crossgame` engine fixes). Goal of the session: the games the user dropped into
+the PC `games/` folder start and play; Witch on the Holy Night shows its **Russian** translation. Only the engine
+was changed; no game file was touched (the games only wrote their own `savedata`).
+
+| Change | Why (evidence) |
+|---|---|
+| `patch.tjs` of the game folder runs before `startup.tjs` (`compat/kk4s_compat.cpp`, before the engine-native members) | Kirikiroid2 packs use it for `-langid`, `class Steam`, `Layer.*` stubs. Karigurashi exited with "Cannot load languageID!", 11 eyes and Witch died at startup |
+| `fstat.dll` always replaces `Storages.dirlist/dirlistEx/dirtree` (`compat/kk4s_plugins.cpp`) | Witch's `patch.tjs` stubs `dirlist` as `return []`; the game lists `savedata/patches` with it, so the Russian `patch155.xp3` (scenarios in the archive root, Japanese ones in `data.xp3>scenario/`) was never mounted. Now `patch[0..2]` mount and the text is Russian |
+| `layerExParticle.dll` stub (`compat/kk4s_layerfx.cpp`) | Witch's patched scripts call `super.uninitParticle(...)`; window creation failed (`Member "kag" does not exist`) |
+| `WIN32Dialog.ICC_*` constants (`engine/source/plugins/win32dialog.cpp`) | 11 eyes `rebind.tjs`: `ICC_BAR_CLASSES` missing |
+| `Steam.restartAppIfNecessary` (false) / `initializeSteamAPI` (true), also forced onto a pack's stub class | Karigurashi `override.tjs` exits with `System.exit(1)` otherwise |
+| An `*.xp3` that is not an XP3 is skipped with a warning (`StorageIntf.cpp`) | Karigurashi's `adult.xp3` is a ZIP; it aborted every storage lookup. The game now runs without that patch (ZIP support is not implemented) |
+| **Windows manifest `activeCodePage=UTF-8`** (`platform/desktop/kk4s.manifest`, `kk4s.rc`, CMake) | The narrow CRT used ANSI cp 1252, so files with Japanese names were "missing": Yosuga checks `ヨスガノソラ.cf` next to its exe and quit with "正常に起動できませんでした". Affects every Windows game with non-ASCII file names |
+| `Motion.Player.allplaying` (`compat/kk4s_motion.cpp`) | NekoPara reached its first character scene and died in `motionaffinesourcelayer.tjs` |
+
+Seen on the PC with `dist/kk4s-pc/kk4s.exe` (exe + MSYS2 DLLs; **a bare `build-desktop/kk4s.exe` needs
+`C:\msys64\ucrt64\bin` in PATH**), 25 s per game, window title checked: Fate, 11 eyes, Karigurashi Renai,
+Witch (RU), Yosuga, Gyaru Express, Niji no Kanata ni, Chronobox, redwitch_rus, Tsundere na Imouto run.
+Still failing: **NekoPara Vol.1** (exits after ~9 s: `Image Load Error / Invalid image` in
+`imageaffinesourcelayer.tjs loadImages`, with and without this session's changes; the E-mote scenes are
+not drawn at all), **Steins;Gate (RU beta)** (exit 0 right after start, not looked at), **UsotsukiGenius**
+(ran once, then exit `-1073741571` = stack overflow, flaky, not looked at). Not run: the synthetic test
+suite after these edits (Windows has no `python3`/bash setup here), Linux, Switch. Games that rely on a
+pack's stub of a plugin kk4s links itself are now decided by kk4s' built-in (fstat, krkrsteam); other
+Kirikiroid2 stubs (`Layer.*` of unsupported plugins) are still honoured as the pack defines them.
+
+### E-mote (branch `feature/universal-emote-runtime`, **not merged**)
+
+Universal E-mote runtime started in `compat/emote/` (design, evidence, limits: `docs/universal_emote_runtime.md`).
+Pure C++17 + zlib, built into CMake (desktop and Switch objects compile) but **not yet used by
+`Motion.*`**. Done: PSB core on `compat/psb`, cipher profiles chosen by evidence (the NekoPara key exists only
+in `profiles/nekopara_vol1.cpp`), value model, character model + adapter for E-mote content 3.03
+(`spec krkr|win`), animation runtime (variables/tweens/timelines), active-frame scene, renderer contract.
+Real data: all 157 NekoPara PSB load end to end, 0 unresolved references, 68k synthetic checks pass.
+**Not done:** drawing anything. Needs researched geometry (`mesh.bp`, `transformOrder`, masks, blend
+codes), the `RL` icon codec and `DXT5` atlases (the `dxlow_` files). Next: (1) fix NekoPara's
+`Invalid image` stop above (probably an image reference of an E-mote layer), (2) wire `LoadCharacter` into
+`Motion.EmotePlayer` (timelines, variables), (3) CPU backend into a Layer bitmap, static pose first.
+
 ### Branch `cloud-session` — universal-runtime sprint (2026-11-05)
 
 **STOP POINT 3 (2026-11-05, end of session 3 on the local Fedora box).** `main` = `49dfe56` (the sprint up

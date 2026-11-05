@@ -206,6 +206,9 @@ class kk4sMotionPlayer {
 	function kk4sMotionPlayer(manager) { _manager = manager; }
 
 	property playing { getter { return _playing; } }
+	// true while the main motion or any timeline plays (MotionAffineSourceLayer.isFlip reads it);
+	// without E-mote timelines it is the same as `playing`
+	property allplaying { getter { return _playing; } }
 	property time { getter { return _time; } setter(v) { _time = +v; } }
 	property storage { getter { return _storage; } }
 

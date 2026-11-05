@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- kk4s.exe on Windows: the whole code base passes UTF-8 to the narrow C runtime / Win32 "A"
+     functions (as on Linux and the Switch). Without this the ANSI code page (1252 on most PCs) is used
+     and files with Japanese names - Yosuga's <title>.cf next to its exe - cannot be opened. -->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>

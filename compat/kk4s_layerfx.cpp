@@ -280,6 +280,25 @@ if (typeof global.changeFireSpark == "undefined") global.changeFireSpark = funct
 if (typeof global.finishFireSpark == "undefined") global.finishFireSpark = function() {};
 )TJS");
 
+// ---------------------------------------------------------------------------
+// layerExParticle.dll: particle effects on a Layer. Not drawn; the Layer methods exist so
+// scripts that call them (and `super.uninitParticle(...)` in derived layer classes) keep
+// running. Same member list as Kirikiroid2's own stand-in (Witch on the Holy Night patch.tjs).
+// Members a game or its patch.tjs already defined are kept.
+
+static const tjs_char* kLayerExParticleShim = TJS_W(R"TJS(
+{
+	var names = [ "initVectorParticle", "initRotateParticle", "initAccelRotateParticle", "initBlinkParticle",
+	              "uninitParticle", "updateParticle", "assignParticle", "setParticleBlinkMax",
+	              "setParticleBlinkTime", "setParticleBlinkCount" ];
+	for (var i = 0; i < names.count; i++)
+		if (typeof Layer[names[i]] == "undefined") Layer[names[i]] = function() {};
+	if (typeof Layer.initializedParticle == "undefined") Layer.initializedParticle = false;
+	if (typeof Layer.particleImage == "undefined") Layer.particleImage = void;
+}
+)TJS");
+
+void LinkLayerExParticleDll() { RunShim("layerExParticle.dll", kLayerExParticleShim); }
 void LinkFilterDll() { RunShim("filter.dll", kFilterShim); }
 void LinkDrawerDll() { RunShim("drawer.dll", kDrawerShim); }
 void LinkSlideOpenDll() { RunShim("slideopen.dll", kSlideOpenShim); }

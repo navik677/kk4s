@@ -536,6 +536,14 @@ void BeforeStartup() {
     DetectSteamBuild();
     InstallScriptsCompat(); // Scripts.foreach/getObjectKeys/clone when the engine lacks them
     InstallWindowMenuCompat(); // Window.exSystemMenu (menu.dll member KAGZ sets early)
+    // Kirikiroid2 convention: patch.tjs in the game folder runs before startup.tjs. Packs use it
+    // for -langid, stub classes (Steam, Clipboard, ...) and Layer.* / Storages.* stand-ins for
+    // plugins Kirikiroid2 lacks. Karigurashi Renai (-langid), 11 eyes and Witch on the Holy Night
+    // stop at startup without it. It runs BEFORE the engine-native members below: those are only
+    // added when missing, and fstat's dirlist / fstat / getTime replace the pack's stubs, as the
+    // real fstat.dll does when the game links it (Witch's `Storages.dirlist = return []` hid its
+    // savedata/patches Russian translation).
+    RunGameScript("patch.tjs");
     InstallEngineNativesCompat(); // krkrz-native Storages/Window/System members, System.inputString
     ResetPluginIgnoredThisGame();
     InstallSoftMode(); // optional: missing members of native objects -> void (off by default)

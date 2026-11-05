@@ -69,6 +69,15 @@ static void DefineFunction(iTJSDispatch2* obj, const tjs_char* name, NativeFn fn
     obj->PropSet(TJS_MEMBERENSURE, name, nullptr, &v, obj);
 }
 
+// Like DefineFunction, but replaces a member that already exists (a pack's stub of a plugin the
+// game links itself: the real plugin would have replaced it).
+static void ReplaceFunction(iTJSDispatch2* obj, const tjs_char* name, NativeFn fn) {
+    iTJSDispatch2* f = new tLambdaFunction(std::move(fn));
+    tTJSVariant v(f, nullptr);
+    f->Release();
+    obj->PropSet(TJS_MEMBERENSURE, name, nullptr, &v, obj);
+}
+
 static iTJSDispatch2* Global() { return TVPGetScriptEngine()->GetGlobalNoAddRef(); }
 
 static std::string Utf8(const ttstr& s) {
@@ -501,12 +510,15 @@ if (typeof Storages.getLastModifiedFileTime == "undefined") Storages.getLastModi
 if (typeof Storages.setLastModifiedFileTime == "undefined") Storages.setLastModifiedFileTime = function(name, ft) {
 	return Storages.kk4sSetTimes(name, (ft - 116444736000000000) \ 10000, void);
 };
-if (typeof Storages.dirlist == "undefined") Storages.dirlist = function(dir) {
+// The real fstat.dll sets dirlist / dirlistEx / dirtree unconditionally. Kirikiroid2 packs
+// (patch.tjs) pre-define Storages.dirlist as `return []`; linking fstat.dll must replace
+// that stub, or games that list their patch folder (NekoPara-style patches/) find nothing.
+Storages.dirlist = function(dir) {
 	var list = kk4s_fstat_dir(dir), r = [];
 	for (var i = 0; i < list.count; i++) r.add(list[i][0] + ((list[i][5] & 0x10) ? "/" : ""));
 	return r;
 };
-if (typeof Storages.dirlistEx == "undefined") Storages.dirlistEx = function(dir) {
+Storages.dirlistEx = function(dir) {
 	var list = kk4s_fstat_dir(dir), r = [];
 	for (var i = 0; i < list.count; i++) {
 		var e = list[i];
@@ -525,7 +537,7 @@ global.kk4s_fstat_walk = function(root, rel, dironly, r) {
 		else if (!dironly) r.add(rel + name);
 	}
 };
-if (typeof Storages.dirtree == "undefined") Storages.dirtree = function(dir, dironly = false) {
+Storages.dirtree = function(dir, dironly = false) {
 	var root = Storages.getFullPath(dir), r = [];
 	if (root.charAt(root.length - 1) != "/")
 		throw new Exception("'/' must be specified at the end of given directory name.");
@@ -684,13 +696,34 @@ static void LinkPDll() {
 // enough for the game to run. Keep the members steam.tjs touches: it checks
 // typeof Steam != 'undefined' and Steam.cloudEnabled, and uses setAchievement,
 // clearAchievement, achievementsCount and the cloud* methods.
+//
+// Start-up handshake of 2024+ Steam builds (Karigurashi Renai, override.tjs): the game exits unless
+// Steam.restartAppIfNecessary(appId) is false and Steam.initializeSteamAPI() is true. A Kirikiroid2
+// patch.tjs pre-defines a `class Steam` whose stubs return void, so initializeSteamAPI() looked like
+// "Steam is not running" and the game quit with System.exit(1). The two methods are therefore also
+// put on a Steam object a pack already defined.
+static void DefineSteamHandshake(iTJSDispatch2* steam) {
+    ReplaceFunction(steam, TJS_W("restartAppIfNecessary"), [](tTJSVariant* r, tjs_int, tTJSVariant**) -> tjs_error {
+        if (r) *r = (tjs_int)0; // started "by Steam": no restart
+        return TJS_S_OK;
+    });
+    ReplaceFunction(steam, TJS_W("initializeSteamAPI"), [](tTJSVariant* r, tjs_int, tTJSVariant**) -> tjs_error {
+        if (r) *r = (tjs_int)1; // there is no Steam client; pretend it initialised so the game runs
+        return TJS_S_OK;
+    });
+}
+
 static void LinkKrrkSteamDll() {
     iTJSDispatch2* g = Global();
     tTJSVariant existing;
-    if (TJS_SUCCEEDED(g->PropGet(0, TJS_W("Steam"), nullptr, &existing, g)) && existing.Type() != tvtVoid)
-        return; // a real Steam plugin is already there
+    if (TJS_SUCCEEDED(g->PropGet(0, TJS_W("Steam"), nullptr, &existing, g)) && existing.Type() != tvtVoid) {
+        // a Steam object is already there (a real plugin, or a Kirikiroid2 pack's stub class)
+        if (existing.Type() == tvtObject && existing.AsObjectNoAddRef()) DefineSteamHandshake(existing.AsObjectNoAddRef());
+        return;
+    }
 
     iTJSDispatch2* steam = TJSCreateCustomObject();
+    DefineSteamHandshake(steam);
 
     auto prop = [steam](const tjs_char* name, const tTJSVariant& v) {
         steam->PropSet(TJS_MEMBERENSURE, name, nullptr, &v, steam);
@@ -1412,6 +1445,7 @@ void LinkFilterDll();
 void LinkDrawerDll();
 void LinkSlideOpenDll();
 void LinkFireSparkDll();
+void LinkLayerExParticleDll();
 void LinkEmotePlayerDll();
 
 // compat/kk4s_layerex.cpp
@@ -1798,6 +1832,7 @@ static const PluginEntry kPlugins[] = {
     {"drawer.dll", LinkDrawerDll},
     {"slideopen.dll", LinkSlideOpenDll},
     {"firespark.dll", LinkFireSparkDll},
+    {"layerexparticle.dll", LinkLayerExParticleDll},
     {"packinone.dll", LinkPackinOneDll},
     {"layerexbtoa.dll", LinkLayerExBtoADll},
     {"layereximage.dll", LinkLayerExImageDll},

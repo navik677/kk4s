@@ -11,6 +11,7 @@ Code: `compat/kk4s_compat.cpp` (hooks), `compat/kk4s_plugins.cpp` (plugin replac
 | File / API | What kk4s does |
 |---|---|
 | `xp3filter.tjs` in the game folder or in `<data>/profiles/<GameFolder>/` | Executed right before `startup.tjs`. The profile folder keeps a PC game folder unmodified: put the Kirikiroid2 helper files there instead. |
+| `patch.tjs` in the game folder or in `<data>/profiles/<GameFolder>/` | Executed right after `xp3filter.tjs`, before `startup.tjs`. Kirikiroid2 packs use it for `-langid`, stub classes (`Steam`, `Clipboard`, ...) and `Layer.*` stand-ins. Without it Karigurashi Renai exits (`Cannot load languageID!`), 11 eyes and Witch on the Holy Night stop at startup. Its stubs do not override a plugin the game links itself: `fstat.dll` replaces `Storages.dirlist` (the pack stubs it as `return []`, which hid Witch's `savedata/patches` Russian translation). |
 | `Storages.setXP3ArchiveExtractionFilter(func)` | Registers `func(hash, offset, buf, len)`, called for every block read from an XP3 archive (after decompression). `buf` supports `buf[i]` (get/set/`^=`), `buf.xor(start, len, value)` (native, fast), `buf.ptr`, `buf.count`. `void` removes the filter. |
 | `Override2.tjs` | Executed right after the game's `Override.tjs` (or after `MainWindow.tjs` if there is none). |
 | `AfterInit2.tjs` | Executed after the game's `AfterInit.tjs` (or after `Initialize.tjs` / `startup.tjs`). |

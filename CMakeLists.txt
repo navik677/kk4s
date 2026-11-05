@@ -16,6 +16,9 @@ if(KK4S_PLATFORM STREQUAL "switch" AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
 endif()
 
 project(kk4s C CXX)
+if(WIN32 AND KK4S_PLATFORM STREQUAL "desktop")
+    enable_language(RC) # kk4s.rc embeds the UTF-8 active-code-page manifest
+endif()
 
 if(NOT DEVKITPRO)
     set(DEVKITPRO $ENV{DEVKITPRO})
@@ -402,6 +405,9 @@ if(KK4S_PLATFORM STREQUAL "desktop")
 endif()
 
 add_executable(${PROJECT_NAME} ${SOURCES})
+if(WIN32 AND KK4S_PLATFORM STREQUAL "desktop")
+    target_sources(${PROJECT_NAME} PRIVATE platform/desktop/kk4s.rc)
+endif()
 
 if(KK4S_PLATFORM STREQUAL "switch")
     # Everything is a static portlib: use the --static flags and a link group
