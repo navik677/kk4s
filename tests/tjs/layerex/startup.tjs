@@ -183,5 +183,32 @@ for (var i = 0; i < names.count; i++)
     expectTrue("copyRaster with amplitude draws", px(w, 3, 1) != 0 || px(w, 0, 1) != 0);
 }
 
+// shrinkCopy.dll / layerExAreaAverage.dll (area average)
+Plugins.link("shrinkCopy.dll");
+Plugins.link("layerExAreaAverage.dll");
+{
+    var src = make(4, 4, 0xffff0000);
+    src.fillRect(2, 0, 2, 4, 0xff0000ff);
+    var d = make(2, 2, 0);
+    d.shrinkCopy(0, 0, 2, 2, src, 0, 0, 4, 4);
+    expect("shrinkCopy left half", px(d, 0, 0), 0xffff0000);
+    expect("shrinkCopy right half", px(d, 1, 1), 0xff0000ff);
+    var bw = make(2, 1, 0xff000000);
+    bw.fillRect(1, 0, 1, 1, 0xffffffff);
+    var g = make(1, 1, 0);
+    g.shrinkCopy(0, 0, 1, 1, bw, 0, 0, 2, 1);
+    expect("shrinkCopy averages", px(g, 0, 0), 0xff808080);
+    var threw = false;
+    try { g.shrinkCopy(0, 0, 4, 4, bw, 0, 0, 2, 1); } catch (e) { threw = true; }
+    expectTrue("shrinkCopy refuses to enlarge", threw);
+    var f = make(1, 1, 0);
+    f.shrinkCopyFast(src, 2);
+    expectTrue("shrinkCopyFast resizes", f.imageWidth == 2 && f.imageHeight == 2);
+    expect("shrinkCopyFast block average", px(f, 1, 1), 0xff0000ff);
+    var a = make(1, 1, 0);
+    a.stretchCopyAA(0, 0, 1, 1, bw, 0, 0, 2, 1);
+    expect("stretchCopyAA averages", px(a, 0, 0), 0xff808080);
+}
+
 if (failures == 0) Debug.message("layerEx synthetic contract: PASS");
 else Debug.message("layerEx synthetic contract: " + failures + " failure(s)");

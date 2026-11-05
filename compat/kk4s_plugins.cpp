@@ -1381,6 +1381,8 @@ void LinkLayerExBtoADll();
 void LinkLayerExImageDll();
 void LinkLayerExRasterDll();
 void LinkLayerExSaveDll();
+void LinkShrinkCopyDll();
+void LinkLayerExAreaAverageDll();
 
 // compat/kk4s_json.cpp
 void LinkJsonDll();
@@ -1744,6 +1746,8 @@ static const PluginEntry kPlugins[] = {
     {"layereximage.dll", LinkLayerExImageDll},
     {"layerexraster.dll", LinkLayerExRasterDll},
     {"layerexsave.dll", LinkLayerExSaveDll},
+    {"shrinkcopy.dll", LinkShrinkCopyDll},
+    {"layerexareaaverage.dll", LinkLayerExAreaAverageDll},
     {"json.dll", LinkJsonDll},
     {"scriptsex.dll", LinkScriptsExDll},
     {"windowex.dll", LinkWindowExDll},

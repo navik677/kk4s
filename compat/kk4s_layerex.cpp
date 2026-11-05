@@ -929,6 +929,121 @@ tjs_error GetAverageColor(tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispat
 }
 
 // ---------------------------------------------------------------------------
+// shrinkCopy.dll / layerExAreaAverage.dll: area-average resampling
+//
+// Every destination pixel is the average of the source area it covers, with
+// fractional weights at the edges (separable). Straight (non-premultiplied)
+// averages, as in the DLLs, which is why their manuals recommend oozeColor.
+
+struct Span { tjs_int first; std::vector<float> w; };  // source pixels and weights of one dest pixel
+
+// Weights of the source pixels under destination pixel [d, d+1) of a mapping
+// that sends [dpos, dpos+dlen) onto [spos, spos+slen).
+Span CoverSpan(double d, double dpos, double dlen, tjs_int spos, tjs_int slen) {
+    double a = d < dpos ? dpos : d, b = d + 1 < dpos + dlen ? d + 1 : dpos + dlen;
+    double z = slen / dlen;
+    double s0 = spos + (a - dpos) * z, s1 = spos + (b - dpos) * z;
+    Span sp;
+    if (s1 <= s0) { sp.first = (tjs_int)s0; sp.w.push_back(1.0f); return sp; }
+    sp.first = (tjs_int)std::floor(s0);
+    for (tjs_int i = sp.first; i < s1; ++i) {
+        double lo = i > s0 ? i : s0, hi = i + 1 < s1 ? i + 1 : s1;
+        sp.w.push_back((float)(hi - lo));
+    }
+    return sp;
+}
+
+void AreaAverage(const Img& d, double dx, double dy, double dw, double dh,
+                 const Img& s, tjs_int sx, tjs_int sy, tjs_int sw, tjs_int sh, bool opaque) {
+    tjs_int x0 = (tjs_int)std::floor(dx), y0 = (tjs_int)std::floor(dy);
+    tjs_int x1 = (tjs_int)std::ceil(dx + dw), y1 = (tjs_int)std::ceil(dy + dh);
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > d.w) x1 = d.w;
+    if (y1 > d.h) y1 = d.h;
+    std::vector<Span> cols, rows;
+    for (tjs_int x = x0; x < x1; ++x) cols.push_back(CoverSpan(x, dx, dw, sx, sw));
+    for (tjs_int y = y0; y < y1; ++y) rows.push_back(CoverSpan(y, dy, dh, sy, sh));
+    for (tjs_int y = y0; y < y1; ++y) {
+        const Span& ry = rows[y - y0];
+        uint32_t* out = d.px(0, y);
+        for (tjs_int x = x0; x < x1; ++x) {
+            const Span& cx = cols[x - x0];
+            float acc[4] = {0, 0, 0, 0}, wsum = 0;
+            for (size_t j = 0; j < ry.w.size(); ++j) {
+                tjs_int syy = ry.first + (tjs_int)j;
+                if (syy < 0 || syy >= s.h) continue;
+                const uint8_t* srow = s.row(syy);
+                for (size_t i = 0; i < cx.w.size(); ++i) {
+                    tjs_int sxx = cx.first + (tjs_int)i;
+                    if (sxx < 0 || sxx >= s.w) continue;
+                    float wgt = ry.w[j] * cx.w[i];
+                    const uint8_t* p = srow + sxx * 4;
+                    for (int c = 0; c < 4; ++c) acc[c] += wgt * p[c];
+                    wsum += wgt;
+                }
+            }
+            if (wsum <= 0) continue;
+            uint8_t* q = (uint8_t*)&out[x];
+            for (int c = 0; c < 4; ++c) q[c] = (uint8_t)(acc[c] / wsum + 0.5f);
+            if (opaque) q[kA] = 255;
+        }
+    }
+}
+
+// shrinkCopy(dleft, dtop, dwidth, dheight, src, sleft, stop, swidth, sheight):
+// fractional destination rect, integer source rect; enlarging is an error.
+tjs_error ShrinkCopy(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
+    if (n < 9) return TJS_E_BADPARAMCOUNT;
+    double dx = p[0]->AsReal(), dy = p[1]->AsReal(), dw = p[2]->AsReal(), dh = p[3]->AsReal();
+    tjs_int sx = (tjs_int)p[5]->AsInteger(), sy = (tjs_int)p[6]->AsInteger();
+    tjs_int sw = (tjs_int)p[7]->AsInteger(), sh = (tjs_int)p[8]->AsInteger();
+    if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0 || sw < (tjs_int)dw || sh < (tjs_int)dh) return TJS_E_INVALIDPARAM;
+    Img d, s;
+    if (!GetImg(lay, true, d) || !GetImg(p[4]->AsObjectNoAddRef(), false, s)) return TJS_E_INVALIDPARAM;
+    AreaAverage(d, dx, dy, dw, dh, s, sx, sy, sw, sh, false);
+    Update(lay, (tjs_int)std::floor(dx), (tjs_int)std::floor(dy), (tjs_int)std::ceil(dw) + 1, (tjs_int)std::ceil(dh) + 1);
+    return TJS_S_OK;
+}
+
+// shrinkCopyFast(src, shrink_x, shrink_y = shrink_x): this layer becomes
+// ceil(src / factor) and each pixel the average of its block, alpha ignored
+// (the result is opaque).
+tjs_error ShrinkCopyFast(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
+    if (n < 2) return TJS_E_BADPARAMCOUNT;
+    tjs_int fx = (tjs_int)p[1]->AsInteger();
+    tjs_int fy = ParamExists(n, p, 2) ? (tjs_int)p[2]->AsInteger() : 0;
+    if (fy <= 0) fy = fx;
+    if (fx < 1 || fy < 1) return TJS_E_INVALIDPARAM;
+    iTJSDispatch2* srcobj = p[0]->AsObjectNoAddRef();
+    Img s;
+    if (!GetImg(srcobj, false, s)) return TJS_E_INVALIDPARAM;
+    tjs_int w = (s.w + fx - 1) / fx, h = (s.h + fy - 1) / fy;
+    tTJSVariant a[2] = {(tjs_int64)w, (tjs_int64)h};
+    tTJSVariant* args[2] = {&a[0], &a[1]};
+    lay->FuncCall(0, TJS_W("setImageSize"), nullptr, nullptr, 2, args, lay);
+    Img d;
+    if (!GetImg(lay, true, d) || !GetImg(srcobj, false, s)) return TJS_E_INVALIDPARAM;
+    AreaAverage(d, 0, 0, (double)s.w / fx, (double)s.h / fy, s, 0, 0, s.w, s.h, true);
+    Update(lay, 0, 0, d.w, d.h);
+    return TJS_S_OK;
+}
+
+// stretchCopyAA(dleft, dtop, dwidth, dheight, src, sleft, stop, swidth, sheight)
+tjs_error StretchCopyAA(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
+    if (n < 9) return TJS_E_BADPARAMCOUNT;
+    double dx = p[0]->AsReal(), dy = p[1]->AsReal(), dw = p[2]->AsReal(), dh = p[3]->AsReal();
+    tjs_int sx = (tjs_int)p[5]->AsInteger(), sy = (tjs_int)p[6]->AsInteger();
+    tjs_int sw = (tjs_int)p[7]->AsInteger(), sh = (tjs_int)p[8]->AsInteger();
+    if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return TJS_S_OK;
+    Img d, s;
+    if (!GetImg(lay, true, d) || !GetImg(p[4]->AsObjectNoAddRef(), false, s)) return TJS_E_INVALIDPARAM;
+    AreaAverage(d, dx, dy, dw, dh, s, sx, sy, sw, sh, false);
+    Update(lay, (tjs_int)std::floor(dx), (tjs_int)std::floor(dy), (tjs_int)std::ceil(dw) + 1, (tjs_int)std::ceil(dh) + 1);
+    return TJS_S_OK;
+}
+
+// ---------------------------------------------------------------------------
 // registration
 
 struct Method {
@@ -964,6 +1079,13 @@ const Method kImage[] = {
 const Method kRaster[] = {
     KK4S_LX(CopyRaster, "copyRaster"),
 };
+const Method kShrink[] = {
+    KK4S_LX(ShrinkCopy, "shrinkCopy"),
+    KK4S_LX(ShrinkCopyFast, "shrinkCopyFast"),
+};
+const Method kAreaAverage[] = {
+    KK4S_LX(StretchCopyAA, "stretchCopyAA"),
+};
 const Method kSave[] = {
     KK4S_LX(SaveLayerImagePng, "saveLayerImagePng"),
     KK4S_LX(SaveLayerImageTlg5, "saveLayerImageTlg5"),
@@ -991,6 +1113,8 @@ tjs_error TJS_INTF_METHOD Logged(tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJ
         for (const Method& m : kImage) if (m.fn == &Logged<F>) name = m.name8;
         for (const Method& m : kRaster) if (m.fn == &Logged<F>) name = m.name8;
         for (const Method& m : kSave) if (m.fn == &Logged<F>) name = m.name8;
+        for (const Method& m : kShrink) if (m.fn == &Logged<F>) name = m.name8;
+        for (const Method& m : kAreaAverage) if (m.fn == &Logged<F>) name = m.name8;
         kk4s::Log("compat: Layer.%s first call, %d argument(s)", name, (int)n);
     }
     return F(r, n, p, o);
@@ -1023,6 +1147,8 @@ void Attach(const char* dll, const Method (&methods)[N]) {
 void LinkLayerExBtoADll() { Attach("layerExBtoA.dll", kBtoA); }
 void LinkLayerExImageDll() { Attach("layerExImage.dll", kImage); }
 void LinkLayerExRasterDll() { Attach("layerExRaster.dll", kRaster); }
+void LinkShrinkCopyDll() { Attach("shrinkCopy.dll", kShrink); }
+void LinkLayerExAreaAverageDll() { Attach("layerExAreaAverage.dll", kAreaAverage); }
 
 // Window.startSaveLayerImage(layer, filename, tags) -> handler. The DLL copies the
 // layer (assignImages), saves the copy on a thread (.png -> PNG, else TLG5) and
