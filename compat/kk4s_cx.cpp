@@ -3,6 +3,8 @@
 
 #include "cxdec/cxdec.h"
 #include "cxdec/tinyfilter.h"
+
+#include <cstring>
 #include "kk4s_platform.h"
 
 #include <zlib.h>
@@ -116,6 +118,44 @@ int CountValid(ContentDecoder& dec, const std::vector<CxSample>& samples) {
     return ok;
 }
 
+// kk4s: a known file format at the start of (decrypted) data.
+bool KnownSignature(const uint8_t* p, size_t n) {
+    struct Sig { const char* bytes; size_t len; };
+    static const Sig sigs[] = {
+        {"\x89PNG\r\n\x1a\n", 8}, {"PSB\0", 4}, {"mdf\0", 4}, {"TLG0.0\0sds\x1a", 11},
+        {"TLG5.0\0raw\x1a", 11}, {"TLG6.0\0raw\x1a", 11}, {"OggS", 4}, {"RIFF", 4}, {"\xff\xfe", 2},
+        {"\xef\xbb\xbf", 3}, {"TJS2", 4}, {"\xff\xd8\xff", 3}, {"AJPM", 4}, {"GIF8", 4}, {"BM", 2},
+        {"\x1a\x45\xdf\xa3", 4},
+    };
+    for (const Sig& s : sigs)
+        if (n >= s.len && memcmp(p, s.bytes, s.len) == 0) return true;
+    return false;
+}
+
+// kk4s: when every sample carries the same adlr, it is not a checksum of the
+// contents (Kirikiri never checks it; it only feeds the filter), so adler32 can
+// never confirm a filter. Patch tools write such a constant (NekoPara Vol. 1's
+// patch.xp3). Then count samples that decrypt to a known file format and did
+// not have one before.
+int CountSignatures(ContentDecoder& dec, const std::vector<CxSample>& samples) {
+    int ok = 0;
+    std::vector<uint8_t> buf;
+    for (const auto& s : samples) {
+        if (KnownSignature(s.raw.data(), s.raw.size())) continue;
+        buf = s.raw;
+        dec.Decrypt(s.adlr, 0, buf.data(), buf.size());
+        if (KnownSignature(buf.data(), buf.size())) ok++;
+    }
+    return ok;
+}
+
+bool SameAdlr(const std::vector<CxSample>& samples) {
+    if (samples.size() < 3) return false;
+    for (const auto& s : samples)
+        if (s.adlr != samples[0].adlr) return false;
+    return true;
+}
+
 // Protectors insert decoy entries that never decrypt: accept a filter that
 // explains clearly most samples.
 int NeedCount(size_t samples) {
@@ -156,6 +196,23 @@ ContentDecoder* BindCxDecoder(const std::string& archive_name, const std::vector
             r.tiny->FamilyName().c_str(), tiny_ok, (unsigned)samples.size());
         g_any_bound = true;
         return r.tiny.get();
+    }
+
+    if (SameAdlr(samples)) {
+        int sig_tiny = CountSignatures(*r.tiny, samples);
+        ContentDecoder* pick = sig_tiny >= need ? (ContentDecoder*)r.tiny.get() : nullptr;
+        int pick_ok = sig_tiny;
+        for (auto& d : r.decoders) {
+            int ok = CountSignatures(*d, samples);
+            if (ok >= need && ok > pick_ok) { pick = d.get(); pick_ok = ok; }
+        }
+        if (pick) {
+            Log("cxdec: %s: every entry has adlr 0x%08x (a constant, not a checksum); %s verified by "
+                "file signatures instead (%d/%u samples decrypt to a known format)", archive_name.c_str(),
+                samples[0].adlr, pick->FamilyName().c_str(), pick_ok, (unsigned)samples.size());
+            g_any_bound = true;
+            return pick;
+        }
     }
 
 #if defined(KK4S_DESKTOP)
