@@ -81,12 +81,13 @@ sdmc:/switch/kk4s/
 | Tsukihime + Plus-Disc (російський переклад) | грається |
 | The Makings of a Lady (російський переклад, `xp3filter.tjs`) | грається |
 | ATRI -My Dear Moments- (Steam-версія, оригінальна папка) | грається; окремі ефекти з `generateWhiteNoise` поки не малюються |
+| NekoPara Vol. 1 | **не працює**, не вирішено: зупиняється на заголовку (`title.ks:13`, KAGZ UI-шар `window@help__config%layer`) |
 
 Якщо гра не запускається, лог у `sdmc:/switch/kk4s/logs/` зазвичай показує причину: помилку скрипту, плагін, якого бракує, або відсутній шрифт.
 
 ## PC viewer
 
-`kk4s <папка гри>` — запустити гру напряму; просто `kk4s` — відкрити лаунчер з іграми з `games/` поруч з програмою (або з `$KK4S_ROOT/games`). Меню в грі — F1. Деталі: [docs/pc-viewer.md](docs/pc-viewer.md).
+`kk4s <папка гри>` — запустити гру напряму; просто `kk4s` — відкрити лаунчер з іграми з `games/` поруч з програмою (або з `$KK4S_ROOT/games`). Меню в грі — L3 + R3 (на ПК F1). Деталі: [docs/pc-viewer.md](docs/pc-viewer.md).
 
 ## Збірка
 

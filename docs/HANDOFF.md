@@ -8,16 +8,19 @@ not the target. No per-game fixes, game files, keys or conversion; compatibility
 
 ## Where we are (2026-11-05)
 
-The SD holds NRO `F9F0F4D1FFA2F2299EFCC403D55F1C4E38771B603939F46EC384F21A134D82DE`
-(27,571,621 bytes, built 2026-11-04 from the work branch with the generic DataPack/XP3 work). User
-confirms on Switch that Fate/FSN and the other tested games work well; **Fate is playable from
-beginning to end**. The generic XP3-filter threading fix is in that build. ATRI also enters the game
-on Switch and plays the opening (PBD-backed layers, dialogue, sprites, BGM).
+Merged locally: `compat/tinyfilter-2026-11-04` was fast-forwarded into `main` (HEAD `721b62a`, code
+from `9f229bb`). **Not pushed:** the `gh` token has no `workflow` scope, and these commits touch
+`.github/workflows/desktop.yml`. Fix: `gh auth refresh -h github.com -s workflow`, then `git push`.
 
-The branch `compat/tinyfilter-2026-11-04` (HEAD `9f229bb`, **not pushed** as of 2026-11-05) adds the
-scheme-free TinyFilter CXDEC variant, the PackinOne `Layer.fillAlpha` / `clipAlphaRect` shim and the
-Motion/EmotePlayer model. It is newer than the NRO on the SD card, so Switch hardware has not run it
-yet; the 2026-11-05 desktop results are in `docs/status.md` (round 3).
+The SD holds the NRO built from that code (`out/kk4s.nro` in the build, 27,497,893 bytes, SHA-256
+`e74d4dabe9ef13e1012337b4155a7fb0d424aec08e44e58e8d9fed427e66dc1f`). Its `.elf` is needed to symbolicate
+its crash reports; keep it with the build. The user reports on hardware: **ATRI runs** and the other
+tested games work, **Fate/FSN is not broken** (Fate was playable from start to end on the earlier
+build); **NekoPara Vol. 1 does not work yet and is unresolved** (see `docs/status.md`).
+
+Build the NRO without GitHub CI when needed: `podman run --rm -v "$PWD":/src:Z -w /src
+docker.io/devkitpro/devkita64:latest bash -c 'git config --global --add safe.directory "*"; bash tools/build-switch.sh'`
+(a fresh container needs the image pulled first and the build takes a while).
 
 The current native repack work is engine-wide: `hnfn` names + generic CXDEC decoder/scheme binding,
 Steam-build argument detection, `Scripts.loadDataPack`, and plugin compatibility. ATRI is used only to

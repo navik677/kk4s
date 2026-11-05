@@ -7,7 +7,8 @@ Only things that really need a Switch. Keep sessions short.
 - [x] `kk4s.nro` in hbmenu with icon and name
 - [x] Launcher lists games, A starts one, + quits; empty `games/` shows a hint
 - [x] Log file with git hash, memory line and `mode: full` in title takeover
-- [x] Real games run (FSN, Sharin no Kuni, Tsukihime, The Makings of a Lady)
+- [x] Real games run (FSN, Sharin no Kuni, Tsukihime, The Makings of a Lady, ATRI)
+- [ ] NekoPara Vol. 1: does not work yet (blocked at `title.ks:13`, KAGZ UI pseudo-storage)
 - [x] Gamepad (libnx, by label) and touch → mouse
 - [x] Saving and loading in game; saves in `saves/<game>/`
 - [x] Cover search over HTTPS (VNDB, switch-curl)

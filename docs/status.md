@@ -2,6 +2,14 @@
 
 Last update: 2026-11-05.
 
+## Current state (user-confirmed on Switch, 2026-11-05)
+
+- **ATRI -My Dear Moments-** (Steam release, original folder): runs on the console.
+- Other tested games (Sharin, Tsukihime, The Makings of a Lady, FSN): work; **Fate/FSN is not broken**.
+- **NekoPara Vol. 1: not working, not solved.** The scripts start (CXDEC decrypts), the title screen fails
+  at `title.ks:13`. Cause: KAGZ UI pseudo-storage `window@help__config%layer` reaches `Layer.loadImages`
+  (`kaglayer.tjs:69`). The fix must be the generic `<storage>@<piece>%layer` handling, not a NekoPara patch.
+
 ## Builds (CI, every push to main)
 
 | Target | State | Where to get it |
@@ -42,7 +50,8 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
 | Sharin no Kuni, Himawari no Shoujo | plain archives; saving, touch and gamepad checked |
 | Tsukihime + Plus-Disc | own font (`umineko.ttf`) |
 | The Makings of a Lady – Purity Yours to Defile | `xp3filter.tjs` (`b.xor(0,l,h)`); existing saves from the game folder are migrated |
-| ATRI -My Dear Moments- (Steam release, original folder) | User-confirmed playable on Switch; `TinyFilter`/CXDEC bind 6 archives, PackinOne layers work. Affine-noise effects (`generateWhiteNoise`) are not drawn yet (round 3) |
+| ATRI -My Dear Moments- (Steam release, original folder) | User-confirmed: runs on Switch (2026-11-05); `TinyFilter`/CXDEC bind 6 archives, PackinOne layers work. Affine-noise effects (`generateWhiteNoise`) are not drawn yet (round 3) |
+| NekoPara Vol. 1 | **Not working, unresolved.** CXDEC decrypts and the scripts start; the title UI stops at `title.ks:13` on the KAGZ UI pseudo-storage `window@help__config%layer` (round 2–3 below) |
 
 ## Compatibility matrix (CXDEC, 2026-11-04)
 
