@@ -25,6 +25,7 @@ Status: **full** = same behaviour, **approx** = similar result, **stub** = does 
 | drawer.dll | `drawLine`, `drawAALine`, `drawAATriangle` | approx (no anti-aliasing, triangle outline) |
 | slideopen.dll | `initSlideOpen` / `drawSlideOpen` / `finishSlideOpen` | approx (cross-fade) |
 | firespark.dll | `*FireSpark` particles | stub |
+| saveStruct.dll | `saveStruct2`, `toStructString`, `Scripts.toStructString`, `save2`, `sso*` options | **engine internal plugin**, current wamsoft contract (was an old copy that wrote raw UTF-16 and returned an unterminated string); files are UTF-8 in both modes (Windows used the ANSI code page for `utf = false`) |
 | extrans.dll | transitions wave, mosaic, turn, rotatezoom, rotatevanish, rotateswap, ripple | **engine internal plugin** (`engine/source/plugins/extrans/`, krkrz extrans ported: scan lines read from krkrs' software textures, option colours converted to RGBA order, the turn table computed at start-up, ripple's `char` casts made signed for ARM). `tests/extrans` checks each picture half-way (ripple: displacement seen on a checkerboard, its vertical part unverified). Unknown names still fall back to crossfade |
 | menu.dll | `Window.menu` + `MenuItem` | full: engine menu model (`MenuItemIntf.cpp`), items and hierarchy behave as in Kirikiri |
 | | `Window.exSystemMenu` | approx: stored per window and readable by KAG's listeners, but there is no OS menu bar to display it in |

@@ -1,0 +1,52 @@
+// saveStruct.dll contract (tests/savestruct/smoke.py), values from the wamsoft
+// sources: option globals, exact output with each option, file round trips.
+Plugins.link("saveStruct.dll");
+var fails = 0;
+function expect(name, got, want) {
+    if (got !== want) {
+        fails++;
+        Debug.message("SAVESTRUCT FAIL " + name + ": got " + Scripts.toStructString(got) + " want " + Scripts.toStructString(want));
+    }
+}
+expect("ssoIndent", ssoIndent, 1);
+expect("ssoConst", ssoConst, 2);
+expect("ssoSort", ssoSort, 4);
+expect("ssoHidden", ssoHidden, 8);
+
+var d = %[b: 2, a: "x", c: [1, 2.5, void, null, "q\"uote"]];
+// upstream breaks the line between dictionary members even without ssoIndent;
+// reals are TJS hex (TJSRealToHexString, as Kirikiri 2) with the decimal value
+expect("sorted", Scripts.toStructString(d, 1, ssoSort),
+    '%["a"=>"x",\n"b"=>int 2,\n"c"=>[int 1,real 0x1.4000000000000p1 /* 2.5 */,void,null,"q\\"uote"]]');
+expect("const", Scripts.toStructString([1, %[a: 1]], 1, ssoConst),
+    "(const)[1,(const)%[\"a\"=>1]]");
+expect("indent", (Dictionary.toStructString incontextof %[a: 1, b: [1, 2]])(1, ssoIndent | ssoSort),
+    "%[\n \"a\"=>int 1,\n \"b\"=>[\n  int 1,\n  int 2\n ]\n]");
+expect("indent crlf", [1].toStructString(0, ssoIndent), "[\r\n int 1\r\n]");
+expect("primitive", Scripts.toStructString("a\nb"), "\"a\\nb\"");
+expect("empty", Scripts.toStructString(%[], 1, ssoIndent), "%[]");
+var c = Scripts.eval(Scripts.toStructString([1, %[a: 1]], 1, ssoConst));
+expect("const parses", c[1].a, 1);
+
+// files go through the storage layer (save folder redirect)
+var path = System.dataPath + "ss_dict.txt";
+var big = %[jp: "日本語のテキスト", uk: "їжак і ґанок", n: 42, r: 0.125, list: [1, "два", [3]]];
+(Dictionary.saveStruct2 incontextof big)(path, true, 1, ssoIndent | ssoSort);
+var back = Scripts.evalStorage(path);
+expect("round trip jp", back.jp, big.jp);
+expect("round trip uk", back.uk, big.uk);
+expect("round trip n", back.n, 42);
+expect("round trip r", back.r, 0.125);
+expect("round trip list", back.list[1] + back.list[2][0], "два3");
+var path2 = System.dataPath + "ss_array.txt";
+["one", "дві", "三"].save2(path2, true, 1);
+var lines = [].load(path2);
+expect("save2", lines.join("|"), "one|дві|三");
+var path3 = System.dataPath + "ss_ansi.txt";
+(Dictionary.saveStruct2 incontextof big)(path3); // utf = false
+expect("round trip ansi", Scripts.evalStorage(path3).uk, big.uk);
+
+// TJS real -> string is "%.15lg" (Kirikiri 2): no trailing zeros
+expect("real string", "" + 2.5 + "," + 0.1 + "," + 1e20 + "," + 3.0 + "," + "%g".sprintf(0.25), "2.5,0.1,1e+20,3,0.25");
+
+Debug.message(fails ? "SAVESTRUCT: " + fails + " failure(s)" : "SAVESTRUCT PASS");

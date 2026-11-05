@@ -1,303 +1,306 @@
+// saveStruct.dll (wamsoft/saveStruct, W.Dee / miahmie, Kirikiri license).
+// kk4s: replaced krkrs' copy of an old version with the current contract:
+// - Array/Dictionary.saveStruct2(file, utf, newline, option) and
+//   toStructString(newline, option), Scripts.toStructString(value, newline,
+//   option), Array.save2(file, utf, newline)
+// - options ssoIndent / ssoConst / ssoSort / ssoHidden (globals set on link)
+// - non-Array objects are written through EnumMembers as %[...]
+// - reals as hex with the decimal value in a comment, as upstream (writer.hex)
+// The old copy wrote raw UTF-16 without BOM to files and returned an
+// unterminated buffer from toStructString. Files are written as UTF-8 in both
+// modes: Windows used the ANSI code page when utf was false, which would lose
+// characters of translated games here; the engine's text reader detects UTF-8.
 #include "ncbind/ncbind.hpp"
 #include "PluginIntf.h"
+#include "BinaryStream.h"
+#include "CharacterSet.h"
+#include "MsgIntf.h"
+#include "ScriptMgnIntf.h"
+#include "tjsUtils.h"
+#include <vector>
 #define NCB_MODULE_NAME TJS_W("saveStruct.dll")
 
-class tTVPStringStream
-{
-	tTJSBinaryStream *stream;
-	const tjs_char *_newline;
+#define OPTION_INDENT  (1<<0)
+#define OPTION_CONST   (1<<1)
+#define OPTION_KEYSORT (1<<2)
+#define OPTION_HIDDEN  (1<<3)
 
-public:
-	tTVPStringStream(tTJSBinaryStream *s, bool onlyLF = false);
-	void write(tjs_char c);
-	void write(const tjs_char *s);
-	void write(tTVInteger var);
-	void write(tTVReal var);
-	void newline();
-};
+// not public in TJS
+#define OPTION_NOPREFIX      (1<<10) // no int/real prefix (only without (const))
+#define OPTION_NOARRAYINDENT (1<<11) // arrays ignore the indent option
 
-tTVPStringStream::tTVPStringStream(tTJSBinaryStream *s, bool onlyLF /*= false*/) : stream(s) {
-	if (onlyLF)  _newline = TJS_W("\n");
-	else        _newline = TJS_W("\r\n");
-}
+#define TJS_CONST TJS_W("(const)")
 
-void tTVPStringStream::write(tjs_char c) {
-	stream->Write(&c, sizeof(c));
-}
-
-void tTVPStringStream::write(const tjs_char *s) {
-	stream->Write(s, TJS_strlen(s) * sizeof(*s));
-}
-
-void tTVPStringStream::write(tTVInteger var) {
-	ttstr s = tTJSVariant(var).AsString();
-	stream->Write(s.c_str(), s.length() * sizeof(tjs_char));
-}
-
-void tTVPStringStream::write(tTVReal var) {
-	ttstr s = tTJSVariant(var).AsString();
-	stream->Write(s.c_str(), s.length() * sizeof(tjs_char));
-}
-
-void tTVPStringStream::newline() {
-	write(_newline);
-}
-
-static void
-quoteString(const tjs_char *str, tTVPStringStream *writer)
-{
-	if (str) {
-		writer->write((tjs_char)'"');
-		const tjs_char *p = str;
-		int ch;
-		while ((ch = *p++)) {
-			if (ch == '"') {
-				writer->write(TJS_W("\\\""));
-			} else if (ch == '\\') {
-				writer->write(TJS_W("\\\\"));
-			} else {
-				writer->write((tjs_char)ch);
-			}
-		}
-		writer->write((tjs_char)'"');
-	} else {
-		writer->write(TJS_W("\"\""));
-	}
-}
-
-static void quoteOctet(tTJSVariantOctet *octet, tTVPStringStream *writer)
-{
-  const tjs_uint8 *data = octet->GetData();
-  tjs_uint length = octet->GetLength();
-  writer->write(TJS_W("<% "));
-  for (tjs_uint i = 0; i < length; i++) {
-    tjs_char buf[256];
-    TJS_sprintf(buf, TJS_W("%02x "), data[i]);
-    writer->write(buf);
-  }
-  writer->write(TJS_W("%>"));
-}
-
-static void getVariantString(tTJSVariant &var, tTVPStringStream *writer);
-
-/**
- * 辞書の内容表示用の呼び出しロジック
- */
-class DictMemberDispCaller : public tTJSDispatch /** EnumMembers 用 */
-{
+//---------------------------------------------------------------------------
+// writers (json/Writer.hpp upstream)
+class IWriter {
 protected:
-	tTVPStringStream *writer;
-	bool first;
+	const tjs_char *newlinestr;
 public:
-	DictMemberDispCaller(tTVPStringStream *writer) : writer(writer) { first = true; };
-	virtual tjs_error TJS_INTF_METHOD FuncCall( // function invocation
-												tjs_uint32 flag,			// calling flag
-												const tjs_char * membername,// member name ( NULL for a default member )
-												tjs_uint32 *hint,			// hint for the member name (in/out)
-												tTJSVariant *result,		// result
-												tjs_int numparams,			// number of parameters
-												tTJSVariant **param,		// parameters
-												iTJSDispatch2 *objthis		// object as "this"
-												) {
-		if (numparams > 1) {
-			tTVInteger flag = param[1]->AsInteger();
-			if (!(flag & TJS_HIDDENMEMBER)) {
-				if (first) {
-					first = false;
-				} else {
-					writer->write((tjs_char)',');
-					writer->newline();
-				}
-				const tjs_char *name = param[0]->GetString();
-				quoteString(name, writer);
-				writer->write(TJS_W("=>"));
-				getVariantString(*param[2], writer);
-			}
-		}
-		if (result) {
-			*result = true;
-		}
-		return TJS_S_OK;
+	int indent;
+	bool hex;
+	IWriter(int newlinetype = 0) {
+		indent = 0;
+		hex = false;
+		newlinestr = newlinetype == 1 ? TJS_W("\n") : TJS_W("\r\n");
 	}
+	virtual ~IWriter() {}
+	virtual void write(const tjs_char *str) = 0;
+	virtual void write(tjs_char ch) = 0;
+
+	void newline() {
+		write(newlinestr);
+		for (int i = 0; i < indent; i++) write((tjs_char)' ');
+	}
+	void addIndent() { indent++; newline(); }
+	void delIndent() { indent--; newline(); }
 };
 
-static void getDictString(iTJSDispatch2 *dict, tTVPStringStream *writer)
-{
-	writer->write(TJS_W("%["));
-	//writer->addIndent();
-	DictMemberDispCaller *caller = new DictMemberDispCaller(writer);
-	tTJSVariantClosure closure(caller);
-	dict->EnumMembers(TJS_IGNOREPROP, &closure, dict);
-	caller->Release();
-	//writer->delIndent();
-	writer->write((tjs_char)']');
-}
+class IStringWriter : public IWriter {
+public:
+	ttstr buf;
+	IStringWriter(int newlinetype = 0) : IWriter(newlinetype) {}
+	void write(const tjs_char *str) override { buf += str; }
+	void write(tjs_char ch) override { buf += ch; }
+};
 
-// Array クラスメンバ
-static iTJSDispatch2 *ArrayCountProp   = NULL;   // Array.count
-
-static void getArrayString(iTJSDispatch2 *array, tTVPStringStream *writer)
-{
-	writer->write((tjs_char)'[');
-	//writer->addIndent();
-	tjs_int count = 0;
-	{
-		tTJSVariant result;
-		if (TJS_SUCCEEDED(ArrayCountProp->PropGet(0, NULL, NULL, &result, array))) {
-			count = result;
+class IFileWriter : public IWriter {
+	ttstr buf;
+	tTJSBinaryStream *stream;
+	std::vector<char> dat;
+public:
+	IFileWriter(const ttstr &filename, int newlinetype = 0) : IWriter(newlinetype) {
+		stream = TVPCreateBinaryStreamForWrite(filename, TJS_W(""));
+	}
+	~IFileWriter() {
+		if (stream) {
+			output();
+			delete stream;
 		}
 	}
-	for (tjs_int i=0; i<count; i++) {
-		if (i != 0) {
-			writer->write((tjs_char)',');
-			//writer->newline();
-		}
-		tTJSVariant result;
-		if (array->PropGetByNum(TJS_IGNOREPROP, i, &result, array) == TJS_S_OK) {
-			getVariantString(result, writer);
-		}
-	}
-	//writer->delIndent();
-	writer->write((tjs_char)']');
-}
-
-static void
-getVariantString(tTJSVariant &var, tTVPStringStream *writer)
-{
-	switch(var.Type()) {
-
-	case tvtVoid:
-		writer->write(TJS_W("void"));
-		break;
-		
-	case tvtObject:
-		{
-			iTJSDispatch2 *obj = var.AsObjectNoAddRef();
-			if (obj == NULL) {
-				writer->write(TJS_W("null"));
-			} else if (obj->IsInstanceOf(TJS_IGNOREPROP,NULL,NULL,TJS_W("Array"),obj) == TJS_S_TRUE) {
-				getArrayString(obj, writer);
-			} else {
-				getDictString(obj, writer);
+	void output() {
+		if (stream && buf.length() > 0) {
+			tjs_int len = TVPWideCharToUtf8String(buf.c_str(), NULL);
+			if (len > 0) {
+				dat.resize(len + 1);
+				len = TVPWideCharToUtf8String(buf.c_str(), &dat[0]);
+				stream->Write(&dat[0], len);
 			}
 		}
-		break;
-		
-	case tvtString:
-		quoteString(var.GetString(), writer);
-		break;
+		buf.Clear();
+	}
+	void write(const tjs_char *str) override {
+		if (stream) {
+			buf += str;
+			if (buf.length() >= 1024) output();
+		}
+	}
+	void write(tjs_char ch) override { buf += ch; }
+};
 
-        case tvtOctet:
-               quoteOctet(var.AsOctetNoAddRef(), writer);
-               break;
+static void getVariantString(const tTJSVariant &var, IWriter *writer, tjs_uint32 option = 0);
 
-	case tvtInteger:
-		writer->write(TJS_W("int "));
-		writer->write(TJSIntegerToString((tTVInteger)var)->operator const tjs_char *());
-		break;
+//---------------------------------------------------------------------------
+// Array class members
+static iTJSDispatch2 *ArrayClass     = NULL; // Array
+static iTJSDispatch2 *ArrayCountProp = NULL; // Array.count
+static iTJSDispatch2 *ArrayAddFunc   = NULL; // Array.add
+static iTJSDispatch2 *ArraySortFunc  = NULL; // Array.sort
 
-	case tvtReal:
-		writer->write(TJS_W("real "));
-		writer->write((tTVReal)var);
-		break;
+static iTJSDispatch2* getArrayChildObject(const tjs_char *name)
+{
+	if (!ArrayClass) {
+		iTJSDispatch2 *dummy = TJSCreateArrayObject(&ArrayClass);
+		dummy->Release();
+		if (!ArrayClass) TVPThrowExceptionMessage(TJS_W("can't get Array object"));
+	}
+	tTJSVariant val;
+	if (TJS_FAILED(ArrayClass->PropGet(TJS_IGNOREPROP, name, NULL, &val, ArrayClass)))
+		TVPThrowExceptionMessage(TJS_W("can't get Array.%1 member"), ttstr(name));
+	return val.AsObject();
+}
 
-	default:
-		writer->write(TJS_W("void"));
-		break;
-	};
+static tjs_int getArrayCount(iTJSDispatch2 *array) {
+	tjs_int count = 0;
+	tTJSVariant result;
+	if (!ArrayCountProp) {
+		ArrayCountProp = getArrayChildObject(TJS_W("count"));
+		if (!ArrayCountProp) return 0;
+	}
+	if (TJS_SUCCEEDED(ArrayCountProp->PropGet(0, NULL, NULL, &result, array))) {
+		count = result;
+	} else if (TJS_SUCCEEDED(array->PropGet(0, TJS_W("count"), NULL, &result, array))) {
+		count = result;
+	}
+	return count;
+}
+
+static inline tjs_error invokeArrayFunc(iTJSDispatch2 *array, iTJSDispatch2* &func, const tjs_char *method,
+	tTJSVariant *result, tjs_int numparams, tTJSVariant **param)
+{
+	if (!func) {
+		func = getArrayChildObject(method);
+		if (!func) return TJS_E_MEMBERNOTFOUND;
+	}
+	return func->FuncCall(0, NULL, NULL, result, numparams, param, array);
 }
 
 //---------------------------------------------------------------------------
-
-/**
- * メソッド追加用
- */
-class ArrayAdd {
-
+// dictionary members (EnumMembers callback)
+class DictMemberDispCaller : public tTJSDispatch
+{
+protected:
+	IWriter *writer;
+	tjs_uint32 option;
+	bool first;
+	iTJSDispatch2 *keys;
 public:
-	ArrayAdd(){};
-
-	/**
-	 * save 形式での辞書または配列の保存
-	 * @param filename ファイル名
-	 * @param utf true なら UTF-8 で出力
-	 * @param newline 改行コード 0:CRLF 1:LF
-	 * @return 実行結果
-	 */
-	static tjs_error TJS_INTF_METHOD save2(tTJSVariant *result,
-										   tjs_int numparams,
-										   tTJSVariant **param,
-										   iTJSDispatch2 *objthis) {
-		if (numparams < 1) return TJS_E_BADPARAMCOUNT;
-        tTJSBinaryStream *stream = TVPCreateStream(param[0]->AsString(), TJS_BS_WRITE);
-        tTVPStringStream writer(stream,
-            //numparams > 1 ? (int)*param[1] != 0: false,
-            numparams > 2 ? (int)*param[2] : 0
-            );
-// 		IFileWriter writer(param[0]->GetString(),
-// 						   numparams > 1 ? (int)*param[1] != 0: false,
-// 						   numparams > 2 ? (int)*param[2] : 0
-// 						   );
-//                 writer.hex = true;
-		tjs_int count = 0;
-		{
-			tTJSVariant result;
-			if (TJS_SUCCEEDED(ArrayCountProp->PropGet(0, NULL, NULL, &result, objthis))) {
-				count = result;
+	DictMemberDispCaller(IWriter *writer, tjs_uint32 option)
+		: writer(writer), option(option), first(true), keys(0) {}
+	virtual ~DictMemberDispCaller() {
+		if (keys) keys->Release();
+	}
+	tjs_error TJS_INTF_METHOD FuncCall(tjs_uint32 flag, const tjs_char *membername, tjs_uint32 *hint,
+		tTJSVariant *result, tjs_int numparams, tTJSVariant **param, iTJSDispatch2 *objthis) override {
+		if (numparams > 1) {
+			tTVInteger flags = param[1]->AsInteger();
+			if (!(flags & TJS_HIDDENMEMBER) || (option & OPTION_HIDDEN)) {
+				if (option & OPTION_KEYSORT) {
+					if (!keys) keys = TJSCreateArrayObject();
+					invokeArrayFunc(keys, ArrayAddFunc, TJS_W("add"), NULL, 1, param); // keys.add(name)
+				} else if (numparams > 2) {
+					write(*param[0], *param[2]);
+				}
 			}
 		}
-		for (tjs_int i=0; i<count; i++) {
-			tTJSVariant result;
-			if (objthis->PropGetByNum(TJS_IGNOREPROP, i, &result, objthis) == TJS_S_OK) {
-				writer.write(result.GetString());
+		if (result) *result = true;
+		return TJS_S_OK;
+	}
+	void write(const tTJSVariant &key, const tTJSVariant &value) {
+		if (first) {
+			first = false;
+			if (option & OPTION_INDENT) writer->addIndent(); // indent only with at least one member
+		} else {
+			writer->write((tjs_char)',');
+			writer->newline();
+		}
+		ttstr name(key.GetString()), escape;
+		escape = name.EscapeC();
+		writer->write((tjs_char)'"');
+		writer->write(escape.c_str());
+		writer->write(TJS_W("\"=>"));
+		getVariantString(value, writer, option);
+	}
+	void cleanup(iTJSDispatch2 *dict) {
+		if (keys) {
+			// second pass for sorted keys
+			invokeArrayFunc(keys, ArraySortFunc, TJS_W("sort"), NULL, 0, NULL);
+			tjs_int count = getArrayCount(keys);
+			for (tjs_int i = 0; i < count; i++) {
+				tTJSVariant key, value;
+				if (TJS_SUCCEEDED(keys->PropGetByNum(TJS_IGNOREPROP, i, &key, keys)) &&
+					TJS_SUCCEEDED(dict->PropGet(TJS_IGNOREPROP, key.GetString(), key.GetHint(), &value, dict)))
+					write(key, value);
+			}
+		}
+		if (!first && (option & OPTION_INDENT)) writer->delIndent();
+	}
+};
+
+static void getDictString(iTJSDispatch2 *dict, IWriter *writer, tjs_uint32 option = 0)
+{
+	if (option & OPTION_CONST) writer->write(TJS_CONST);
+	writer->write(TJS_W("%["));
+	DictMemberDispCaller *caller = new DictMemberDispCaller(writer, option);
+	tTJSVariantClosure closure(caller);
+	tjs_uint32 novalue = (option & OPTION_KEYSORT) ? TJS_ENUM_NO_VALUE : 0; // sorting fetches values later
+	dict->EnumMembers(TJS_IGNOREPROP | novalue, &closure, dict);
+	caller->cleanup(dict);
+	caller->Release();
+	writer->write((tjs_char)']');
+}
+
+static void getArrayString(iTJSDispatch2 *array, IWriter *writer, tjs_uint32 option = 0)
+{
+	if (option & OPTION_CONST) writer->write(TJS_CONST);
+	writer->write((tjs_char)'[');
+	tjs_int count = getArrayCount(array);
+	bool indent = (count > 0) && (option & OPTION_INDENT) && !(option & OPTION_NOARRAYINDENT);
+	if (indent) writer->addIndent();
+	for (tjs_int i = 0; i < count; i++) {
+		if (i != 0) {
+			writer->write((tjs_char)',');
+			if (indent) writer->newline();
+		}
+		tTJSVariant result;
+		if (array->PropGetByNum(TJS_IGNOREPROP, i, &result, array) == TJS_S_OK)
+			getVariantString(result, writer, option);
+	}
+	if (indent) writer->delIndent();
+	writer->write((tjs_char)']');
+}
+
+static void getVariantString(const tTJSVariant &var, IWriter *writer, tjs_uint32 option)
+{
+	tTJSVariantType type = var.Type();
+	if (type == tvtObject) {
+		iTJSDispatch2 *obj = var.AsObjectNoAddRef();
+		if (obj == NULL) {
+			writer->write(TJS_W("null"));
+		} else if (obj->IsInstanceOf(TJS_IGNOREPROP, NULL, NULL, TJS_W("Array"), obj) == TJS_S_TRUE) {
+			getArrayString(obj, writer, option);
+		} else {
+			getDictString(obj, writer, option);
+		}
+	} else {
+		if (!(option & (OPTION_CONST | OPTION_NOPREFIX))) { // (const) would not parse with them
+			if (type == tvtInteger) writer->write(TJS_W("int "));
+			else if (type == tvtReal) writer->write(TJS_W("real "));
+		}
+		writer->write(TJSVariantToExpressionString(var).c_str());
+	}
+}
+
+//---------------------------------------------------------------------------
+class ArrayAdd {
+public:
+	ArrayAdd() {}
+
+	// save2(filename, utf = false, newline = 0): one element per line
+	static tjs_error TJS_INTF_METHOD save2(tTJSVariant *result, tjs_int numparams,
+		tTJSVariant **param, iTJSDispatch2 *objthis) {
+		if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+		IFileWriter writer(param[0]->AsStringNoAddRef(), numparams > 2 ? (int)*param[2] : 0);
+		writer.hex = true;
+		tjs_int count = getArrayCount(objthis);
+		for (tjs_int i = 0; i < count; i++) {
+			tTJSVariant v;
+			if (objthis->PropGetByNum(TJS_IGNOREPROP, i, &v, objthis) == TJS_S_OK) {
+				writer.write(v.GetString());
 				writer.newline();
 			}
 		}
-        delete stream;
 		return TJS_S_OK;
 	}
 
-	/**
-	 * saveStruct 形式でのオブジェクトの保存
-	 * @param filename ファイル名
-	 * @param utf true なら UTF-8 で出力
-	 * @param newline 改行コード 0:CRLF 1:LF
-	 * @return 実行結果
-	 */
-	static tjs_error TJS_INTF_METHOD saveStruct2(tTJSVariant *result,
-												 tjs_int numparams,
-												 tTJSVariant **param,
-												 iTJSDispatch2 *objthis) {
+	// saveStruct2(filename, utf = false, newline = 0, option = 0)
+	static tjs_error TJS_INTF_METHOD saveStruct2(tTJSVariant *result, tjs_int numparams,
+		tTJSVariant **param, iTJSDispatch2 *objthis) {
 		if (numparams < 1) return TJS_E_BADPARAMCOUNT;
-        tTJSBinaryStream *stream = TVPCreateStream(param[0]->AsString(), TJS_BS_WRITE);
-		tTVPStringStream writer(stream,
-						   //numparams > 1 ? (int)*param[1] != 0: false,
-						   numparams > 2 ? (int)*param[2] : 0
-						   );
-// 		IFileWriter writer(param[0]->GetString(),
-// 						   numparams > 1 ? (int)*param[1] != 0: false,
-// 						   numparams > 2 ? (int)*param[2] : 0
-// 						   );
-//                 writer.hex = true;
-		getArrayString(objthis, &writer);
-        delete stream;
+		IFileWriter writer(param[0]->AsStringNoAddRef(), numparams > 2 ? (int)*param[2] : 0);
+		writer.hex = true;
+		getArrayString(objthis, &writer, numparams > 3 ? (int)*param[3] : 0);
 		return TJS_S_OK;
 	}
-	
-	/**
-	 * saveStruct 形式で文字列化
-	 * @param newline 改行コード 0:CRLF 1:LF
-	 * @return 実行結果
-	 */
-	static tjs_error TJS_INTF_METHOD toStructString(tTJSVariant *result,
-													tjs_int numparams,
-													tTJSVariant **param,
-													iTJSDispatch2 *objthis) {
+
+	// toStructString(newline = 1, option = 0)
+	static tjs_error TJS_INTF_METHOD toStructString(tTJSVariant *result, tjs_int numparams,
+		tTJSVariant **param, iTJSDispatch2 *objthis) {
 		if (result) {
-            tTVPMemoryStream ms;
-            tTVPStringStream writer(&ms, numparams > 0 ? (int)*param[0] : 0);
-			getArrayString(objthis, &writer);
-            *result = (const tjs_char*)ms.GetInternalBuffer();
+			IStringWriter writer(TJS_PARAM_EXIST(0) ? (int)*param[0] : 1);
+			writer.hex = true;
+			getArrayString(objthis, &writer, numparams > 1 ? (int)*param[1] : 0);
+			*result = writer.buf;
 		}
 		return TJS_S_OK;
 	}
@@ -309,51 +312,28 @@ NCB_ATTACH_CLASS(ArrayAdd, Array) {
 	RawCallback("toStructString", &ArrayAdd::toStructString, 0);
 };
 
-/**
- * メソッド追加用
- */
 class DictAdd {
-
 public:
-	DictAdd(){};
+	DictAdd() {}
 
-	/**
-	 * saveStruct 形式でのオブジェクトの保存
-	 * @param filename ファイル名
-	 * @param utf true なら UTF-8 で出力
-	 * @param newline 改行コード 0:CRLF 1:LF
-	 * @return 実行結果
-	 */
-	static tjs_error TJS_INTF_METHOD saveStruct2(tTJSVariant *result,
-												 tjs_int numparams,
-												 tTJSVariant **param,
-												 iTJSDispatch2 *objthis) {
+	// (Dictionary.saveStruct2 incontextof obj)(filename, utf = false, newline = 0, option = 0)
+	static tjs_error TJS_INTF_METHOD saveStruct2(tTJSVariant *result, tjs_int numparams,
+		tTJSVariant **param, iTJSDispatch2 *objthis) {
 		if (numparams < 1) return TJS_E_BADPARAMCOUNT;
-        tTJSBinaryStream *stream = TVPCreateStream(param[0]->AsString(), TJS_BS_WRITE);
-		tTVPStringStream writer(stream,
-						   //numparams > 1 ? (int)*param[1] != 0: false,
-						   numparams > 2 ? (int)*param[2] : 0
-						   );
-		getDictString(objthis, &writer);
-        delete stream;
+		IFileWriter writer(param[0]->AsStringNoAddRef(), numparams > 2 ? (int)*param[2] : 0);
+		writer.hex = true;
+		getDictString(objthis, &writer, numparams > 3 ? (int)*param[3] : 0);
 		return TJS_S_OK;
 	}
-	
-	/**
-	 * saveStruct 形式で文字列化
-	 * @param newline 改行コード 0:CRLF 1:LF
-	 * @return 実行結果
-	 */
-	static tjs_error TJS_INTF_METHOD toStructString(tTJSVariant *result,
-													tjs_int numparams,
-													tTJSVariant **param,
-													iTJSDispatch2 *objthis) {
+
+	// (Dictionary.toStructString incontextof obj)(newline = 1, option = 0)
+	static tjs_error TJS_INTF_METHOD toStructString(tTJSVariant *result, tjs_int numparams,
+		tTJSVariant **param, iTJSDispatch2 *objthis) {
 		if (result) {
-            tTVPMemoryStream ms;
-            tTVPStringStream writer(&ms, numparams > 0 ? (int)*param[0] : 0);
-			getDictString(objthis, &writer);
-            writer.write((tjs_char)0);
-			*result = (const tjs_char*)ms.GetInternalBuffer();
+			IStringWriter writer(TJS_PARAM_EXIST(0) ? (int)*param[0] : 1);
+			writer.hex = true;
+			getDictString(objthis, &writer, numparams > 1 ? (int)*param[1] : 0);
+			*result = writer.buf;
 		}
 		return TJS_S_OK;
 	}
@@ -364,37 +344,60 @@ NCB_ATTACH_CLASS(DictAdd, Dictionary) {
 	RawCallback("toStructString", &DictAdd::toStructString, TJS_STATICMEMBER);
 };
 
-/**
- * 登録処理後
- */
+class ScriptsAddStruct {
+public:
+	ScriptsAddStruct() {}
+
+	// Scripts.toStructString(value, newline = 1, option = ssoConst... see readme: default 0)
+	static tjs_error TJS_INTF_METHOD toStructString(tTJSVariant *result, tjs_int numparams,
+		tTJSVariant **param, iTJSDispatch2 *objthis) {
+		if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+		if (result) {
+			IStringWriter writer(TJS_PARAM_EXIST(1) ? (int)*param[1] : 1);
+			writer.hex = true;
+			getVariantString(*param[0], &writer, numparams > 2 ? (int)*param[2] : 0);
+			*result = writer.buf;
+		}
+		return TJS_S_OK;
+	}
+};
+
+NCB_ATTACH_CLASS(ScriptsAddStruct, Scripts) {
+	RawCallback("toStructString", &ScriptsAddStruct::toStructString, TJS_STATICMEMBER);
+};
+
+//---------------------------------------------------------------------------
 static void PostRegistCallback()
 {
-	// Array.count を取得
-	{
-		tTJSVariant varScripts;
-		TVPExecuteExpression(TJS_W("Array"), &varScripts);
-		iTJSDispatch2 *dispatch = varScripts.AsObjectNoAddRef();
-		tTJSVariant val;
-		if (TJS_FAILED(dispatch->PropGet(TJS_IGNOREPROP,
-										 TJS_W("count"),
-										 NULL,
-										 &val,
-										 dispatch))) {
-			TVPThrowExceptionMessage(TJS_W("can't get Array.count"));
-		}
-		ArrayCountProp = val.AsObject();
+	iTJSDispatch2 *global = TVPGetScriptDispatch();
+	if (global) {
+		tTJSVariant option_indent((tjs_int)OPTION_INDENT);
+		tTJSVariant option_const((tjs_int)OPTION_CONST);
+		tTJSVariant option_keysort((tjs_int)OPTION_KEYSORT);
+		tTJSVariant option_hidden((tjs_int)OPTION_HIDDEN);
+		global->PropSet(TJS_MEMBERENSURE | TJS_IGNOREPROP, TJS_W("ssoIndent"), NULL, &option_indent, global);
+		global->PropSet(TJS_MEMBERENSURE | TJS_IGNOREPROP, TJS_W("ssoConst"), NULL, &option_const, global);
+		global->PropSet(TJS_MEMBERENSURE | TJS_IGNOREPROP, TJS_W("ssoSort"), NULL, &option_keysort, global);
+		global->PropSet(TJS_MEMBERENSURE | TJS_IGNOREPROP, TJS_W("ssoHidden"), NULL, &option_hidden, global);
+		global->Release();
 	}
 }
 
-/**
- * 開放処理前
- */
 static void PreUnregistCallback()
 {
-	if (ArrayCountProp) {
-		ArrayCountProp->Release();
-		ArrayCountProp = NULL;
+	iTJSDispatch2 *global = TVPGetScriptDispatch();
+	if (global) {
+		global->DeleteMember(0, TJS_W("ssoIndent"), NULL, global);
+		global->DeleteMember(0, TJS_W("ssoConst"), NULL, global);
+		global->DeleteMember(0, TJS_W("ssoSort"), NULL, global);
+		global->DeleteMember(0, TJS_W("ssoHidden"), NULL, global);
+		global->Release();
 	}
+	if (ArraySortFunc) ArraySortFunc->Release();
+	if (ArrayAddFunc) ArrayAddFunc->Release();
+	if (ArrayCountProp) ArrayCountProp->Release();
+	if (ArrayClass) ArrayClass->Release();
+	ArrayClass = ArrayCountProp = ArrayAddFunc = ArraySortFunc = NULL;
 }
 
 NCB_POST_REGIST_CALLBACK(PostRegistCallback);

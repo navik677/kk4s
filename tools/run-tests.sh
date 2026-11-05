@@ -81,6 +81,7 @@ group_io() {
     run fstat        python3 tests/fstat/smoke.py "$EXE"
     run layersave    python3 tests/layersave/smoke.py "$EXE"
     run json         python3 tests/json/smoke.py "$EXE"
+    run savestruct   python3 tests/savestruct/smoke.py "$EXE"
     run windowex     python3 tests/windowex/smoke.py "$EXE"
     run natives      python3 tests/natives/smoke.py "$EXE"
     run aspect       python3 tests/aspect/smoke.py "$EXE"
