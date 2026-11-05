@@ -1,0 +1,75 @@
+// Contract test for the fstat.dll replacement (compat/kk4s_plugins.cpp).
+// Writes only below System.dataPath (kk4s redirects it out of the game folder).
+Plugins.link("fstat.dll");
+var failures = 0;
+function check(what, ok) { if (!ok) { Debug.message("fstat FAIL " + what); failures++; } }
+function has(arr, v) { for (var i = 0; i < arr.count; i++) if (arr[i] == v) return true; return false; }
+
+var names = ["fstat", "getTime", "setTime", "getLastModifiedFileTime", "setLastModifiedFileTime",
+             "dirlist", "dirlistEx", "dirtree", "truncateFile", "createDirectoryNoNormalize",
+             "copyFileNoNormalize", "changeDirectory", "getFileAttributes", "setFileAttributes",
+             "resetFileAttributes", "getDisplayName", "getMD5HashString", "searchPath",
+             "getTemporaryName", "isExistentStorageNoSearchNoNormalize", "selectDirectory",
+             "clearStorageCaches"];
+for (var i = 0; i < names.count; i++) check("Storages." + names[i] + " exists", typeof Storages[names[i]] == "Object");
+check("TemporaryFiles exists", typeof global.TemporaryFiles == "Object");
+check("FILE_ATTRIBUTE_DIRECTORY", global.FILE_ATTRIBUTE_DIRECTORY == 0x10);
+
+var root = System.dataPath + "fstat-test/";
+Storages.createDirectory(root);
+Storages.createDirectory(root + "sub/");
+var file = root + "sub/a.txt";
+["hello world"].save(file);
+check("file written", Storages.isExistentStorage(file));
+
+var list = Storages.dirlist(root);
+check("dirlist has sub/", has(list, "sub/"));
+var ex = Storages.dirlistEx(root + "sub/");
+var found = void;
+for (var i = 0; i < ex.count; i++) if (ex[i].name == "a.txt") found = ex[i];
+check("dirlistEx entry", found !== void);
+if (found !== void) {
+    check("dirlistEx size", found.size > 0);
+    check("dirlistEx mtime is a Date", found.mtime instanceof "Date");
+    check("dirlistEx attrib archive", (found.attrib & 0x20) != 0);
+}
+var tree = Storages.dirtree(root);
+check("dirtree folder", has(tree, "sub/"));
+check("dirtree file", has(tree, "sub/a.txt"));
+check("dirtree dironly", !has(Storages.dirtree(root, true), "sub/a.txt"));
+var threw = false;
+try { Storages.dirlist(root + "sub"); } catch (e) { threw = true; }
+check("dirlist needs a trailing slash", threw);
+
+var st = Storages.fstat(file);
+check("fstat size", st.size == found.size);
+check("fstat atime/ctime", st.atime instanceof "Date" && st.ctime instanceof "Date");
+check("fstat of archive-less game file", Storages.fstat("md5.bin").size == 3);
+check("md5", Storages.getMD5HashString("md5.bin") == "900150983cd24fb0d6963f7d28e17f72");
+
+var d = new Date();
+d.setTime(1000000000000);	// 2001-09-09
+check("setTime", Storages.setTime(file, %[ mtime: d ]));
+check("getTime round-trip", Storages.getTime(file).mtime.getTime() == 1000000000000);
+check("FILETIME", Storages.getLastModifiedFileTime(file) == 1000000000000 * 10000 + 116444736000000000);
+
+check("attrib dir", (Storages.getFileAttributes(root + "sub/") & 0x10) != 0);
+check("attrib file", (Storages.getFileAttributes(file) & 0x20) != 0);
+
+check("truncateFile", Storages.truncateFile(file, 2) && Storages.fstat(file).size == 2);
+check("getDisplayName", Storages.getDisplayName(file) == "a.txt");
+check("getTemporaryName", Storages.getTemporaryName() != "");
+
+// TemporaryFiles deletes its entries when it is invalidated, never inside the game folder
+var tmp = root + "tmp.txt";
+["x"].save(tmp);
+var tf = new TemporaryFiles();
+check("TemporaryFiles.entry", tf.entry(tmp));
+tf.entry("md5.bin");
+invalidate tf;
+Storages.clearStorageCaches();
+check("TemporaryFiles removed its file", !Storages.isExistentStorage(tmp));
+check("TemporaryFiles kept the game file", Storages.isExistentStorage("md5.bin"));
+
+if (failures == 0) Debug.message("fstat synthetic contract: PASS");
+else Debug.message("fstat synthetic contract: " + failures + " failure(s)");

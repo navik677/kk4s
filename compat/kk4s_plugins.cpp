@@ -19,6 +19,7 @@ extern bool TVPKAGParserExMode; // engine/source/core/utils/KAGParser.cpp
 #include "tjsArray.h"
 #include "kk4s_platform.h"
 #include "kk4s_fs.h"
+#include "md5.h"
 
 #include <cctype>
 #include <climits>
@@ -28,8 +29,11 @@ extern bool TVPKAGParserExMode; // engine/source/core/utils/KAGParser.cpp
 #include <functional>
 #include <set>
 #include <string>
+#include <dirent.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <unistd.h>
+#include <vector>
 
 namespace kk4s {
 namespace compat {
@@ -228,6 +232,317 @@ static bool CopyStorage(const ttstr& from, const ttstr& to, bool fail_if_exists)
     return ok;
 }
 
+// ---------------------------------------------------------------------------
+// fstat.dll, the rest of its contract (wamsoft/fstat manual.tjs): listings,
+// timestamps, attributes, MD5, temporary files. Native helpers return plain
+// numbers/arrays; the TJS part below builds the Date objects and dictionaries.
+// Timestamps are milliseconds since 1970 (Date.setTime); FILETIME values are
+// 100 ns ticks since 1601 like on Windows.
+
+static const tjs_int64 kFiletimeEpoch = 116444736000000000LL; // 1601 -> 1970 in 100 ns
+
+static tjs_int64 MsOf(const struct timespec& t) { return (tjs_int64)t.tv_sec * 1000 + t.tv_nsec / 1000000; }
+
+// Windows-style attributes of a native path (0 if missing).
+static tjs_int AttributesOf(const std::string& path, const struct stat& sb) {
+    tjs_int a = S_ISDIR(sb.st_mode) ? 0x10 : 0x20;               // DIRECTORY / ARCHIVE
+    if (access(path.c_str(), W_OK) != 0) a |= 0x01;               // READONLY
+    const char* base = strrchr(path.c_str(), '/');
+    base = base ? base + 1 : path.c_str();
+    if (base[0] == '.' && strcmp(base, ".") && strcmp(base, "..")) a |= 0x02; // HIDDEN
+    return a;
+}
+
+// [size, mtime, atime, ctime, attrib] of a native file, or void.
+static bool StatArray(const std::string& path, tTJSVariant* r) {
+    struct stat sb;
+    if (path.empty() || stat(path.c_str(), &sb) != 0) return false;
+    if (!r) return true;
+    iTJSDispatch2* arr = TJSCreateArrayObject();
+    tTJSVariant v[5] = {(tjs_int64)(S_ISDIR(sb.st_mode) ? 0 : sb.st_size), MsOf(sb.st_mtim), MsOf(sb.st_atim),
+                        MsOf(sb.st_ctim), AttributesOf(path, sb)};
+    for (int i = 0; i < 5; ++i) arr->PropSetByNum(TJS_MEMBERENSURE, i, &v[i], arr);
+    *r = tTJSVariant(arr, arr);
+    arr->Release();
+    return true;
+}
+
+static void SetFileTimesMs(const std::string& path, tjs_int64 mtime_ms, tjs_int64 atime_ms) {
+    struct timeval tv[2];
+    tv[0].tv_sec = (time_t)(atime_ms / 1000); tv[0].tv_usec = (suseconds_t)((atime_ms % 1000) * 1000);
+    tv[1].tv_sec = (time_t)(mtime_ms / 1000); tv[1].tv_usec = (suseconds_t)((mtime_ms % 1000) * 1000);
+    utimes(path.c_str(), tv);
+}
+
+static bool InsideGameDir(const std::string& path) {
+    char a[PATH_MAX], b[PATH_MAX];
+    if (!realpath(path.c_str(), a) || !realpath(kk4s::GameDir().c_str(), b)) return false;
+    size_t n = strlen(b);
+    return strncmp(a, b, n) == 0 && (a[n] == '/' || a[n] == 0);
+}
+
+static void LinkFstatExtras(iTJSDispatch2* st) {
+    // kk4sStatEx(name) -> [size, mtime, atime, ctime, attrib] of a real file/folder, or void
+    DefineFunction(st, TJS_W("kk4sStatEx"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
+        if (n < 1) return TJS_E_BADPARAMCOUNT;
+        StatArray(NativeDir(*p[0]), r);
+        return TJS_S_OK;
+    });
+    // kk4sArchiveSize(name) -> size of a file inside an archive, or -1
+    DefineFunction(st, TJS_W("kk4sArchiveSize"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
+        if (n < 1) return TJS_E_BADPARAMCOUNT;
+        tjs_int64 size = -1;
+        ttstr placed = TVPGetPlacedPath(*p[0]);
+        if (!placed.IsEmpty()) {
+            tTJSBinaryStream* s = TVPCreateStream(placed, TJS_BS_READ);
+            if (s) { size = (tjs_int64)s->GetSize(); delete s; }
+        }
+        if (r) *r = size;
+        return TJS_S_OK;
+    });
+    // kk4sListDir(dir) -> [[name, size, mtime, atime, ctime, attrib], ...] (with "." and "..",
+    // as FindFirstFile returns them), or void if the folder does not exist
+    DefineFunction(st, TJS_W("kk4sListDir"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
+        if (n < 1) return TJS_E_BADPARAMCOUNT;
+        std::string dir = NativeDir(*p[0]);
+        DIR* d = dir.empty() ? nullptr : opendir(dir.c_str());
+        if (!d) return TJS_S_OK;
+        iTJSDispatch2* arr = TJSCreateArrayObject();
+        tjs_int count = 0;
+        std::vector<std::string> names;
+        while (struct dirent* e = readdir(d)) names.push_back(e->d_name);
+        closedir(d);
+        for (const std::string& name : names) {
+            std::string full = dir + "/" + name;
+            struct stat sb;
+            if (stat(full.c_str(), &sb) != 0) continue;
+            iTJSDispatch2* item = TJSCreateArrayObject();
+            tjs_string wide;
+            ttstr wname = TVPUtf8ToUtf16(wide, name) ? ttstr(wide.c_str()) : ttstr(name.c_str());
+            tTJSVariant v[6] = {wname, (tjs_int64)(S_ISDIR(sb.st_mode) ? 0 : sb.st_size), MsOf(sb.st_mtim),
+                                MsOf(sb.st_atim), MsOf(sb.st_ctim), AttributesOf(full, sb)};
+            for (int i = 0; i < 6; ++i) item->PropSetByNum(TJS_MEMBERENSURE, i, &v[i], item);
+            tTJSVariant iv(item, item);
+            item->Release();
+            arr->PropSetByNum(TJS_MEMBERENSURE, count++, &iv, arr);
+        }
+        if (r) *r = tTJSVariant(arr, arr);
+        arr->Release();
+        return TJS_S_OK;
+    });
+    // kk4sSetTimes(name, mtimeMs, atimeMs) -> true if the file exists
+    DefineFunction(st, TJS_W("kk4sSetTimes"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
+        if (n < 3) return TJS_E_BADPARAMCOUNT;
+        std::string path = NativeDir(*p[0]);
+        struct stat sb;
+        bool ok = !path.empty() && stat(path.c_str(), &sb) == 0 && !InsideGameDir(path);
+        if (ok) {
+            tjs_int64 m = p[1]->Type() == tvtVoid ? MsOf(sb.st_mtim) : p[1]->AsInteger();
+            tjs_int64 a = p[2]->Type() == tvtVoid ? MsOf(sb.st_atim) : p[2]->AsInteger();
+            SetFileTimesMs(path, m, a);
+        }
+        if (r) *r = (tjs_int)ok;
+        return TJS_S_OK;
+    });
+    DefineFunction(st, TJS_W("truncateFile"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
+        if (n < 2) return TJS_E_BADPARAMCOUNT;
+        std::string path = NativePath(*p[0]);
+        bool ok = !path.empty() && !InsideGameDir(path) && truncate(path.c_str(), (off_t)p[1]->AsInteger()) == 0;
+        TVPClearStorageCaches();
+        if (r) *r = (tjs_int)ok;
+        return TJS_S_OK;
+    });
+    // Attributes: READONLY maps to the write permission, the rest are reported only.
+    auto change_attr = [](tjs_int n, tTJSVariant** p, bool set) -> bool {
+        std::string path = NativeDir(*p[0]);
+        struct stat sb;
+        if (path.empty() || stat(path.c_str(), &sb) != 0) return false;
+        tjs_int attr = (tjs_int)p[1]->AsInteger();
+        if ((attr & 0x01) && !InsideGameDir(path)) {
+            mode_t m = set ? (sb.st_mode & ~(mode_t)0222) : (sb.st_mode | S_IWUSR);
+            chmod(path.c_str(), m);
+        }
+        return true;
+    };
+    DefineFunction(st, TJS_W("setFileAttributes"), [change_attr](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
+        if (n < 2) return TJS_E_BADPARAMCOUNT;
+        bool ok = change_attr(n, p, true);
+        if (r) *r = (tjs_int)ok;
+        return TJS_S_OK;
+    });
+    DefineFunction(st, TJS_W("resetFileAttributes"), [change_attr](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
+        if (n < 2) return TJS_E_BADPARAMCOUNT;
+        bool ok = change_attr(n, p, false);
+        if (r) *r = (tjs_int)ok;
+        return TJS_S_OK;
+    });
+    DefineFunction(st, TJS_W("getFileAttributes"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
+        if (n < 1) return TJS_E_BADPARAMCOUNT;
+        std::string path = NativeDir(*p[0]);
+        struct stat sb;
+        tjs_int a = (!path.empty() && stat(path.c_str(), &sb) == 0) ? AttributesOf(path, sb) : 0;
+        if (r) *r = a;
+        return TJS_S_OK;
+    });
+    // getMD5HashString(file): lower-case hex MD5 of the storage (archives included)
+    DefineFunction(st, TJS_W("getMD5HashString"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
+        if (n < 1) return TJS_E_BADPARAMCOUNT;
+        tTJSBinaryStream* in = TVPCreateStream(TVPGetPlacedPath(*p[0]), TJS_BS_READ);
+        md5_state_t state;
+        md5_init(&state);
+        try {
+            tjs_uint8 buf[65536];
+            tjs_uint got;
+            while ((got = in->Read(buf, sizeof(buf))) > 0) md5_append(&state, buf, (int)got);
+        } catch (...) {
+            delete in;
+            throw;
+        }
+        delete in;
+        md5_byte_t digest[16];
+        md5_finish(&state, digest);
+        char hex[33];
+        for (int i = 0; i < 16; ++i) snprintf(hex + i * 2, 3, "%02x", digest[i]);
+        if (r) *r = ttstr(hex);
+        return TJS_S_OK;
+    });
+    DefineFunction(st, TJS_W("getTemporaryName"), [](tTJSVariant* r, tjs_int, tTJSVariant**) -> tjs_error {
+        if (r) *r = TVPGetTemporaryName();
+        return TJS_S_OK;
+    });
+    DefineFunction(st, TJS_W("isExistentStorageNoSearchNoNormalize"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
+        if (n < 1) return TJS_E_BADPARAMCOUNT;
+        if (r) *r = (tjs_int)TVPIsExistentStorageNoSearchNoNormalize(*p[0]);
+        return TJS_S_OK;
+    });
+    // kk4sRemoveTemp(name): TemporaryFiles' delete-on-close, never inside the game folder
+    DefineFunction(st, TJS_W("kk4sRemoveTemp"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
+        if (n < 1) return TJS_E_BADPARAMCOUNT;
+        std::string path = NativeDir(*p[0]);
+        bool ok = !path.empty() && !InsideGameDir(path) && remove(path.c_str()) == 0;
+        TVPClearStorageCaches();
+        if (r) *r = (tjs_int)ok;
+        return TJS_S_OK;
+    });
+    DefineFunction(st, TJS_W("clearStorageCaches"), [](tTJSVariant*, tjs_int, tTJSVariant**) -> tjs_error {
+        TVPClearStorageCaches();
+        return TJS_S_OK;
+    });
+
+    RunTjsShim("fstat.dll", TJS_W(R"TJS(
+{
+	var attrs = %[ FILE_ATTRIBUTE_READONLY: 0x01, FILE_ATTRIBUTE_HIDDEN: 0x02, FILE_ATTRIBUTE_SYSTEM: 0x04,
+	               FILE_ATTRIBUTE_DIRECTORY: 0x10, FILE_ATTRIBUTE_ARCHIVE: 0x20, FILE_ATTRIBUTE_NORMAL: 0x80,
+	               FILE_ATTRIBUTE_TEMPORARY: 0x100 ];
+	var keys = [];
+	keys.assign(attrs);
+	for (var i = 0; i < keys.count; i += 2)
+		if (typeof global[keys[i]] == "undefined") global[keys[i]] = keys[i + 1];
+}
+
+global.kk4s_fstat_date = function(ms) { var d = new Date(); d.setTime(ms); return d; };
+global.kk4s_fstat_dir = function(dir) {
+	dir = Storages.getFullPath(dir);
+	if (dir.charAt(dir.length - 1) != "/")
+		throw new Exception("'/' must be specified at the end of given directory name.");
+	var list = Storages.kk4sListDir(dir);
+	if (list === void) throw new Exception("Directory not found.");
+	return list;
+};
+
+// fstat.dll always replaces these three (its versions add atime / ctime).
+Storages.fstat = function(name) {
+	var placed = Storages.getPlacedPath(name);
+	var a = Storages.kk4sStatEx(placed != "" ? placed : name);
+	if (a === void) {
+		var size = Storages.kk4sArchiveSize(name);   // inside an archive: size only
+		if (size >= 0) return %[ size: size ];
+		return void;	// the DLL throws; kk4s always returned void here (util.dll games such as FSN use it)
+	}
+	var r = %[ mtime: kk4s_fstat_date(a[1]), atime: kk4s_fstat_date(a[2]), ctime: kk4s_fstat_date(a[3]) ];
+	if (!(a[4] & 0x10)) r.size = a[0];
+	return r;
+};
+Storages.getTime = function(name) {
+	var a = Storages.kk4sStatEx(name);
+	if (a === void) throw new Exception("cannot open : " + name);
+	return %[ mtime: kk4s_fstat_date(a[1]), atime: kk4s_fstat_date(a[2]), ctime: kk4s_fstat_date(a[3]) ];
+};
+Storages.setTime = function(name, times) {
+	var m = times.mtime !== void ? times.mtime.getTime() : void;
+	var a = times.atime !== void ? times.atime.getTime() : void;
+	return Storages.kk4sSetTimes(name, m, a);	// ctime cannot be set on POSIX
+};
+if (typeof Storages.getLastModifiedFileTime == "undefined") Storages.getLastModifiedFileTime = function(name) {
+	var a = Storages.kk4sStatEx(name);
+	if (a === void) throw new Exception("cannot open : " + name);
+	return a[1] * 10000 + 116444736000000000;
+};
+if (typeof Storages.setLastModifiedFileTime == "undefined") Storages.setLastModifiedFileTime = function(name, ft) {
+	return Storages.kk4sSetTimes(name, (ft - 116444736000000000) \ 10000, void);
+};
+if (typeof Storages.dirlist == "undefined") Storages.dirlist = function(dir) {
+	var list = kk4s_fstat_dir(dir), r = [];
+	for (var i = 0; i < list.count; i++) r.add(list[i][0] + ((list[i][5] & 0x10) ? "/" : ""));
+	return r;
+};
+if (typeof Storages.dirlistEx == "undefined") Storages.dirlistEx = function(dir) {
+	var list = kk4s_fstat_dir(dir), r = [];
+	for (var i = 0; i < list.count; i++) {
+		var e = list[i];
+		r.add(%[ name: e[0], size: e[1], attrib: e[5], mtime: kk4s_fstat_date(e[2]),
+		         atime: kk4s_fstat_date(e[3]), ctime: kk4s_fstat_date(e[4]) ]);
+	}
+	return r;
+};
+global.kk4s_fstat_walk = function(root, rel, dironly, r) {
+	var list = Storages.kk4sListDir(root + rel);
+	if (list === void) return;
+	for (var i = 0; i < list.count; i++) {
+		var name = list[i][0];
+		if (name == "." || name == "..") continue;
+		if (list[i][5] & 0x10) { r.add(rel + name + "/"); kk4s_fstat_walk(root, rel + name + "/", dironly, r); }
+		else if (!dironly) r.add(rel + name);
+	}
+};
+if (typeof Storages.dirtree == "undefined") Storages.dirtree = function(dir, dironly = false) {
+	var root = Storages.getFullPath(dir), r = [];
+	if (root.charAt(root.length - 1) != "/")
+		throw new Exception("'/' must be specified at the end of given directory name.");
+	kk4s_fstat_walk(root, "", dironly, r);
+	return r;
+};
+if (typeof Storages.createDirectoryNoNormalize == "undefined")
+	Storages.createDirectoryNoNormalize = function(dir) { return Storages.createDirectory(dir); };
+if (typeof Storages.copyFileNoNormalize == "undefined")
+	Storages.copyFileNoNormalize = function(from, to, failIfExist) { return Storages.copyFile(from, to, failIfExist); };
+if (typeof Storages.changeDirectory == "undefined")
+	Storages.changeDirectory = function(dir) { return Storages.isExistentDirectory(dir); };	// one virtual folder tree
+if (typeof Storages.getDisplayName == "undefined")
+	Storages.getDisplayName = function(name) { return Storages.extractStorageName(name); };
+if (typeof Storages.searchPath == "undefined")
+	Storages.searchPath = function(name, path) { return void; };	// no Windows search path
+if (typeof Storages.selectDirectory == "undefined")
+	Storages.selectDirectory = function(params) { return false; };	// no folder dialog
+class kk4s_TemporaryFiles {
+	var kk4s_names = [];
+	function kk4s_TemporaryFiles() {}
+	function finalize() {
+		for (var i = kk4s_names.count - 1; i >= 0; i--) Storages.kk4sRemoveTemp(kk4s_names[i]);
+	}
+	function entry(name) {
+		if (!Storages.isExistentStorage(name)) return false;
+		kk4s_names.add(name); return true;
+	}
+	function entryFolder(name) {
+		if (!Storages.isExistentDirectory(name)) return false;
+		kk4s_names.add(name); return true;
+	}
+}
+if (typeof global.TemporaryFiles == "undefined") global.TemporaryFiles = kk4s_TemporaryFiles;
+)TJS"));
+}
+
 static void LinkFstatDll() {
     iTJSDispatch2* st = StoragesObject();
     if (!st) return;
@@ -309,15 +624,7 @@ static void LinkFstatDll() {
         arr->Release();
         return TJS_S_OK;
     });
-    RunTjsShim("fstat.dll", TJS_W(R"TJS(
-if (typeof Storages.fstat == "undefined") Storages.fstat = function(name) {
-    var a = Storages.kk4sStat(name);
-    if (a === void) return void;
-    var d = new Date();
-    d.setTime(a[1]);
-    return %[ size: a[0], mtime: d, ctime: d, atime: d ];
-};
-)TJS"));
+    LinkFstatExtras(st);
 }
 
 static void LinkUtilDllAll() {
