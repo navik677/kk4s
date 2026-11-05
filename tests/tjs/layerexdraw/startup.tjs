@@ -1,0 +1,91 @@
+// layerExDraw.dll without GDI+ (tests/layerexdraw/smoke.py): shapes, pens,
+// brushes, transforms, text and helpers drawn on a 200x100 layer. ncbind needs
+// every argument (as with the real plugin), so ox / oy are always given.
+Plugins.link("layerExDraw.dll");
+var fails = 0;
+function expect(name, got, want) {
+    if (got !== want) {
+        fails++;
+        Debug.message("LXD FAIL " + name + ": got [" + got + "] want [" + want + "]");
+    }
+}
+function px(l, x, y) { return "%06x".sprintf(l.getMainPixel(x, y)) + "/" + l.getMaskPixel(x, y); }
+class W extends Window {
+    function W() {
+        super.Window();
+        setInnerSize(200, 100);
+        add(new Layer(this, null));
+        primaryLayer.setImageSize(200, 100);
+    }
+}
+var w = new W();
+var l = new Layer(w, w.primaryLayer);
+l.setImageSize(200, 100);
+l.setSizeToImageSize();
+l.fillRect(0, 0, 200, 100, 0x00000000);
+
+expect("constant", GdiPlus.BrushTypeLinearGradient + "," + GdiPlus.DashStyleDash + "," + GdiPlus.SmoothingModeAntiAlias, "4,1,4");
+
+var red = new GdiPlus.Appearance();
+red.addBrush(0xffff0000, 0, 0);
+var r = l.drawRectangle(red, 10, 10, 20, 20);
+expect("fill", px(l, 15, 15) + " " + px(l, 9, 15) + " " + px(l, 30, 15), "ff0000/255 000000/0 000000/0");
+expect("rect returned", r.x < 10 && r.width > 20 && r.width < 24, true);
+
+var blue = new GdiPlus.Appearance();
+blue.addPen(0xff0000ff, 4, 0, 0);
+l.drawLine(blue, 50, 50, 90, 50);
+expect("pen", px(l, 70, 50) + " " + px(l, 70, 45).substring(7), "0000ff/255 0");
+
+var green = new GdiPlus.Appearance();
+green.addBrush(0xff00ff00, 0, 0);
+l.drawEllipse(green, 100, 10, 40, 40);
+expect("ellipse", px(l, 120, 30) + " " + px(l, 101, 11).substring(7), "00ff00/255 0");
+
+var grad = new GdiPlus.Appearance();
+grad.addBrush(%[type: GdiPlus.BrushTypeLinearGradient, point1: [0, 0], point2: [100, 0], color1: 0xff000000, color2: 0xffffffff, wrapMode: GdiPlus.WrapModeClamp], 0, 0);
+l.drawRectangle(grad, 0, 60, 100, 20);
+var g1 = l.getMainPixel(10, 70) & 0xff, g2 = l.getMainPixel(50, 70) & 0xff, g3 = l.getMainPixel(90, 70) & 0xff;
+expect("gradient", g1 < g2 && g2 < g3 && g1 < 60 && g3 > 200, true);
+
+var half = new GdiPlus.Appearance();
+half.addBrush(0x80ff0000, 0, 0);
+l.fillRect(150, 60, 20, 20, 0xff0000ff);
+l.drawRectangle(half, 150, 60, 20, 20);
+var c = l.getMainPixel(160, 70);
+expect("source over", ((c >> 16) & 0xff) > 100 && (c & 0xff) > 100 && l.getMaskPixel(160, 70) == 255, true);
+
+l.translateTransform(100, 0);
+l.drawRectangle(red, 75, 85, 10, 10); // -> 175, 85
+l.resetTransform();
+expect("transform", px(l, 180, 90), "ff0000/255");
+
+var rects = l.getColorRegionRects(0xffff0000);
+var found = false;
+for (var i = 0; i < rects.count; i++) if (rects[i].join(",") == "10,10,20,20") found = true;
+expect("color region", found, true);
+
+var path = new GdiPlus.Path();
+path.drawLine(0, 0, 10, 0);
+path.drawLine(10, 10, 0, 10);
+path.closeFigure();
+var outline = new GdiPlus.Appearance();
+outline.addBrush(0xffffff00, 40, 0);
+l.drawPath(outline, path); // a 10x10 square at (40, 0)
+expect("path", px(l, 45, 5), "ffff00/255");
+
+var font = new GdiPlus.Font("", 20, GdiPlus.FontStyleBold);
+var m = l.measureString(font, "Ag");
+expect("measure", m.width > 10 && m.height >= 20, true);
+expect("font metrics", font.ascent > 0 && font.lineSpacing >= font.ascent, true);
+var text = new GdiPlus.Appearance();
+text.addPen(0xff000000, 3, 0, 0);
+text.addBrush(0xffffffff, 0, 0);
+var before = l.getColorRegionRects(0xffffffff).count;
+l.drawPathString(font, text, 0, 0, "W");
+expect("text drawn", l.getColorRegionRects(0xffffffff).count > before, true);
+
+l.clear(0xff102030);
+expect("clear", px(l, 1, 1) + " " + px(l, 199, 99), "102030/255 102030/255");
+
+Debug.message(fails ? "LXD: " + fails + " failure(s)" : "LXD PASS");

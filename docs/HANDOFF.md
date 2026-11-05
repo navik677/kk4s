@@ -65,6 +65,31 @@ Test state at `476353c`: 29/29 on the normal desktop build; the Switch NRO build
 at `cd79ed5` (24/24) — everything after that (extrans, saveStruct, KAGParserEx, psdfile) has not been
 under ASan yet.
 
+**STOP POINT 2 (2026-11-05, user stopped the session).** Committed as work in progress and **not
+built**: `engine/source/plugins/layerExDraw/` — layerExDraw.dll without GDI+: vendored plutovg (MIT,
+`plutovg/UPSTREAM.txt`), `gdip_kk4s.h` (GDI+ enums with their real values, PointF / RectF / Matrix /
+Image / GraphicsPath), `LayerExDraw.hpp/.cpp` (fonts from kk4s' font files + addPrivateFont, solid /
+linear / radial(path-gradient) / texture brushes, pens with width / dashes / caps / joins, all path
+shapes incl. cardinal curves and arcs, text outlines, drawImage*, transforms, SourceOver onto the
+RGBA layer, getColorRegionRects, saveImage via saveLayerImage; EMF recording is a stub) and upstream
+`main.cpp` (only GCC template fixes). It **compiles**, but `tests/layerexdraw/smoke.py` aborts with
+`free(): invalid pointer` right after `Plugins.link`, before the first check. To continue:
+1. Put the sources back into `CMakeLists.txt` (see the comment there: `LayerExDraw.cpp`, `main.cpp`,
+   `plutovg/*.c`, plus `target_compile_definitions(... PLUTOVG_BUILD_STATIC PLUTOVG_BUILD)`), build
+   `build-asan` and run `tests/tjs/layerexdraw` under it to get the stack. Suspects: ncbind's
+   instance hook for `NCB_ATTACH_CLASS_WITH_HOOK(LayerExDraw, Layer)` (upstream creates the instance
+   in the hook; our `LayerExDraw` has no `layerExBase` and a different destructor), `Appearance::DrawInfo`
+   copies in `vector` growth (PaintInfo owns `Image*`), RectF boxing of return values.
+2. Then `tests/layerexdraw` must pass (it calls every method with all arguments: ncbind, like
+   upstream's, rejects missing ones) and go into `tools/run-tests.sh`, ASan, Switch build.
+
+Remaining plan after that, in the user's order: step 2, the `.tpm` x86 interpreter (PE32 loader +
+small x86 interpreter + fake `tp_stub` exporting `TVPSetXP3ArchiveExtractionFilter` etc., the
+callback run per segment and verified by adlr like `compat/kk4s_xp3crypt.cpp`); step 3, the optional
+soft mode for unknown plugins (missing members → log + void, behind a setting). Also open: ripple's
+vertical displacement, extrans / saveStruct / KAGParserEx / psdfile under ASan, and every new plugin
+on real games (none available in the cloud session).
+
 **Earlier stop point (2026-11-05, kept for history).** Last commit `b644084` + this docs commit. Nothing is
 half-done in the working tree. Open threads, in this order:
 1. *Partly verified:* ripple. From a 16 px checkerboard, ~30% of the half-way samples lie on the

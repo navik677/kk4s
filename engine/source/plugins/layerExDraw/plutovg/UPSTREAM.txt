@@ -1,0 +1,2 @@
+f63f9b59dda96c7d1ca3c76e9b33e5ae4b91fab1 Thu Jul 16 19:36:40 2026 +0100
+https://github.com/sammycage/plutovg (MIT; plutovg-ft-* under the FreeType License, FTL.TXT): source/ and include/plutovg.h

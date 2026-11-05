@@ -392,6 +392,8 @@ else()
 endif()
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${INCLUDES})
+# kk4s: engine/source/plugins/layerExDraw (layerExDraw.dll over plutovg) is not
+# built yet: it crashes in its test (docs/HANDOFF.md, stop point 2026-11-05).
 target_compile_options(${PROJECT_NAME} PUBLIC $<$<COMPILE_LANGUAGE:C>:${C_FLAGS}>)
 target_compile_options(${PROJECT_NAME} PUBLIC $<$<COMPILE_LANGUAGE:C>:${C_ONLY_FLAGS}>)
 target_compile_definitions(${PROJECT_NAME} PRIVATE KK4S_VERSION="${KK4S_VERSION}" KK4S_GIT_HASH="${KK4S_GIT_HASH}")
