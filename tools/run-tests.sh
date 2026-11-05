@@ -14,7 +14,8 @@
 #              json.dll / scriptsEx.dll / windowEx.dll, mouse / wheel / touch /
 #              pad input semantics, and the original KAG3 system scripts
 #              playing a scenario and played with the pad (tests/kag3, ~60 s)
-#   decoders   PBD / PSB / CXDEC decoders vs their Python references (no engine)
+#   decoders   PBD / PSB / CXDEC decoders vs their Python references (no engine),
+#              the x86 interpreter vs native code (needs i686-w64-mingw32-gcc)
 #
 # Engine groups boot a synthetic game headlessly (SDL_VIDEODRIVER=dummy) and
 # write their logs to $KK4S_TEST_WORK (default build-tests/). No game content is
@@ -114,6 +115,25 @@ group_decoders() {
         return
     fi
     run pbd   python3 tests/pbd/run_tests.py "$WORK/pbd_dump"
+    # x86 interpreter (compat/x86) against native code: needs a 32-bit Windows
+    # cross compiler to build the test DLLs from tests/tpm/src/ops.c
+    if command -v i686-w64-mingw32-gcc >/dev/null && \
+        "$cxx" -std=c++17 -O2 -I compat tests/tpm/x86_test.cpp compat/x86/x86emu.cpp compat/x86/pe32.cpp \
+            -o "$WORK/x86_test"; then
+        local dlls=()
+        for o in O0 O2 Os; do
+            i686-w64-mingw32-gcc -$o -march=i686 -mno-mmx -mno-sse -shared -nostdlib \
+                -fno-asynchronous-unwind-tables -o "$WORK/ops-$o.dll" tests/tpm/src/ops.c \
+                -Wl,--entry,_DllMain@12 -lgcc && dlls+=("$WORK/ops-$o.dll")
+        done
+        i686-w64-mingw32-gcc -O2 -march=i686 -mno-mmx -mno-sse -shared -nostdlib \
+            -fno-asynchronous-unwind-tables -o "$WORK/ops-reloc.dll" tests/tpm/src/ops.c \
+            -Wl,--entry,_DllMain@12 -Wl,--image-base,0x40000000 -Wl,--dynamicbase -lgcc \
+            && dlls+=("$WORK/ops-reloc.dll")
+        run x86 "$WORK/x86_test" "${dlls[@]}"
+    else
+        echo "SKIP x86 (no i686-w64-mingw32-gcc, or the test did not build)"
+    fi
     run psb   python3 tests/psb/run_tests.py "$WORK/psb_dump"
     run cxdec "$WORK/cxdec_test" tests/cxdec/vectors.txt
     run tinyfilter "$WORK/tinyfilter_test" tests/cxdec/tiny_vectors.txt
