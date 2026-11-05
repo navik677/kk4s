@@ -270,6 +270,8 @@ Kept apart on purpose:
 | **synthetic** | `tests/emote/emote_tests.cpp` (13 groups, fixtures in the real section order): keystream vector, byte-exact refill, region-only XOR, all selection paths and confidences, unknown / custom / ambiguous profiles, versions, layout preconditions, mdf, truncation and byte flips (no crash), adapter on both reference forms, refused versions/specs, easing, runtime, scene, renderer contract, end-to-end | **68,117 checks, 0 failed** (MSYS2 g++ 16.2, Windows) |
 | **core purity** | `tests/emote/check_core_purity.py` | 25 files, 0 findings |
 | **real resources** | `tests/emote/run_real.py` on NekoPara Vol.1 (read-only, game outside the repo) | **157/157 PSB load** with `binary-evidence`; 157/157 match the Python decoder (adler32 of the decrypted container); 11/11 non-PSB entries refused as `not-psb`; 0 unresolved references; 73/73 `RGBA8` atlases size-checked, 75 `DXT5` refused as unsupported; 2,546 timelines played to their end, 0 non-finite values; evidence policy on a real file: no hash → `structure-only`, structural detection off → `unknown-cipher-profile`, pinned → `pinned`; archives unchanged |
+| Windows desktop build | full `kk4s.exe` via CMake/Ninja, MSYS2 UCRT64 g++ 16.2 | **builds and links**, 0 warnings in `compat/emote` |
+| Linux build | — | not built here (CI `desktop.yml` builds it and runs the decoders group) |
 | PC runtime (engine) | — | **not done**: the module is not wired into `Motion.*` |
 | Switch build | all 16 sources compiled with devkitA64 16.1 (`-march=armv8-a+crc+crypto -mtp=soft -fPIE`, libnx headers) | **compiles, 0 warnings**; full NRO not built in this session |
 | physical Switch | — | **not tested** |
