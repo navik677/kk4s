@@ -11022,7 +11022,7 @@ TVP_GL_FUNC_DECL(tjs_int, TVPTLG5DecompressSlide_c, (tjs_uint8 *out, const tjs_u
         }
         if ( flags & 1 )
         {
-			tjs_uint16 in16 = *(tjs_uint16*)in;
+			tjs_uint16 in16; memcpy(&in16, in, 2); /* kk4s: unaligned read was UB */
 			tjs_uint mpos = in16 & 0xFFF;
 			tjs_uint mlen = (in16 >> 12) + 3;
             in += 2;
@@ -11093,7 +11093,10 @@ TVP_GL_FUNC_DECL(tjs_int, TVPTLG5DecompressSlide_c, (tjs_uint8 *out, const tjs_u
 									((tjs_uint32)TVP_TLG6_BYTEOF((addr), 2) << 16) + \
 									((tjs_uint32)TVP_TLG6_BYTEOF((addr), 3) << 24) )
 #else
-	#define TVP_TLG6_FETCH_32BITS(addr) (*(tjs_uint32*)addr)
+	/* kk4s: the bit pool is not 4-byte aligned; a plain load was UB (memcpy
+	   compiles to the same single load) */
+	static inline tjs_uint32 TVPTLG6Fetch32(const void *addr) { tjs_uint32 v; memcpy(&v, addr, 4); return v; }
+	#define TVP_TLG6_FETCH_32BITS(addr) TVPTLG6Fetch32(addr)
 #endif
 
 
@@ -11379,7 +11382,7 @@ static TVP_INLINE_FUNC tjs_uint32 avg(tjs_uint32 a, tjs_uint32 b, tjs_uint32 c, 
 			{ \
 				tjs_uint32 u = *prevline; \
 				p = med(p, u, up, \
-					(0xff0000 & ((B)<<16)) + (0xff00 & ((G)<<8)) + (0xff & (R)) + ((A) << 24) ); \
+					(0xff0000 & ((tjs_uint32)(B)<<16)) + (0xff00 & ((tjs_uint32)(G)<<8)) + (0xff & (tjs_uint32)(R)) + ((tjs_uint32)(A) << 24) ); /* kk4s: unsigned shifts (negative << was UB) */ \
 				up = u; \
 				*curline = p; \
 				curline ++; \
@@ -11390,7 +11393,7 @@ static TVP_INLINE_FUNC tjs_uint32 avg(tjs_uint32 a, tjs_uint32 b, tjs_uint32 c, 
 			{ \
 				tjs_uint32 u = *prevline; \
 				p = avg(p, u, up, \
-					(0xff0000 & ((B)<<16)) + (0xff00 & ((G)<<8)) + (0xff & (R)) + ((A) << 24) ); \
+					(0xff0000 & ((tjs_uint32)(B)<<16)) + (0xff00 & ((tjs_uint32)(G)<<8)) + (0xff & (tjs_uint32)(R)) + ((tjs_uint32)(A) << 24) ); /* kk4s: unsigned shifts (negative << was UB) */ \
 				up = u; \
 				*curline = p; \
 				curline ++; \
