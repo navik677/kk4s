@@ -73,7 +73,7 @@ private:
 	{
 		// commit the current array
 		// this simply free BackupedObjects ( and its related things )
-		if(BackupedObjects) TJS_free(BackupedObjects);
+		if(BackupedObjects) delete[] BackupedObjects; // kk4s: allocated with new[] in Backup(); was TJS_free
 		BackupedObjects = NULL;
 		BackupedCount = 0;
 		Backuped = false;

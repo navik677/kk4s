@@ -134,8 +134,11 @@ private:
 	{
 		tjs_uint32 Hash;
 		tjs_uint32 Flags; // management flag
-		char Key[sizeof(KeyT)];
-		char Value[sizeof(ValueT)];
+		// kk4s: aligned for the objects constructed in them (Value could land on
+		// a 4-byte boundary after a 12-byte key: undefined behaviour, and a fault
+		// risk on ARM for some instructions)
+		alignas(KeyT) char Key[sizeof(KeyT)];
+		alignas(ValueT) char Value[sizeof(ValueT)];
 		element *Prev; // previous chain item
 		element *Next; // next chain item
 		element *NPrev; // previous item in the additional order

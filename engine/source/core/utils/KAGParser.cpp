@@ -354,6 +354,17 @@ tTJSNI_KAGParser::tTJSNI_KAGParser()
 	Interrupted = false;
 	MacroArgStackDepth = 0;
 	MacroArgStackBase = 0;
+	// kk4s: the position state was left uninitialised until a scenario was
+	// loaded, and assigning a fresh parser (KAG copies parsers for snapshots)
+	// copied garbage, e.g. a random LineBufferUsing. Same values as Rewind() /
+	// BreakConditionAndMacro().
+	LineCount = 0;
+	CurLine = 0;
+	CurPos = 0;
+	LineBufferUsing = false;
+	TagLine = 0;
+	ExcludeLevel = -1;
+	IfLevel = 0;
 
 	// retrieve DictClear method and DictObj object
 	iTJSDispatch2 * dictclass;
