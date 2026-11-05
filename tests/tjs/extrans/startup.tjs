@@ -1,0 +1,62 @@
+// extrans.dll transitions (tests/extrans/smoke.py). The input script calls
+// start("<method>") and takes a screenshot half-way; every transition must
+// finish (onTransitionCompleted) and none may fall back to a cross-fade.
+Plugins.link("extrans.dll");
+
+class TransWindow extends Window {
+    function TransWindow() {
+        super.Window();
+        setInnerSize(640, 480);
+        add(new Layer(this, null));
+        primaryLayer.setImageSize(640, 480);
+        primaryLayer.setSizeToImageSize();
+        primaryLayer.fillRect(0, 0, 640, 480, 0xff000000);
+        visible = true;
+    }
+}
+global.tw = new TransWindow();
+
+class TransLayer extends Layer {
+    var method;
+    function TransLayer(win, par) {
+        super.Layer(win, par);
+        setImageSize(640, 480);
+        setSizeToImageSize();
+        type = ltOpaque; // like KAG's base layers: the background colour shows
+    }
+    function onTransitionCompleted(dest, src) {
+        Debug.message("EXTRANS_DONE " + method);
+        super.onTransitionCompleted(...);
+    }
+}
+
+// sources: white -> black; mosaic starts from a 2 px black/white checkerboard,
+// ripple from 8 px horizontal stripes (its displacement bends them)
+function paint(l, method) {
+    l.fillRect(0, 0, 640, 480, 0xffffffff);
+    if (method == "mosaic")
+        for (var y = 0; y < 480; y += 2)
+            for (var x = (y \ 2) % 2 * 2; x < 640; x += 4)
+                l.fillRect(x, y, 2, 2, 0xff000000);
+    if (method == "ripple")
+        for (var y = 0; y < 480; y += 16)
+            l.fillRect(0, y, 640, 8, 0xff000000);
+}
+
+global.fore = void;
+global.back = void;
+function start(method, opts = %[]) {
+    if (fore !== void) { invalidate fore; invalidate back; }
+    fore = new TransLayer(tw, tw.primaryLayer);
+    back = new TransLayer(tw, tw.primaryLayer);
+    paint(fore, method);
+    back.fillRect(0, 0, 640, 480, 0xff000000);
+    fore.visible = true;
+    back.visible = false;
+    fore.method = method;
+    var o = %[time: 1600];
+    (Dictionary.assign incontextof o)(opts, false);
+    fore.beginTransition(method, false, back, o);
+    return "started " + method;
+}
+Debug.message("EXTRANS_READY");

@@ -22,3 +22,11 @@
 | layerExBtoA / layerExImage / layerExRaster contracts (Go Watanabe, wamsoft) | reimplemented in `compat/kk4s_layerex.cpp` | same as Kirikiri, see `engine/LICENSE`; layerExImage's colour and blur maths come from CxImage (Davide Pizzolato, zlib-style license) |
 
 Fonts: none bundled yet. M6 will add a free CJK font (Noto Sans CJK, SIL OFL 1.1).
+
+## extrans transitions (`engine/source/plugins/extrans/`)
+
+Ported from krkrz's extrans plugin (wave, mosaic, turn, rotate*, ripple),
+Copyright (C) 2000-2009 W.Dee <dee@kikyou.info> and contributors, under the
+Kirikiri license like the engine itself. kk4s changes are marked `kk4s:`; the
+422 KB generated `turntrans_table.cpp` is replaced by the generator's
+arithmetic (`maketable/mkturntranstable.pl`), verified to give the same table.

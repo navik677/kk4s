@@ -1757,9 +1757,8 @@ static const PluginEntry kPlugins[] = {
     {"wuvorbis.dll", ProvidedByEngine},
     {"krmovie.dll", ProvidedByEngine},
     {"alphamovie.dll", ProvidedByEngine},
-    // extrans transitions (wave, ripple, mosaic, rotate*...) fall back to
-    // crossfade in the engine until they are implemented.
-    {"extrans.dll", ProvidedByEngine},
+    // extrans.dll is an engine internal plugin (engine/source/plugins/extrans),
+    // found before this table.
 };
 
 // One link per game: a plugin registered twice would overwrite globals. This

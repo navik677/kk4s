@@ -84,6 +84,7 @@ group_io() {
     run windowex     python3 tests/windowex/smoke.py "$EXE"
     run natives      python3 tests/natives/smoke.py "$EXE"
     run aspect       python3 tests/aspect/smoke.py "$EXE"
+    run extrans      python3 tests/extrans/smoke.py "$EXE"
     run input        python3 tests/input/smoke.py "$EXE"
     run kag3         python3 tests/kag3/smoke.py "$EXE"
     run kag3-interact python3 tests/kag3/interact_smoke.py "$EXE"

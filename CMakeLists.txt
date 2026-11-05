@@ -294,6 +294,14 @@ set(SOURCES
     engine/source/plugins/LayerExBase.cpp
     engine/source/plugins/AlphaMovie.cpp
     engine/source/plugins/csvParser.cpp
+    engine/source/plugins/extrans/extrans.cpp
+    engine/source/plugins/extrans/mosaic.cpp
+    engine/source/plugins/extrans/ripple.cpp
+    engine/source/plugins/extrans/rotatebase.cpp
+    engine/source/plugins/extrans/rotatetrans.cpp
+    engine/source/plugins/extrans/turn.cpp
+    engine/source/plugins/extrans/turntrans_table.cpp
+    engine/source/plugins/extrans/wave.cpp
     engine/source/plugins/dirlist.cpp
     engine/source/plugins/fftgraph.cpp
     engine/source/plugins/getSample.cpp
