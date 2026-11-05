@@ -49,6 +49,13 @@ void ResetPluginLinks();
 // Plugins.link() for a DLL kk4s has no built-in replacement for.
 void ReportMissingPlugin(const ttstr& name);
 
+// Whether ReportMissingPlugin was called since the current game started.
+bool PluginIgnoredThisGame();
+void ResetPluginIgnoredThisGame();
+
+// Optional soft mode for members of ignored plugins (compat/kk4s_softmode.cpp).
+void InstallSoftMode();
+
 // Register game-folder fonts and OS fonts as "installed" fonts. Idempotent.
 void RegisterFonts();
 

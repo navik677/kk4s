@@ -20,6 +20,7 @@ enum Str {
     kMenu, kResume, kQuickSave, kQuickSaveHint, kQuickLoad, kVolume, kExitToLauncher, kExitApp, kSaved, kLoaded, kCannotSaveNow, kNoQuickSave, kNotSupported, kActOverlay, kOpenMenuHint,
     kCpuBoost, kCpuBoostHint,
     kKeepAspect, kKeepAspectHint,
+    kSoftMode, kSoftModeHint,
     kProtectedGame,
     kCount
 };

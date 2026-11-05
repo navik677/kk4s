@@ -144,6 +144,7 @@ set(SOURCES
     compat/kk4s_layerex.cpp
     compat/kk4s_json.cpp
     compat/kk4s_xp3crypt.cpp
+    compat/kk4s_softmode.cpp
     compat/cxdec/scheme_recover.cpp
     platform/${KK4S_PLATFORM}/kk4s_platform.cpp
     engine/source/core/base/BinaryStream.cpp

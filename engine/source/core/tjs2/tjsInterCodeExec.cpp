@@ -1646,6 +1646,16 @@ void tTJSInterCodeContext::ContinuousClear(
 	while(r<rl) (r++)->Clear();
 }
 //---------------------------------------------------------------------------
+// kk4s: optional "soft mode" (compat/kk4s_compat.cpp installs the hook): a
+// member that does not exist on a native object reads / calls as void instead
+// of throwing, for members of plugins kk4s ignored. Off by default.
+bool (*TJSSoftMissingMemberHook)(iTJSDispatch2 *obj, const tjs_char *name, bool call) = NULL;
+static bool kk4sSoftMissing(tjs_error hr, const tTJSVariantClosure &clo, const tjs_char *name, bool call)
+{
+	return hr == TJS_E_MEMBERNOTFOUND && TJSSoftMissingMemberHook && clo.Object &&
+		TJSSoftMissingMemberHook(clo.Object, name, call);
+}
+//---------------------------------------------------------------------------
 void tTJSInterCodeContext::GetPropertyDirect(tTJSVariant *ra,
 	const tjs_int32 *code, tjs_uint32 flags)
 {
@@ -1673,6 +1683,11 @@ void tTJSInterCodeContext::GetPropertyDirect(tTJSVariant *ra,
 	hr = clo.PropGet(flags,
 		name->GetString(), name->GetHint(), TJS_GET_VM_REG_ADDR(ra, code[1]),
 			clo.ObjThis?clo.ObjThis:ra[-1].AsObjectNoAddRef());
+	if(TJS_FAILED(hr) && kk4sSoftMissing(hr, clo, name->GetString(), false)) // kk4s
+	{
+		TJS_GET_VM_REG_ADDR(ra, code[1])->Clear();
+		return;
+	}
 	if(TJS_FAILED(hr))
 		TJSThrowFrom_tjs_error(hr, TJS_GET_VM_REG(DataArea, code[3]).GetString());
 }
@@ -2514,6 +2529,11 @@ tjs_int tTJSInterCodeContext::CallFunctionDirect(tTJSVariant *ra,
 					code[1]?TJS_GET_VM_REG_ADDR(ra, code[1]):NULL,
 						pass_args_count, pass_args,
 						clo.ObjThis?clo.ObjThis:ra[-1].AsObjectNoAddRef());
+				if(TJS_FAILED(hr) && kk4sSoftMissing(hr, clo, name->GetString(), true)) // kk4s
+				{
+					if(code[1]) TJS_GET_VM_REG_ADDR(ra, code[1])->Clear();
+					hr = TJS_S_OK;
+				}
 			}
 			catch(...)
 			{
@@ -2566,6 +2586,11 @@ tjs_int tTJSInterCodeContext::CallFunctionIndirect(tTJSVariant *ra,
 					code[1]?TJS_GET_VM_REG_ADDR(ra, code[1]):NULL,
 						pass_args_count, pass_args,
 						clo.ObjThis?clo.ObjThis:ra[-1].AsObjectNoAddRef());
+				if(TJS_FAILED(hr) && kk4sSoftMissing(hr, clo, name.c_str(), true)) // kk4s
+				{
+					if(code[1]) TJS_GET_VM_REG_ADDR(ra, code[1])->Clear();
+					hr = TJS_S_OK;
+				}
 			}
 			catch(...)
 			{

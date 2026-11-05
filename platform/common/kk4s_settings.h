@@ -27,6 +27,7 @@ struct Settings {
     bool autostart = false;        // start the last game after a short countdown
     bool cpu_boost = true;         // Switch: CPU at 1785 MHz while a game runs
     bool keep_aspect = true;       // letterbox the game picture instead of stretching it
+    bool soft_mode = false;        // missing members of native classes -> log + void once a plugin was ignored
     int volume = 100;              // game sound volume, 0..100 (WaveSoundBuffer.globalVolume)
 
     std::map<unsigned, PadAction> pad; // by kPad* button (A..Minus); missing = default

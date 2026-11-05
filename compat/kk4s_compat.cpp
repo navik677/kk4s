@@ -537,6 +537,8 @@ void BeforeStartup() {
     InstallScriptsCompat(); // Scripts.foreach/getObjectKeys/clone when the engine lacks them
     InstallWindowMenuCompat(); // Window.exSystemMenu (menu.dll member KAGZ sets early)
     InstallEngineNativesCompat(); // krkrz-native Storages/Window/System members, System.inputString
+    ResetPluginIgnoredThisGame();
+    InstallSoftMode(); // optional: missing members of native objects -> void (off by default)
     if (!RunGameScript("xp3filter.tjs")) {
         // A .tpm plugin decrypts the archives on Windows; kk4s cannot run it yet.
         std::string dir = kk4s::GameDir();
@@ -719,10 +721,22 @@ void ReportCyrillicSubstitute(const ttstr& font, const ttstr& chosen) {
 
 static std::mutex g_missing_mutex;
 static std::set<std::string> g_missing_plugins;
+static bool g_ignored_this_game = false;
+
+void ResetPluginIgnoredThisGame() {
+    std::lock_guard<std::mutex> lock(g_missing_mutex);
+    g_ignored_this_game = false;
+}
+
+bool PluginIgnoredThisGame() {
+    std::lock_guard<std::mutex> lock(g_missing_mutex);
+    return g_ignored_this_game;
+}
 
 void ReportMissingPlugin(const ttstr& name) {
     std::string n = ToUtf8(TVPExtractStorageName(name));
     std::lock_guard<std::mutex> lock(g_missing_mutex);
+    g_ignored_this_game = true;
     if (g_missing_plugins.insert(Lower(n)).second)
         kk4s::Log("compat: plugin not available, ignored: %s", n.c_str());
 }
