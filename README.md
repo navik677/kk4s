@@ -6,7 +6,7 @@ Homebrew-рушій для Nintendo Switch, який запускає візуа
 
 ## Можливості
 
-- **Ігри як є.** Підтримуються зашифровані архіви через `xp3filter.tjs` (як у Kirikiroid2), `Override2.tjs` / `AfterInit2.tjs`, заміни популярних Windows-плагінів (`util.dll`, `filter.dll`, `extrans.dll`, …). Для ПК-версії гри ці файли можна не класти в папку гри, а покласти в `kk4s/profiles/<НазваПапкиГри>/`. Параметри рушія, вшиті в `.exe` гри, kk4s читає сам.
+- **Ігри як є.** Підтримуються зашифровані архіви через `xp3filter.tjs` (як у Kirikiroid2), `Override2.tjs` / `AfterInit2.tjs`, заміни популярних Windows-плагінів (`util.dll`, `fstat.dll`, `filter.dll`, `layerExBtoA/Image/Raster/Save.dll`, `PackinOne.dll`, `json.dll`, `scriptsEx.dll`, `extrans.dll`, …; повний список і що з них наближене — [docs/plugins.md](docs/plugins.md)). Для ПК-версії гри ці файли можна не класти в папку гри, а покласти в `kk4s/profiles/<НазваПапкиГри>/`. Параметри рушія, вшиті в `.exe` гри, kk4s читає сам.
 - **Лаунчер з обкладинками.** Карусель або сітка, розмите тло з обкладинки, історія запусків, годинник і батарея.
 - **Обкладинки з інтернету.** Пошук у базі [VNDB](https://vndb.org) прямо з лаунчера, по одній грі або для всіх одразу.
 - **Меню в грі** (обидва стіки разом, **L3 + R3**): швидке збереження і завантаження, гучність, керування, вихід у лаунчер.
@@ -124,7 +124,7 @@ bash tools/run-tests.sh                                                  # xp3 +
 ## Документація
 
 - [docs/launcher.md](docs/launcher.md) — лаунчер, обкладинки, налаштування, меню в грі
-- [docs/status.md](docs/status.md) — що працює і що ні
+- [docs/status.md](docs/status.md) — що працює і що ні (поточний спринт у гілці `cloud-session` — [docs/HANDOFF.md](docs/HANDOFF.md))
 - [docs/roadmap.md](docs/roadmap.md) — план
 - [docs/HANDOFF.md](docs/HANDOFF.md) — з чого почати розробнику
 - [docs/debugging.md](docs/debugging.md) — логи, краш-репорти, FTP

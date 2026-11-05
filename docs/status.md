@@ -10,23 +10,31 @@ Last update: 2026-11-05.
   at `title.ks:13`. Cause: KAGZ UI pseudo-storage `window@help__config%layer` reaches `Layer.loadImages`
   (`kaglayer.tjs:69`). The fix must be the generic `<storage>@<piece>%layer` handling, not a NekoPara patch.
 
-## Branch `cloud-session` (2026-11-05, desktop only)
+## Branch `cloud-session` (2026-11-05, universal-runtime sprint)
 
-Not merged, not run on hardware, no real game available in that session: only the synthetic suite
-(`tools/run-tests.sh`, 13/13) was run.
+Not merged, not run on hardware, no real game available in the cloud session. Verified: the
+synthetic suite (`tools/run-tests.sh`, 16/16) on the normal **and** the ASan+UBSan Linux build, and
+that the Switch NRO builds (devkitA64 docker image). Commit list and details: `docs/HANDOFF.md`.
 
-- layerExBtoA / layerExImage / layerExRaster are native (`compat/kk4s_layerex.cpp`); PackinOne links
-  them. Expected effect on ATRI: `generateWhiteNoise` no longer throws, `clipAlphaRect` now really
-  clips affine layers (before it silently did nothing).
-- `Layer.getMainPixel` returns `0xRRGGBB` (was R/B swapped); AlphaMovie frames and `drawLine` are
-  no longer R/B swapped.
+| Area | Change | Level |
+|---|---|---|
+| Plugins | layerExBtoA / layerExImage / layerExRaster / layerExSave native; PackinOne links all four | implemented, synthetic tests; not checked against a real game |
+| Plugins | fstat.dll complete; json.dll; rest of scriptsEx.dll | implemented, synthetic tests |
+| Engine | krkrs RGBA pixel order: `getMainPixel`, AlphaMovie, TLG5/TLG6 writers, `drawLine` no longer swap red/blue | implemented, tested by round trips; on-screen colour not observed |
+| Engine | ASan/UBSan build runs again (GCC 13.3 miscompile in `tjsSnprintf.cpp`); palette `delete[]`, two other UB fixes | tested (sanitizer build 16/16) |
+
+Expected effect on ATRI (unverified): `generateWhiteNoise` no longer throws, `clipAlphaRect` really
+clips affine layers (before it silently did nothing).
+
+**CI on `main` is red since `7a77878`** (the ASan crash above; not a test failure). `348300f` fixes it
+once merged.
 
 ## Builds (CI, every push to main)
 
 | Target | State | Where to get it |
 |---|---|---|
 | Switch `kk4s.nro` (+ `.elf`) | builds, **runs on hardware** | [nightly release](https://github.com/navik677/kk4s/releases/tag/nightly), Actions artifact `kk4s-<sha>` |
-| PC viewer, Linux (ASan + UBSan) | builds; boot smoke test + the synthetic suite (see [tests/README.md](../tests/README.md)) | Actions → desktop → `kk4s-linux-<sha>` |
+| PC viewer, Linux (ASan + UBSan) | builds; boot smoke test + the synthetic suite (see [tests/README.md](../tests/README.md)). Red on `main` since `7a77878` (sanitizer miscompile, fixed on `cloud-session` by `348300f`) | Actions → desktop → `kk4s-linux-<sha>` |
 | PC viewer, Windows (MinGW) | builds; portable decoder tests run; the viewer is **not** executed in CI | Actions → desktop → `kk4s-windows-<sha>` (exe + DLLs) |
 
 ## Tests and CI

@@ -13,6 +13,8 @@ Status: **full** = same behaviour, **approx** = similar result, **stub** = does 
 | csvParser, fftgraph, getSample, perspective, saveStruct, varfile, win32dialog, wutcwf | see `engine/README.upstream.md` | engine internal (krkrs) |
 | util.dll | `GetFileSize`, `DeleteFile`, `MoveFile` | full |
 | fstat.dll | `Storages.fstat` (size + `mtime`/`atime`/`ctime` Dates; size only inside an archive), `getTime` / `setTime`, `get/setLastModifiedFileTime` (FILETIME), `dirlist` / `dirlistEx` / `dirtree` (trailing `/` required, `./` and `../` listed as FindFirstFile does), `createDirectory[NoNormalize]`, `removeDirectory`, `isExistentDirectory`, `copyFile[NoNormalize]`, `exportFile`, `deleteFile`, `moveFile`, `truncateFile`, `get/set/resetFileAttributes`, `getMD5HashString`, `getTemporaryName`, `isExistentStorageNoSearchNoNormalize`, `clearStorageCaches`, `TemporaryFiles`, `FILE_ATTRIBUTE_*` | full, with these differences: `fstat` of a missing file returns void (the DLL throws; kk4s always did this and util.dll games use it); `ctime` is the POSIX change time; attributes are derived (READONLY = not writable, HIDDEN = dot file) and only READONLY can be changed; `changeDirectory` only checks the folder; `getDisplayName` is the file name; `searchPath` returns void; `selectDirectory` returns false; nothing that writes (times, attributes, truncate, `TemporaryFiles` deletion) touches the game folder |
+| json.dll | `Scripts.evalJSON(text)`, `evalJSONStorage(file, utf8)`, `saveJSON(file, obj, utf8, newline)`, `toJSONString(obj, newline)` | full (`compat/kk4s_json.cpp`): the DLL's lenient reader (comments `#` `//` `/* */`, `=`/`=>`, `;`, single quotes, `\x`, `true`/`false`/`null`/`void`; a number is Real only with `.`; unquoted keys are an error, as in the DLL) and its writer layout. Difference: `saveJSON` writes UTF-8 also when `utf8` is false |
+| scriptsEx.dll | `Scripts.getObjectKeys`, `getObjectCount`, `getObjectContext`, `isNullContext`, `equalStruct`, `equalStructNumericLoose`, `foreach`, `clone`, `getMD5HashString(octet)`, `propSet`/`propGet` + `pf*` flags, `rehash`, `safeEvalStorage` | full except `stringFuzzySearch` (missing). Most members are installed for every game at startup; `safeEvalStorage` on link |
 | p.dll (fan patches) | `readFile(name)` → text or -1 | full |
 | filter.dll | `Stretch` | full (Layer.operateStretch) |
 | | `Blur`, `Smudge` | approx (box blur) |
@@ -38,7 +40,7 @@ Status: **full** = same behaviour, **approx** = similar result, **stub** = does 
 | layerExRaster.dll | `Layer.copyRaster(src, maxh, lines, cycle, time)` | full (raster wave copy); `lines = 0` / `cycle = 0` are guarded instead of dividing by zero |
 
 Next candidates: KAGZ UI layer storages (`<name>%layer` passed to `Layer.loadImages`, NekoPara's next blocker at `title.ks:13`), emoteplayer / motionplayer (`Motion.ResourceManager` and friends, needed by KAGZ titles such as NekoPara before their scripts finish initialising), layerExDraw (GDI+ drawing API), layerExSave, layerExAlpha, real extrans transitions,
-kagexopt, scriptsEx, shrinkCopy, json, minizip.
+kagexopt, shrinkCopy, layerExAreaAverage, minizip, win32ole, the rest of windowEx (System monitor/cursor helpers).
 
 **Pixel order.** krkrs keeps layer pixels as RGBA bytes (uint32 `0xAABBGGRR`, the SDL texture is
 `ABGR8888`); Windows plugins address BGRA. Native replacements that touch `mainImageBuffer` must

@@ -41,6 +41,7 @@ the tail of its own log.
 | `alphamovie/smoke.py` | io | AlphaMovie AJPM zlib-alpha decode | engine |
 | `layerex/smoke.py` | io | every layerExBtoA / layerExImage / layerExRaster method on synthetic pixels (values from the wamsoft sources), clip rects, `ltAddAlpha`, province helpers, and the engine colour round-trip (`fillRect` / `setMainPixel` / `getMainPixel`) | engine |
 | `layersave/smoke.py` | io | layerExSave: PNG / TLG5 (with tags) / TLG6 / BMP round trips keep the colour order (the PNG is also decoded in Python), PNG octet, crop / diff / ooze / clearAlpha / copyBlueToAlpha / isBlank / getAverageColor, `Window.startSaveLayerImage` events with a copy of the layer | engine |
+| `json/smoke.py` | io | json.dll reader (lenient syntax, escapes, errors), writer layout (CRLF/LF), saveJSON / evalJSONStorage round trip; scriptsEx additions (`equalStructNumericLoose`, MD5 of an octet, `propSet`/`propGet`, `pf*`) | engine |
 | `fstat/smoke.py` | io | fstat.dll contract: `dirlist`/`dirlistEx`/`dirtree`, `fstat`/`getTime`/`setTime`/FILETIME, attributes, `truncateFile`, MD5, `TemporaryFiles` (deletes its entries, never inside the game folder); the game folder must stay unchanged | engine |
 | `pbd/loaddatapack_smoke.py` | io | `Scripts.loadDataPack` returns real TJS Array/Dictionary trees and rejects an invalid pack | engine |
 | `pbd/run_tests.py` | decoders | `compat/pbd` against a Python encoder: all value types, all six crypt modes, dictionary LZ4, truncation/corruption | `pbd_dump` |

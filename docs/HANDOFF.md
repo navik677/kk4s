@@ -8,23 +8,66 @@ not the target. No per-game fixes, game files, keys or conversion; compatibility
 
 ## Where we are (2026-11-05)
 
-### Branch `cloud-session` (cloud session, not merged, not hardware-tested)
+### Branch `cloud-session` — universal-runtime sprint (2026-11-05, not merged, not hardware-tested)
 
-Work continues on `cloud-session`; `main` is untouched. Commit by commit:
-- `compat/kk4s_layerex.cpp`: native **layerExBtoA / layerExImage / layerExRaster** with the real
-  wamsoft contracts; `PackinOne.dll` links all three. The old PackinOne shim had a guessed
-  `clipAlphaRect(x, y, w, h)`; ATRI calls the real 8-argument form (see `handoff-native-cx.md`),
-  so the old shim threw inside and did nothing. `generateWhiteNoise` now draws.
-- Engine pixel order: krkrs stores RGBA bytes. `Layer.getMainPixel` returned R/B swapped
-  (fixed in `LayerIntf.cpp`), AlphaMovie copied BGRA frames as is (red/blue swapped in alpha
-  movies, fixed), `drawLine` colour fixed. See "Pixel order" in `docs/plugins.md`.
-- fstat.dll completed (listings, timestamps, attributes, MD5, TemporaryFiles); layerExSave.dll
-  (PNG/TLG thumbnails, crop/diff helpers, async `Window.startSaveLayerImage`).
-- Engine: TLG5/TLG6 writers swapped R/B (`Layer.saveLayerImage(..., "tlg5")` came back blue for
-  red); they now read BGRA rows (`tTVPTLGSourceLines`, `SaveTLG.h`).
-- Tests: `tests/layerex`, `tests/fstat`, `tests/layersave` (io group).
-Retest before merging: FSN (Russian patch, `project dir: .../data.xp3>`), ATRI (affine noise /
-clipped affine layers now draw; check that colours of AlphaMovie overlays look right), NekoPara.
+**Goal of the sprint** (user brief): kk4s must run *any* Kirikiri2/KAG/TJS2 game folder unmodified —
+commercial, doujin, ancient, KAGZ, odd plugins and archives. No per-title code; implement the engine
+semantics, plugin contracts and formats whole classes of games depend on; prefer what the most games
+need. Work lives on `cloud-session` (`main` untouched), committed in small steps; this section is the
+log. Nothing here was run on a Switch or against a real game (none is available in the cloud
+session); "tested" below means the synthetic suite on the Linux desktop build unless stated.
+
+| Commit | What | Verified by |
+|---|---|---|
+| `448acb5` | layerExBtoA / layerExImage / layerExRaster natively (`compat/kk4s_layerex.cpp`), real wamsoft contracts; PackinOne links them. The old shim's guessed `clipAlphaRect(x, y, w, h)` silently did nothing for ATRI's 8-argument calls | `tests/layerex` |
+| `788689e` | Engine pixel order: krkrs layers are **RGBA bytes**. `Layer.getMainPixel` returned R/B swapped; AlphaMovie frames and `drawLine` were R/B swapped | `tests/layerex` colour round-trip |
+| `230b301` | docs for the above | — |
+| `6999bfb` | fstat.dll complete: `dirlist`/`dirlistEx`/`dirtree`, `getTime`/`setTime`, FILETIME helpers, attributes, `getMD5HashString`, `TemporaryFiles`… | `tests/fstat` (also checks the game folder is untouched) |
+| `838fe26` | layerExSave.dll (PNG/TLG5 thumbnails, crop/diff/ooze helpers, async `Window.startSaveLayerImage`); engine **TLG5/TLG6 writers swapped R/B** — fixed (`tTVPTLGSourceLines`) | `tests/layersave` (PNG decoded in Python, TLG5/TLG6/BMP round trips) |
+| `348300f` | Engine: GCC 13.3 + UBSan miscompiled `fmtint()` in `tjsSnprintf.cpp` → every ASan/UBSan run crashed at its first log line (**this is why CI on `main` is red since `7a77878`**). Plus three UB fixes ASan found: 8bpp palette `delete` vs `new[]` (every province image), `rand() << 16` overflow, `tTJSString::GetLen` through NULL | ASan+UBSan build: 16/16, no sanitizer reports |
+| `38ed254` | fstat made portable (newlib/MinGW lack `st_mtim`, `utimes`, `truncate`, `access`) | **Switch NRO builds** (devkitA64 docker) |
+| `bc27470` | json.dll (`Scripts.evalJSON`/`evalJSONStorage`/`saveJSON`/`toJSONString`, the DLL's lenient reader) and the rest of scriptsEx.dll | `tests/json` |
+
+Test state at `bc27470`: `bash tools/run-tests.sh` → 16/16 on the normal and on the ASan+UBSan desktop
+build; `tools/build-switch.sh` in `devkitpro/devkita64` → `out/kk4s.nro` (27,583,909 bytes).
+
+**What was learned about Kirikiri / krkrs internals** (kept in the docs named):
+- krkrs stores 32bpp layer images as RGBA bytes; Kirikiri and every Windows plugin assume BGRA.
+  `fillRect`/`setMainPixel` convert with `TVP_REVRGB`; any native code on `mainImageBuffer` must
+  too (`docs/plugins.md`, "Pixel order").
+- `setMainPixel` with a non-zero high byte is a *system colour* (`clBtnFace` etc.) in Kirikiri;
+  set ARGB pixels with `fillRect(x, y, 1, 1, argb)`. `getMainPixel` is colour only; alpha is
+  `getMaskPixel`.
+- PackinOne.dll is the wamsoft layerEx plugins (and others) statically linked into one DLL.
+- Engine `saveLayerImage(name, "png"|"tlg5"|"tlg6"|"bmp")` writes through the storage layer, so
+  the save-folder redirect applies; TLG tags come from the meta dictionary.
+- json.dll does **not** accept unquoted keys (`{a:1}` is a parse error), only quoted ones.
+- Original project-dir search order (engine `SysInitImpl.cpp`): `content-data/` → `data.xp3` →
+  `data.exe` → XP3 appended to the exe itself → `data/` → exe folder.
+
+**Unverified assumptions** (need a real game or hardware): that ATRI's affine layers look right
+with the real `clipAlphaRect`; that alpha movies now show correct colours on screen; that games
+whose save thumbnails use layerExSave save/load on the Switch (writes through the SD redirect).
+
+**Local build/test commands used in the cloud session**:
+```bash
+bash tools/build-desktop.sh && bash tools/run-tests.sh                 # normal build + suite
+cmake -S . -B build-asan -G Ninja -DKK4S_PLATFORM=desktop -DKK4S_ASAN=ON && cmake --build build-asan
+ASAN_OPTIONS=detect_leaks=0 bash tools/run-tests.sh build-asan/kk4s   # what CI runs
+# Switch NRO without CI: start a docker daemon if none runs, then use the devkitA64 image
+dockerd --iptables=false --ip6tables=false --bridge=none --storage-driver=vfs &
+docker run --rm -v "$PWD":/src -w /src devkitpro/devkita64:latest \
+  bash -c 'git config --global --add safe.directory "*"; SKIP_DEPS=1 bash tools/build-switch.sh'
+```
+The image already contains every portlib the build needs (`SKIP_DEPS=1`); `pkg.devkitpro.org` was
+not reachable from the cloud session.
+
+**Next, in priority order** (also tracked in `docs/roadmap.md`): game-folder layouts the launcher
+does not list yet (`data/`-only folders, XP3 appended to an exe, `data.exe`); the rest of windowEx
+(`System.getMonitorInfo` & co. throw today); a KAG3 system-script integration fixture; generic
+detection of simple XP3 encryption validated by `adlr`; shrinkCopy / layerExAreaAverage /
+win32ole stubs; real extrans transitions; layerExDraw; KAGZ `%layer` storages (needs NekoPara's
+scripts to verify).
 
 Merged locally: `compat/tinyfilter-2026-11-04` was fast-forwarded into `main` (HEAD `721b62a`, code
 from `9f229bb`). **Not pushed:** the `gh` token has no `workflow` scope, and these commits touch
@@ -42,10 +85,8 @@ docker.io/devkitpro/devkita64:latest bash -c 'git config --global --add safe.dir
 
 The current native repack work is engine-wide: `hnfn` names + generic CXDEC decoder/scheme binding,
 Steam-build argument detection, `Scripts.loadDataPack`, and plugin compatibility. ATRI is used only to
-exercise that path; it is not an acceptance target by itself. The first known remaining Switch blocker
-is the `layerEx*` plugin family: `layerExDraw.dll`, `layerExImage.dll`, `layerExRaster.dll` and
-`layerExBtoA.dll` are still ignored, and ATRI's affine/PSD layers call their primitives. Investigate
-the missing generic API/semantics, not ATRI-specific behavior. Full status and crash analysis:
+exercise that path; it is not an acceptance target by itself. (The `layerEx*` gap described in the
+older notes is closed on `cloud-session` except layerExDraw.) Full status and crash analysis:
 `docs/handoff-native-cx.md`, `docs/cxdec.md`.
 
 Works on the Switch (user-tested): launcher, exit to the launcher (engine threads stopped,
