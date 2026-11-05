@@ -1004,7 +1004,10 @@ PSD::openLayerImage(const ttstr &name)
 			int pitch  = width*4;
 
 			int hsize = sizeof(BITMAPFILEHEADER);
-			int isize = hsize + sizeof(BITMAPINFOHEADER);
+			// kk4s: 2 bytes of padding so the pixels start 4-byte aligned
+			// (54 -> 56); the BMP loader seeks to bfOffBits. psdparse writes
+			// them as uint32_t: unaligned stores were UB (UBSan).
+			int isize = hsize + sizeof(BITMAPINFOHEADER) + 2;
 			int size  = isize  + pitch * height;
 
 			// メモリ上にBMP画像を作成してストリームとして返す
@@ -1031,6 +1034,7 @@ PSD::openLayerImage(const ttstr &name)
 				bih.biClrUsed = 0;
 				bih.biClrImportant = 0;
 				memcpy(p + hsize, &bih, sizeof bih);
+				p[isize - 2] = p[isize - 1] = 0;
 				getLayerImage(lay, p + isize + pitch * (height - 1), psd::BGRA_LE, -pitch, psd::IMAGE_MODE_MASKEDIMAGE);
 
 				return new PSDMemoryStream(p, (tjs_uint64)size);
