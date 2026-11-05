@@ -25,6 +25,8 @@ tests/games/
 *.xp3
 # research/emote-psb: extracted samples and local notes (game data)
 /research/emote-psb/work/
+# research/emote-crossgame: scan/audit output (local data)
+/research/emote-crossgame/work/
 out-desktop/
 run-data/
 dist/
