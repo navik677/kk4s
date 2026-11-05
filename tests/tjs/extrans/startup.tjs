@@ -35,7 +35,11 @@ class TransLayer extends Layer {
 // displacement moves squares off their places)
 function paint(l, cell) {
     l.fillRect(0, 0, 640, 480, 0xffffffff);
-    if (cell)
+    if (cell == -1) // 8 px horizontal stripes (ripple's vertical displacement)
+        for (var y = 0; y < 480; y += 16) l.fillRect(0, y, 640, 8, 0xff000000);
+    else if (cell == -2) // 8 px vertical stripes
+        for (var x = 0; x < 640; x += 16) l.fillRect(x, 0, 8, 480, 0xff000000);
+    else if (cell)
         for (var y = 0; y < 480; y += cell)
             for (var x = (y \ cell) % 2 * cell; x < 640; x += cell * 2)
                 l.fillRect(x, y, cell, cell, 0xff000000);

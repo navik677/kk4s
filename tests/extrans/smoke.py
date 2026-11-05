@@ -15,8 +15,9 @@ what only that transition can produce:
   the square they lie in (displacement); the same cross-fade shows none
 - crossfade (controls): one uniform grey from white; the checkerboard in place
 Every transition must end with onTransitionCompleted, and the log must not say
-"-> crossfade". (Horizontal stripes showed no vertical displacement in ripple;
-see docs/HANDOFF.md.)
+"-> crossfade". Ripple's direction is checked on 8 px stripes: horizontal stripes
+move most in the centre column (vertical displacement), vertical stripes in the
+centre row.
 """
 import os
 from pathlib import Path
@@ -35,6 +36,8 @@ METHODS = [
     ("rotatevanish", "rotatevanish", "%[]", 0),
     ("rotateswap", "rotateswap", f"%[bgcolor: {BG}]", 0),
     ("ripple", "ripple", "%[]", 16),
+    ("ripple-h", "ripple", "%[]", -1),  # horizontal stripes
+    ("ripple-v", "ripple", "%[]", -2),  # vertical stripes
     ("crossfade", "crossfade", "%[]", 0),
     ("crossfade-checker", "crossfade", "%[]", 16),
 ]
@@ -107,6 +110,26 @@ def check(method: str, px: dict):
         moved = displaced(px)
         if moved > n // 100:
             return f"crossfade control moved checkerboard squares ({moved} of {n})"
+    elif method in ("ripple-h", "ripple-v"):
+        # ripple pushes pixels away from the centre: vertically above / below it,
+        # horizontally left / right of it. Horizontal stripes must move most in the
+        # centre column, vertical stripes in the centre row.
+        horiz = method == "ripple-h"
+        def off(pred):
+            n = moved = 0
+            for (x, y), c in px.items():
+                v = y if horiz else x
+                if not pred(x, y) or v % 8 in (0, 1, 6, 7):
+                    continue
+                n += 1
+                moved += (sum(c) < 384) != ((v % 16) < 8)
+            return moved / max(n, 1)
+        column = off(lambda x, y: abs(x - 320) < 40)
+        row = off(lambda x, y: abs(y - 240) < 40)
+        along, across = (column, row) if horiz else (row, column)
+        if along < 0.2 or along < 2.5 * across:
+            return (f"{method}: displacement not along the expected axis (centre column {column:.2f}, "
+                    f"centre row {row:.2f} of samples off their stripe)")
     elif method == "ripple":
         moved = displaced(px)
         if moved < n // 20:
@@ -164,7 +187,7 @@ def main() -> int:
         print("\n".join(l for l in log.splitlines() if "EXTRANS" in l or "exception" in l.lower()
                         or "script: eval" in l)[-4000:], file=sys.stderr)
         return 1
-    print(f"extrans transitions: PASS ({len(METHODS) - 2} methods + 2 crossfade controls)")
+    print(f"extrans transitions: PASS ({len(METHODS) - 4} methods, ripple on two stripe patterns, 2 crossfade controls)")
     return 0
 
 
