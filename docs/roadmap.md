@@ -5,7 +5,7 @@ Full requirements: [original-prompt.md](original-prompt.md). Risk = chance of a 
 | # | Milestone | Status | Risk |
 |---|---|---|---|
 | M0 | Repo structure, CI build of `kk4s.nro`, launcher, log | **done** | low |
-| M1 | Runs real games on hardware; PC viewer (Linux + Windows); aspect-correct scaling | **mostly done** — scaling missing | medium |
+| M1 | Runs real games on hardware; PC viewer (Linux + Windows); aspect-correct scaling | **done** — letterboxing + touch/mouse mapping on `cloud-session` (`tests/aspect`), not yet seen on hardware | medium |
 | M2 | Storage: case-insensitive lookup, save redirect, overlay dir over xp3, memory-bounded caches | **partly** — lookup + saves done, overlay dir todo | medium |
 | M3 | Game detection by hash + `profiles/<game_id>.json`; diagnostic report for unknown games | todo | low |
 | M4 | Plugin shim: wuvorbis, krmovie, layerEx*, extrans, stubs for the rest | **partly** — layerExBtoA / layerExImage / layerExRaster / layerExSave (and PackinOne, which bundles them), fstat, json, scriptsEx, menu, Motion model done; windowEx System/Window members, layerExDraw, shrinkCopy, real extrans, KAGZ `%layer` storage open (see [plugins.md](plugins.md)) | **high** |
@@ -20,9 +20,9 @@ Full requirements: [original-prompt.md](original-prompt.md). Risk = chance of a 
 |---|---|---|
 | Launcher lists only folders with `startup.tjs` / `*.xp3` at the top; `data/`-only folders, `data.exe` and XP3 appended to an exe are not listed or not resolved | unpacked / dev builds, many small doujin releases shipped as one exe | **done** (cloud-session `9d974ca`) |
 | windowEx `System.getMonitorInfo`, `getSystemMetrics`, `getCursorPos`, … missing (calls throw) | KAGEX/KAGZ titles and others that size their window from the monitor | **done** (`f3923a0`) |
-| Encrypted XP3 without `xp3filter.tjs`: only CXDEC / TinyFilter are recognised | many doujin and older commercial games with simple XOR `.tpm` filters | investigate: detect simple schemes by known plaintext, validate with `adlr` |
+| Encrypted XP3 without `xp3filter.tjs`: only CXDEC / TinyFilter are recognised | many doujin and older commercial games with simple XOR `.tpm` filters | **done for keyless families** (`compat/kk4s_xp3crypt.cpp`, 18 synthetic schemes); keyed schemes (seed/table) and adlr-after-encryption schemes still need a helper file |
 | No end-to-end test of the KAG3 / KAGEX / KAGZ system scripts | every KAG game (YesNoDialog `showModal`, message layers, save/load) | KAG3: **done** (`tests/kag3`, found a window UAF); KAGEX / KAGZ, bookmark load, history, auto/skip: todo |
-| A 640x480 game is stretched to the 16:9 screen (no aspect-correct scaling) | every 4:3 game | todo (M1) |
+| A 640x480 game is stretched to the 16:9 screen (no aspect-correct scaling) | every 4:3 game | **done** (setting "Keep aspect ratio", default on) |
 | Native members of built-in classes that krkrs lacks compared with krkrz / krkr2 | any game calling them | todo: systematic diff |
 | extrans transitions are cross-fades | KAG3 games using `[trans method=wave|mosaic|turn|rotate*]` | todo |
 | layerExDraw (GDI+ drawing) ignored | games drawing UI or text effects with it | todo |

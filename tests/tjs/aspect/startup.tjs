@@ -1,0 +1,16 @@
+// Logs where taps land in game coordinates (tests/aspect/smoke.py).
+class AspectWindow extends Window {
+    function AspectWindow() {
+        super.Window();
+        setInnerSize(640, 480);
+        add(new Layer(this, null));
+        primaryLayer.setImageSize(640, 480);
+        primaryLayer.setSizeToImageSize();
+        visible = true;
+    }
+    function onMouseDown(x, y, button, shift) {
+        Debug.message("ASPECT_TAP " + x + " " + y);
+    }
+}
+global.aspect_window = new AspectWindow();
+Debug.message("ASPECT_READY");

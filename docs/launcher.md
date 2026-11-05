@@ -67,6 +67,7 @@ Network work runs on detached SDL threads with a 1 MiB stack; the UI polls the j
 | Return to the launcher after a game | on (default) / off |
 | Autostart the last game | 3 s countdown, any input cancels; not after coming back from a game |
 | Controls | action per pad button (A, B, X, Y, L, R, ZL, ZR, +, −) in games; defaults + = Esc, − = Tab. L3 + R3 (menu) is fixed |
+| Keep aspect ratio | on (default): the game picture keeps its proportions with black bars (a 640x480 game uses the middle 960x720 of the 1280x720 screen); off: stretched to the whole screen. Touch and mouse are mapped through the same rectangle (`settings.ini`: `keep_aspect`) |
 | CPU boost (Switch) | on (default): 1785 MHz instead of 1020 MHz while a game runs (`appletSetCpuBoostMode(FastLoad)`, the GPU drops to its minimum, which is plenty for one textured quad) |
 | Download all covers | see above |
 

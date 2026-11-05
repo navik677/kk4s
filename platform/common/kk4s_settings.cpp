@@ -74,6 +74,7 @@ void Settings::Load() {
         else if (k == "return_to_launcher") return_to_launcher = v != "0";
         else if (k == "autostart") autostart = v != "0";
         else if (k == "cpu_boost") cpu_boost = v != "0";
+        else if (k == "keep_aspect") keep_aspect = v != "0";
         else if (k == "volume") volume = std::max(0, std::min(100, atoi(v.c_str())));
         else if (k.compare(0, 4, "pad.") == 0) {
             for (const auto& b : kButtons)
@@ -103,6 +104,7 @@ void Settings::Save() const {
     fprintf(f, "return_to_launcher=%d\n", return_to_launcher ? 1 : 0);
     fprintf(f, "autostart=%d\n", autostart ? 1 : 0);
     fprintf(f, "cpu_boost=%d\n", cpu_boost ? 1 : 0);
+    fprintf(f, "keep_aspect=%d\n", keep_aspect ? 1 : 0);
     fprintf(f, "volume=%d\n", volume);
     for (const auto& b : kButtons)
         if (pad.count(b.bit)) fprintf(f, "pad.%s=%s\n", b.name, PadActionId(pad.at(b.bit)));

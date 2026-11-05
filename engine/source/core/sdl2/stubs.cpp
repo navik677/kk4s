@@ -113,8 +113,8 @@ void VideoScreenRemove(void* who) {
 }
 } // namespace kk4s
 // Upload the newest video frame and draw it over the game picture, which is
-// stretched from game_w x game_h to the whole output.
-static void kk4sDrawVideo(SDL_Renderer* r, int game_w, int game_h) {
+// drawn from game_w x game_h into `area` (the game rect on the output).
+static void kk4sDrawVideo(SDL_Renderer* r, int game_w, int game_h, const SDL_Rect& area) {
 	std::lock_guard<std::mutex> lock(kk4sVideoMutex);
 	kk4sVideoChanged = false;
 	if (!kk4sVideoOwner || !kk4sVideoVisible || kk4sVideoPixels.empty() || game_w <= 0 || game_h <= 0) return;
@@ -130,11 +130,10 @@ static void kk4sDrawVideo(SDL_Renderer* r, int game_w, int game_h) {
 		SDL_UpdateTexture(kk4sVideoTexture, nullptr, kk4sVideoPixels.data(), kk4sVideoW * 4);
 		kk4sVideoNewFrame = false;
 	}
-	int ow = 0, oh = 0;
-	SDL_GetRendererOutputSize(r, &ow, &oh);
 	SDL_Rect rc = kk4sVideoRect;
 	if (rc.w <= 0 || rc.h <= 0) rc = {0, 0, game_w, game_h};
-	SDL_Rect dst = {rc.x * ow / game_w, rc.y * oh / game_h, rc.w * ow / game_w, rc.h * oh / game_h};
+	SDL_Rect dst = {area.x + rc.x * area.w / game_w, area.y + rc.y * area.h / game_h,
+	                rc.w * area.w / game_w, rc.h * area.h / game_h};
 	SDL_RenderCopy(r, kk4sVideoTexture, nullptr, &dst);
 }
 static bool kk4sVideoNeedsPresent() {
@@ -460,9 +459,11 @@ public:
 			hasDrawn = true;
 			return;
 		}
+		SDL_Rect kk4sArea = kk4sGameRect();
+		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // kk4s: black bars (was white)
 		SDL_RenderClear(renderer);
-		SDL_RenderCopy(renderer, framebuffer, NULL, NULL);
-		kk4sDrawVideo(renderer, curWindowW, curWindowH); // kk4s: video overlay
+		SDL_RenderCopy(renderer, framebuffer, NULL, &kk4sArea);
+		kk4sDrawVideo(renderer, curWindowW, curWindowH, kk4sArea); // kk4s: video overlay
 		kk4sStart = SDL_GetTicks();
 		SDL_RenderPresent(renderer);
 		kk4s::CurrentFrameStats().present += SDL_GetTicks() - kk4sStart;
@@ -785,12 +786,48 @@ public:
 		}
 	}
 	// Draw the last game frame (and the menu) and present.
+	// kk4s: where the game picture goes on the output: the largest rectangle with
+	// the game's aspect ratio (black bars, the default), or the whole output when
+	// "keep aspect ratio" is off. A 640x480 game on the Switch's 16:9 screen was
+	// always stretched before.
+	SDL_Rect kk4sGameRect() {
+		int ow = 0, oh = 0;
+		SDL_GetRendererOutputSize(renderer, &ow, &oh);
+		SDL_Rect r = {0, 0, ow, oh};
+		if (!kk4s::LiveSettings().keep_aspect || curWindowW <= 0 || curWindowH <= 0 || ow <= 0 || oh <= 0) return r;
+		if ((long long)ow * curWindowH > (long long)oh * curWindowW) { // output is wider: bars left and right
+			r.w = (int)((long long)oh * curWindowW / curWindowH);
+			r.x = (ow - r.w) / 2;
+		} else { // output is taller: bars above and below
+			r.h = (int)((long long)ow * curWindowH / curWindowW);
+			r.y = (oh - r.h) / 2;
+		}
+		return r;
+	}
+	// kk4s: a point given as a fraction of the window (touch, script taps) or in
+	// window coordinates (mouse) -> game coordinates, through the game rect.
+	void kk4sToGame(float fx, float fy, tjs_int& gx, tjs_int& gy) {
+		int ow = 0, oh = 0;
+		SDL_GetRendererOutputSize(renderer, &ow, &oh);
+		SDL_Rect r = kk4sGameRect();
+		float px = fx * ow - r.x, py = fy * oh - r.y;
+		gx = r.w > 0 ? (tjs_int)(px * curWindowW / r.w) : 0;
+		gy = r.h > 0 ? (tjs_int)(py * curWindowH / r.h) : 0;
+		if (gx < 0) gx = 0; else if (gx >= curWindowW) gx = curWindowW - 1;
+		if (gy < 0) gy = 0; else if (gy >= curWindowH) gy = curWindowH - 1;
+	}
+	void kk4sMouseToGame(int wx, int wy, tjs_int& gx, tjs_int& gy) {
+		int ww = 0, wh = 0;
+		SDL_GetWindowSize(window, &ww, &wh);
+		kk4sToGame(ww > 0 ? (float)wx / ww : 0.f, wh > 0 ? (float)wy / wh : 0.f, gx, gy);
+	}
 	void kk4sPresent(bool with_overlay, const char* shot_bmp = nullptr) {
 		if (!framebuffer) return;
+		SDL_Rect area = kk4sGameRect();
 		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 		SDL_RenderClear(renderer);
-		SDL_RenderCopy(renderer, framebuffer, NULL, NULL);
-		kk4sDrawVideo(renderer, curWindowW, curWindowH); // kk4s: video overlay
+		SDL_RenderCopy(renderer, framebuffer, NULL, &area);
+		kk4sDrawVideo(renderer, curWindowW, curWindowH, area); // kk4s: video overlay
 		if (with_overlay) kk4s::overlay::Draw(renderer);
 		if (shot_bmp) { // the back buffer holds the full frame now
 			int ow = 0, oh = 0;
@@ -890,29 +927,25 @@ public:
 					// kk4s: touch = left mouse button; each case used to fall through
 					// into the next, so one tap clicked twice
 					case SDL_FINGERDOWN: {
-						mouseLastX = curWindowW * event.tfinger.x;
-						mouseLastY = curWindowH * event.tfinger.y;
+						kk4sToGame(event.tfinger.x, event.tfinger.y, mouseLastX, mouseLastY);
 						TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, 0));
 						TVPPostInputEvent(new tTVPOnMouseDownInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, tTVPMouseButton::mbLeft, 0));
 						break;
 					}
 					case SDL_FINGERUP: {
-						mouseLastX = curWindowW * event.tfinger.x;
-						mouseLastY = curWindowH * event.tfinger.y;
+						kk4sToGame(event.tfinger.x, event.tfinger.y, mouseLastX, mouseLastY);
 						TVPPostInputEvent(new tTVPOnClickInputEvent(TJSNativeInstance, mouseLastX, mouseLastY));
 						TVPPostInputEvent(new tTVPOnMouseUpInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, tTVPMouseButton::mbLeft, 0));
 						break;
 					}
 					case SDL_FINGERMOTION: {
-						mouseLastX = curWindowW * event.tfinger.x;
-						mouseLastY = curWindowH * event.tfinger.y;
+						kk4sToGame(event.tfinger.x, event.tfinger.y, mouseLastX, mouseLastY);
 						TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, 0));
 						break;
 					}
 					case SDL_MOUSEMOTION: {
-						mouseLastX = event.motion.x;
-						mouseLastY = event.motion.y;
-						TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, event.motion.x, event.motion.y, 0));
+						kk4sMouseToGame(event.motion.x, event.motion.y, mouseLastX, mouseLastY); // kk4s: window -> game
+						TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, 0));
 						break;
 					}
 					case SDL_MOUSEBUTTONDOWN: {
@@ -933,9 +966,8 @@ public:
 								break;
 						}
 						if (hasbtn) {
-							mouseLastX = event.button.x;
-							mouseLastY = event.button.y;
-							TVPPostInputEvent(new tTVPOnMouseDownInputEvent(TJSNativeInstance, event.button.x, event.button.y, btn, 0));
+							kk4sMouseToGame(event.button.x, event.button.y, mouseLastX, mouseLastY);
+							TVPPostInputEvent(new tTVPOnMouseDownInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, btn, 0));
 						}
 						break;
 					}
@@ -957,10 +989,9 @@ public:
 								break;
 						}
 						if (hasbtn) {
-							mouseLastX = event.button.x;
-							mouseLastY = event.button.y;
-							TVPPostInputEvent(new tTVPOnClickInputEvent(TJSNativeInstance, event.button.x, event.button.y));
-							TVPPostInputEvent(new tTVPOnMouseUpInputEvent(TJSNativeInstance, event.button.x, event.button.y, btn, 0));
+							kk4sMouseToGame(event.button.x, event.button.y, mouseLastX, mouseLastY);
+							TVPPostInputEvent(new tTVPOnClickInputEvent(TJSNativeInstance, mouseLastX, mouseLastY));
+							TVPPostInputEvent(new tTVPOnMouseUpInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, btn, 0));
 						}
 						break;
 					}
