@@ -34,8 +34,14 @@ session); "tested" below means the synthetic suite on the Linux desktop build un
 | `ec5b540` | Engine UB: `ObjectList` `TJS_free` of a `new[]` array, uninitialised `KAGParser` state copied by KAG snapshots, misaligned TJS hash-table values | ASan/UBSan clean on `tests/kag3` |
 | `014a756` | **`tests/kag3`: the original KAG3 system scripts** (vendored, unmodified) play a Shift_JIS scenario: text, images, three transition types, move, quake, fonts/ruby, macros, if, call/return, SE/BGM, emb, bookmark save, link choice, `askYesNo` | 19/19 on normal and ASan builds |
 
-Test state at `014a756`: `bash tools/run-tests.sh` → 19/19 on the normal and on the ASan+UBSan desktop
-build; `tools/build-switch.sh` in `devkitpro/devkita64` → `out/kk4s.nro` builds.
+| `cb2f969` | docs for the above | — |
+| `1b0aa6c` | `tools/native-api.py`: lists / diffs the native members of built-in classes between source trees | used for `docs/api-coverage.md` |
+| `34ce2f3` | Kirikiri Z / Kirikiri 2 native members for every game: the fstat + windowEx sets (native in krkrz, so KAGZ calls them without `Plugins.link`), `System.inputString` (Switch keyboard), `Debug.visible`, language properties | `tests/natives` |
+| `0dc90b1` | **Keyless `.tpm` encryption discovery** for plain-named archives (`compat/kk4s_xp3crypt.cpp`): 12 GARbro families + fitted "one XOR byte per entry = f(adlr)" formulas, bound only when adlr verifies | `tests/xp3/crypt_smoke.py` (18 schemes + 2 controls) |
+| `806395c` | **Aspect-correct scaling** (letterbox, default on, launcher setting) with touch/mouse mapped through the picture rect; the PC mouse was unscaled before | `tests/aspect`; KAG3 screenshot |
+
+Test state at `806395c`: `bash tools/run-tests.sh` → 23/23 on the normal desktop build (the ASan build
+was 19/19 at `014a756`); `tools/build-switch.sh` in `devkitpro/devkita64` builds `out/kk4s.nro`.
 
 **What was learned about Kirikiri / krkrs internals** (kept in the docs named):
 - krkrs stores 32bpp layer images as RGBA bytes; Kirikiri and every Windows plugin assume BGRA.
@@ -68,12 +74,13 @@ docker run --rm -v "$PWD":/src -w /src devkitpro/devkita64:latest \
 The image already contains every portlib the build needs (`SKIP_DEPS=1`); `pkg.devkitpro.org` was
 not reachable from the cloud session.
 
-**Next, in priority order** (also tracked in `docs/roadmap.md`): a systematic diff of the native
-API of every built-in class against krkrz/krkr2 (members krkrs lacks throw in games); generic
-detection of simple XP3 encryption validated by `adlr`; extend `tests/kag3` (KAGEX / KAGZ system
-scripts, save **load**, history, auto/skip modes); shrinkCopy / layerExAreaAverage / win32ole stubs;
-aspect-correct scaling (a 640x480 game is stretched to 16:9 today, see the KAG3 screenshot); real
-extrans transitions; layerExDraw; KAGZ `%layer` storages (needs NekoPara's scripts to verify).
+**Next, in priority order** (also tracked in `docs/roadmap.md`): extend `tests/kag3` (bookmark
+**load**, history, auto/skip modes; KAGEX / KAGZ system scripts if a redistributable copy is found);
+shrinkCopy / layerExAreaAverage / win32ole stubs; real extrans transitions; legacy formats to check
+(`.sli` BGM loops, `.tft` pre-rendered fonts, MIDI, ERI images); layerExDraw; keyed `.tpm` families
+(seed recoverable from known plaintext, e.g. Akabei/NekoWorks style); `Font.registerFontFile` and
+other krkrz members listed in `docs/api-coverage.md`; KAGZ `%layer` storages (needs NekoPara's
+scripts to verify).
 
 Reference sources used in the cloud session (fetch again when needed, never commit game data):
 `git clone --depth 1 https://github.com/krkrz/krkrz` (krkrz engine), `https://github.com/krkrz/krkr2`
