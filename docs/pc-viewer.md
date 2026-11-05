@@ -8,6 +8,7 @@ dev/test loop: crashes here are much cheaper than on the Switch.
 ```
 kk4s <path to game folder>     # run one game directly (drag & drop a folder onto kk4s.exe works too)
 kk4s                           # launcher over <data folder>/games/
+kk4s --list-games              # print the folders the launcher recognises and each project dir, then exit
 ```
 
 Data folder (games/, saves/, covers/, logs/, settings.ini) = folder of the executable, or `$KK4S_ROOT`.

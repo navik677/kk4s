@@ -9,7 +9,9 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+#include <vector>
 #include <cstdarg>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -207,6 +209,140 @@ void LogBanner(const char* platform_name) {
             mem.applet_mode ? "APPLET (album launch, low memory!)" : "full");
 }
 
+// ---------------------------------------------------------------------------
+// XP3 archives appended to a Windows executable
+//
+// Kirikiri's releaser can append the game's archive to krkr.exe ("self-combined"
+// games, also data.exe). The engine finds it by scanning the exe for the XP3 mark
+// on 16-byte boundaries (XP3Archive.cpp). The archive normally starts right after
+// the PE image (the "overlay"), so read the PE section table and look there first.
+
+// 64-bit seek (MinGW's long is 32 bits).
+static int Seek64(FILE* f, long long pos) {
+#ifdef _WIN32
+    return _fseeki64(f, pos, SEEK_SET);
+#else
+    return fseeko(f, (off_t)pos, SEEK_SET);
+#endif
+}
+
+static uint32_t Le32(const unsigned char* p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+// The mark is assembled at run time, as the engine does, so that this binary's own
+// data never contains it whole.
+static void XP3Mark(unsigned char out[11]) {
+    static const unsigned char a[8] = {'X', 'P', '3', '\r', '\n', ' ', '\n', 0x1a};
+    static const unsigned char b[3] = {0x8b, 0x67, 0x01};
+    memcpy(out, a, 8);
+    memcpy(out + 8, b, 3);
+}
+
+// Search [from, from + limit) for the mark on 16-byte boundaries; -1 if absent.
+static long long ScanForXP3(FILE* f, long long from, long long limit) {
+    unsigned char mark[11];
+    XP3Mark(mark);
+    from = (from + 15) & ~15LL;
+    if (from < 16) from = 16;
+    std::vector<unsigned char> buf(256 * 1024 + 16);
+    long long pos = from, end = limit < 0 ? -1 : from + limit;
+    while (end < 0 || pos < end) {
+        if (Seek64(f, pos) != 0) return -1;
+        size_t want = buf.size();
+        size_t got = fread(buf.data(), 1, want, f);
+        if (got < 11) return -1;
+        for (size_t i = 0; i + 11 <= got; i += 16) {
+            if (end >= 0 && pos + (long long)i >= end) return -1;
+            if (memcmp(buf.data() + i, mark, 11) == 0) return pos + (long long)i;
+        }
+        if (got < want) return -1;
+        pos += (long long)(got - 16); // keep 16-byte alignment, overlap one paragraph
+    }
+    return -1;
+}
+
+long long FindXP3InExecutable(const std::string& path, bool full_scan) {
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) return -1;
+    long long found = -1;
+    unsigned char dos[64];
+    if (fread(dos, 1, sizeof(dos), f) == sizeof(dos) && dos[0] == 'M' && dos[1] == 'Z') {
+        long long overlay = 0;
+        uint32_t lfanew = Le32(dos + 0x3c);
+        unsigned char pe[24];
+        if (lfanew < (1u << 24) && Seek64(f, lfanew) == 0 && fread(pe, 1, 24, f) == 24 &&
+            memcmp(pe, "PE\0\0", 4) == 0) {
+            unsigned sections = pe[6] | (pe[7] << 8), optional = pe[20] | (pe[21] << 8);
+            if (Seek64(f, (long long)lfanew + 24 + optional) == 0) {
+                for (unsigned i = 0; i < sections && i < 96; ++i) {
+                    unsigned char sec[40];
+                    if (fread(sec, 1, sizeof(sec), f) != sizeof(sec)) break;
+                    long long end = (long long)Le32(sec + 20) + Le32(sec + 16); // PointerToRawData + SizeOfRawData
+                    if (end > overlay) overlay = end;
+                }
+            }
+        }
+        // Right after the image (a digital signature or padding may come first).
+        if (overlay > 0) found = ScanForXP3(f, overlay, 4 << 20);
+        // Kirikiri's own rule: anywhere in the file.
+        if (found < 0 && full_scan) found = ScanForXP3(f, 16, -1);
+    }
+    fclose(f);
+    return found;
+}
+
+// The executable in dir that carries the game's archive: data.exe first (Kirikiri
+// checks it before its own exe), then the largest *.exe with an XP3 inside. "" if none.
+static std::string FindSelfCombinedExe(const std::string& dir, bool full_scan) {
+    std::string base = dir;
+    if (!base.empty() && base.back() != '/') base += '/';
+    DIR* d = opendir(base.c_str());
+    if (!d) return "";
+    std::vector<std::pair<long long, std::string>> exes; // size, name
+    std::string data_exe;
+    while (struct dirent* e = readdir(d)) {
+        const char* n = e->d_name;
+        size_t len = strlen(n);
+        if (len < 5 || strcasecmp(n + len - 4, ".exe") != 0) continue;
+        struct stat st;
+        if (stat((base + n).c_str(), &st) != 0 || !S_ISREG(st.st_mode)) continue;
+        if (strcasecmp(n, "data.exe") == 0) data_exe = n;
+        else exes.emplace_back((long long)st.st_size, n);
+    }
+    closedir(d);
+    if (!data_exe.empty() && FindXP3InExecutable(base + data_exe, full_scan) >= 0) return data_exe;
+    std::sort(exes.begin(), exes.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    for (const auto& e : exes)
+        if (FindXP3InExecutable(base + e.second, full_scan) >= 0) return e.second;
+    return "";
+}
+
+// Case-insensitive file lookup inside a subfolder: dir/<sub>/<name>.
+static bool SubfolderHas(const std::string& dir, const char* sub, const char* name) {
+    std::string base = dir;
+    if (!base.empty() && base.back() != '/') base += '/';
+    DIR* d = opendir(base.c_str());
+    if (!d) return false;
+    std::string folder;
+    while (struct dirent* e = readdir(d)) {
+        if (strcasecmp(e->d_name, sub) != 0) continue;
+        struct stat st;
+        if (stat((base + e->d_name).c_str(), &st) == 0 && S_ISDIR(st.st_mode)) { folder = e->d_name; break; }
+    }
+    closedir(d);
+    if (folder.empty()) return false;
+    DIR* s = opendir((base + folder).c_str());
+    if (!s) return false;
+    bool found = false;
+    while (struct dirent* e = readdir(s))
+        if (strcasecmp(e->d_name, name) == 0) { found = true; break; }
+    closedir(s);
+    return found;
+}
+
+// A folder is a game when Kirikiri would find a project in it: startup.tjs or an
+// XP3 at the top, startup.tjs in data/ or content-data/, or an archive inside an exe.
 bool IsGameFolder(const std::string& dir) {
     DIR* d = opendir(dir.c_str());
     if (!d) return false;
@@ -221,7 +357,9 @@ bool IsGameFolder(const std::string& dir) {
         }
     }
     closedir(d);
-    return ok;
+    if (ok) return true;
+    if (SubfolderHas(dir, "data", "startup.tjs") || SubfolderHas(dir, "content-data", "startup.tjs")) return true;
+    return !FindSelfCombinedExe(dir, false).empty();
 }
 
 // True if <dir>/<name> exists (case-insensitive); want_dir also requires a
@@ -393,13 +531,22 @@ std::string FindCompatFile(const char* name) {
     return n.empty() ? std::string() : dir + n;
 }
 
+// Kirikiri's search order (engine SysInitImpl.cpp): content-data/, data.xp3,
+// data.exe, an archive appended to the exe, data/, the exe's folder. kk4s checks
+// a loose startup.tjs first (Kirikiroid2-prepared folders); FSN's Russian patch
+// depends on data.xp3 coming before anything that follows it here.
 std::string ResolveProjectDir(const std::string& game_dir) {
     std::string result;
     std::string n;
     if (!FindEntry(game_dir, "startup.tjs", false).empty()) {
         result = game_dir;
+    } else if (!(n = FindEntry(game_dir, "content-data", true)).empty()) {
+        result = game_dir + n + "/";
     } else if (!(n = FindEntry(game_dir, "data.xp3", false)).empty()) {
         result = game_dir + n + ">";
+    } else if (!(n = detail::FindSelfCombinedExe(game_dir, true)).empty()) {
+        result = game_dir + n + ">";
+        Log("compat: the game's archive is inside %s", n.c_str());
     } else if (!(n = FindEntry(game_dir, "data", true)).empty()) {
         result = game_dir + n + "/";
     } else {

@@ -22,9 +22,13 @@ sdmc:/switch/kk4s/
 
 Folders are created on the first start (`covers/` when the first cover is saved).
 
-A folder in `games/` is a game when it contains `startup.tjs` or any `*.xp3`. The project dir is
-chosen like `krkr.exe` does: `startup.tjs` → `data.xp3` → `data/` → the folder itself
+A folder in `games/` is a game when it contains `startup.tjs` or any `*.xp3`, a `data/` or
+`content-data/` subfolder with `startup.tjs`, or an `.exe` with an XP3 archive appended (the launcher
+only looks right after the PE image; a full scan happens when the game starts). The project dir is
+chosen like `krkr.exe` does, with a loose `startup.tjs` first: `startup.tjs` → `content-data/` →
+`data.xp3` → `data.exe` / the largest exe that carries an XP3 → `data/` → the folder itself
 (case-insensitive). The game folder acts as the folder of the exe (`System.exePath`).
+PC viewer: `kk4s --list-games` prints each recognised folder and its project dir.
 
 Files you may add next to a game without touching its own files: `title.txt` (display name, UTF-8),
 `cover.*` / `folder.*` / `poster.*` (cover art). See [launcher.md](launcher.md).

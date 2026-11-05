@@ -6,7 +6,8 @@
 #   tools/run-tests.sh build-desktop/kk4s    # explicit binary
 #
 # Groups:
-#   xp3        storage layer: project dir, overlay precedence, archive parsing
+#   xp3        storage layer: project dir, overlay precedence, archive parsing,
+#              game-folder layouts (data/, data.exe, XP3 inside an exe)
 #   io         engine I/O: TextStream encoding, AlphaMovie, Scripts.loadDataPack,
 #              layerEx* / layerExSave Layer methods, fstat.dll Storages methods,
 #              json.dll / scriptsEx.dll
@@ -58,12 +59,13 @@ run() {
 }
 
 group_xp3() {
-    echo "== xp3: project dir, overlay precedence, archive parsing =="
+    echo "== xp3: project dir, overlay precedence, archive parsing, folder layouts =="
     run xp3-precedence      python3 tests/xp3/precedence_smoke.py "$EXE"
     run xp3-elif            python3 tests/xp3/elif_smoke.py "$EXE"
     run xp3-empty-entry     python3 tests/xp3/empty_entry_smoke.py "$EXE"
     run xp3-malformed-index python3 tests/xp3/malformed_index_smoke.py "$EXE"
     run xp3-index-cycle     python3 tests/xp3/index_cycle_smoke.py "$EXE"
+    run xp3-layouts         python3 tests/xp3/layout_smoke.py "$EXE"
 }
 
 group_io() {

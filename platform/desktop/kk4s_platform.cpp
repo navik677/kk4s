@@ -36,6 +36,7 @@ using namespace detail;
 static bool g_inited = false;
 static std::string g_root;
 static std::string g_cli_game;            // game folder given on the command line
+static bool g_list_games = false;         // --list-games: print the recognised games and exit
 static std::vector<char*> g_engine_argv;  // argv without the game folder
 
 static std::string ExeDir(const char* argv0) {
@@ -162,6 +163,10 @@ void Init(int argc, char** argv) {
 
     // First non-option argument that is a folder = game folder.
     for (int i = 0; i < argc; ++i) {
+        if (i > 0 && strcmp(argv[i], "--list-games") == 0) { // diagnostic, see SelectGame()
+            g_list_games = true;
+            continue;
+        }
         if (i > 0 && g_cli_game.empty() && argv[i][0] != '-' && IsDir(argv[i])) {
             // Absolute path: the engine turns relative paths into broken storage names.
             if (char* abs = realpath(argv[i], nullptr)) {
@@ -237,6 +242,18 @@ void WindowConfig(int& width, int& height, unsigned& sdl_flags) {
 }
 
 std::string SelectGame(SDL_Renderer* renderer) {
+    if (g_list_games) {
+        // kk4s --list-games: which folders in games/ are recognised and where each
+        // project would start (answers "why is my game not in the launcher?").
+        std::vector<std::string> games = ScanGames();
+        Log("launcher: %zu game(s) found in %s", games.size(), GamesDir().c_str());
+        for (const std::string& g : games) {
+            std::string project = ResolveProjectDir(GamesDir() + "/" + g + "/");
+            Log("game: %s -> %s", g.c_str(), project.c_str());
+            printf("%s\t%s\n", g.c_str(), project.c_str());
+        }
+        return "";
+    }
     if (!g_cli_game.empty()) {
         return SetGameDir(g_cli_game);
     }

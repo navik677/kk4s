@@ -20,6 +20,10 @@ void LogBanner(const char* platform_name);
 std::vector<std::string> ScanGames();
 bool IsGameFolder(const std::string& dir);
 
+// Offset of an XP3 archive inside a Windows executable, -1 if none. Looks after
+// the PE image first; full_scan also searches the whole file as Kirikiri does.
+long long FindXP3InExecutable(const std::string& path, bool full_scan);
+
 // "" for a plain KiriKiri folder, else a short reason why it cannot start as
 // one (Steam/PackinOne repack markers). Shown in the launcher and the log.
 std::string DetectGameIssue(const std::string& dir);
