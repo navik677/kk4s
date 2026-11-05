@@ -27,9 +27,15 @@ session); "tested" below means the synthetic suite on the Linux desktop build un
 | `348300f` | Engine: GCC 13.3 + UBSan miscompiled `fmtint()` in `tjsSnprintf.cpp` → every ASan/UBSan run crashed at its first log line (**this is why CI on `main` is red since `7a77878`**). Plus three UB fixes ASan found: 8bpp palette `delete` vs `new[]` (every province image), `rand() << 16` overflow, `tTJSString::GetLen` through NULL | ASan+UBSan build: 16/16, no sanitizer reports |
 | `38ed254` | fstat made portable (newlib/MinGW lack `st_mtim`, `utimes`, `truncate`, `access`) | **Switch NRO builds** (devkitA64 docker) |
 | `bc27470` | json.dll (`Scripts.evalJSON`/`evalJSONStorage`/`saveJSON`/`toJSONString`, the DLL's lenient reader) and the rest of scriptsEx.dll | `tests/json` |
+| `b69dc28` | docs (this log, status, roadmap) | — |
+| `9d974ca` | Launcher/project dir recognise every Kirikiri layout: `data/`-only folders, `content-data/`, `data.exe`, XP3 appended to an exe (PE overlay); `kk4s --list-games` | `tests/xp3/layout_smoke.py`; `xp3-precedence` (FSN rule) still passes |
+| `f3923a0` | windowEx.dll complete: `System.getMonitorInfo`/`getDisplayMonitors`/`getSystemMetrics`/`readEnvValue`/`expandEnvString`/cursor…, Window rects/IME/hit tests, MenuItem/Pad members | `tests/windowex` |
+| `2bcb5cb` | **Engine: a closed window kept receiving input** (use-after-free after every `invalidate` of a dialog window such as KAG's `askYesNo`; on the Switch the game looked frozen after the first yes/no prompt) | `tests/kag3` on normal + ASan builds |
+| `ec5b540` | Engine UB: `ObjectList` `TJS_free` of a `new[]` array, uninitialised `KAGParser` state copied by KAG snapshots, misaligned TJS hash-table values | ASan/UBSan clean on `tests/kag3` |
+| `014a756` | **`tests/kag3`: the original KAG3 system scripts** (vendored, unmodified) play a Shift_JIS scenario: text, images, three transition types, move, quake, fonts/ruby, macros, if, call/return, SE/BGM, emb, bookmark save, link choice, `askYesNo` | 19/19 on normal and ASan builds |
 
-Test state at `bc27470`: `bash tools/run-tests.sh` → 16/16 on the normal and on the ASan+UBSan desktop
-build; `tools/build-switch.sh` in `devkitpro/devkita64` → `out/kk4s.nro` (27,583,909 bytes).
+Test state at `014a756`: `bash tools/run-tests.sh` → 19/19 on the normal and on the ASan+UBSan desktop
+build; `tools/build-switch.sh` in `devkitpro/devkita64` → `out/kk4s.nro` builds.
 
 **What was learned about Kirikiri / krkrs internals** (kept in the docs named):
 - krkrs stores 32bpp layer images as RGBA bytes; Kirikiri and every Windows plugin assume BGRA.
@@ -62,12 +68,17 @@ docker run --rm -v "$PWD":/src -w /src devkitpro/devkita64:latest \
 The image already contains every portlib the build needs (`SKIP_DEPS=1`); `pkg.devkitpro.org` was
 not reachable from the cloud session.
 
-**Next, in priority order** (also tracked in `docs/roadmap.md`): game-folder layouts the launcher
-does not list yet (`data/`-only folders, XP3 appended to an exe, `data.exe`); the rest of windowEx
-(`System.getMonitorInfo` & co. throw today); a KAG3 system-script integration fixture; generic
-detection of simple XP3 encryption validated by `adlr`; shrinkCopy / layerExAreaAverage /
-win32ole stubs; real extrans transitions; layerExDraw; KAGZ `%layer` storages (needs NekoPara's
-scripts to verify).
+**Next, in priority order** (also tracked in `docs/roadmap.md`): a systematic diff of the native
+API of every built-in class against krkrz/krkr2 (members krkrs lacks throw in games); generic
+detection of simple XP3 encryption validated by `adlr`; extend `tests/kag3` (KAGEX / KAGZ system
+scripts, save **load**, history, auto/skip modes); shrinkCopy / layerExAreaAverage / win32ole stubs;
+aspect-correct scaling (a 640x480 game is stretched to 16:9 today, see the KAG3 screenshot); real
+extrans transitions; layerExDraw; KAGZ `%layer` storages (needs NekoPara's scripts to verify).
+
+Reference sources used in the cloud session (fetch again when needed, never commit game data):
+`git clone --depth 1 https://github.com/krkrz/krkrz` (krkrz engine), `https://github.com/krkrz/krkr2`
+(Kirikiri 2 history incl. `kag3/`), `https://github.com/wamsoft/<plugin>` (layerExImage,
+layerExBtoA, layerExRaster, layerExSave, fstat, json, scriptsEx, windowEx, shrinkCopy, psdfile…).
 
 Merged locally: `compat/tinyfilter-2026-11-04` was fast-forwarded into `main` (HEAD `721b62a`, code
 from `9f229bb`). **Not pushed:** the `gh` token has no `workflow` scope, and these commits touch

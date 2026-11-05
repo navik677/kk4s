@@ -18,10 +18,12 @@ Full requirements: [original-prompt.md](original-prompt.md). Risk = chance of a 
 
 | Gap | Affects | State |
 |---|---|---|
-| Launcher lists only folders with `startup.tjs` / `*.xp3` at the top; `data/`-only folders, `data.exe` and XP3 appended to an exe are not listed or not resolved | unpacked / dev builds, many small doujin releases shipped as one exe | in progress (cloud-session) |
-| windowEx `System.getMonitorInfo`, `getSystemMetrics`, `getCursorPos`, … missing (calls throw) | KAGEX/KAGZ titles and others that size their window from the monitor | todo |
+| Launcher lists only folders with `startup.tjs` / `*.xp3` at the top; `data/`-only folders, `data.exe` and XP3 appended to an exe are not listed or not resolved | unpacked / dev builds, many small doujin releases shipped as one exe | **done** (cloud-session `9d974ca`) |
+| windowEx `System.getMonitorInfo`, `getSystemMetrics`, `getCursorPos`, … missing (calls throw) | KAGEX/KAGZ titles and others that size their window from the monitor | **done** (`f3923a0`) |
 | Encrypted XP3 without `xp3filter.tjs`: only CXDEC / TinyFilter are recognised | many doujin and older commercial games with simple XOR `.tpm` filters | investigate: detect simple schemes by known plaintext, validate with `adlr` |
-| No end-to-end test of the KAG3 / KAGEX / KAGZ system scripts | every KAG game (YesNoDialog `showModal`, message layers, save/load) | todo: find redistributable system scripts for a fixture |
+| No end-to-end test of the KAG3 / KAGEX / KAGZ system scripts | every KAG game (YesNoDialog `showModal`, message layers, save/load) | KAG3: **done** (`tests/kag3`, found a window UAF); KAGEX / KAGZ, bookmark load, history, auto/skip: todo |
+| A 640x480 game is stretched to the 16:9 screen (no aspect-correct scaling) | every 4:3 game | todo (M1) |
+| Native members of built-in classes that krkrs lacks compared with krkrz / krkr2 | any game calling them | todo: systematic diff |
 | extrans transitions are cross-fades | KAG3 games using `[trans method=wave|mosaic|turn|rotate*]` | todo |
 | layerExDraw (GDI+ drawing) ignored | games drawing UI or text effects with it | todo |
 | MIDI BGM, `.tft` pre-rendered fonts, ERI images, `.sli` loop files — not yet checked | older Kirikiri 2 titles | investigate |

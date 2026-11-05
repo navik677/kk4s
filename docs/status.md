@@ -22,6 +22,10 @@ that the Switch NRO builds (devkitA64 docker image). Commit list and details: `d
 | Plugins | fstat.dll complete; json.dll; rest of scriptsEx.dll | implemented, synthetic tests |
 | Engine | krkrs RGBA pixel order: `getMainPixel`, AlphaMovie, TLG5/TLG6 writers, `drawLine` no longer swap red/blue | implemented, tested by round trips; on-screen colour not observed |
 | Engine | ASan/UBSan build runs again (GCC 13.3 miscompile in `tjsSnprintf.cpp`); palette `delete[]`, two other UB fixes | tested (sanitizer build 16/16) |
+| Launcher | `data/`-only folders, `data.exe` and XP3 appended to an exe are recognised; `kk4s --list-games` | synthetic layouts tested |
+| Plugins | windowEx.dll complete (monitor, metrics, environment, cursor, window rects) | synthetic tests |
+| Engine | closed windows no longer receive input (UAF / frozen input after KAG's `askYesNo`); KAGParser init, ObjectList `delete[]`, hash alignment | found and verified by `tests/kag3` |
+| Tests | **original KAG3 system scripts** play a scenario end to end (`tests/kag3`) | 19/19 normal + ASan |
 
 Expected effect on ATRI (unverified): `generateWhiteNoise` no longer throws, `clipAlphaRect` really
 clips affine layers (before it silently did nothing).
