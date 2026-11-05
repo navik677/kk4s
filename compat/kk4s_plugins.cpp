@@ -1648,6 +1648,63 @@ static void LinkWindowExDll() {
     RunTjsShim("windowEx.dll", kWindowExShim);
 }
 
+// Members Kirikiri Z has natively (the fstat.dll and windowEx.dll contracts:
+// Storages.dirlist / fstat / getTime / ..., Window.maximize / getClientRect /
+// ..., System.readEnvValue / expandEnvString / getMonitorInfo / ...) and
+// Kirikiri 2's System.inputString, installed for every game before startup.tjs
+// so scripts written for those engines find them without linking a plugin.
+// Every member is only added when missing. (tools/native-api.py lists what the
+// engine itself lacks compared with a krkrz / krkr2 source tree.)
+static std::set<std::string> g_linked_plugins; // see LinkBuiltinPlugin()
+static const tjs_char* kEngineNativesShim = TJS_W(R"TJS(
+if (typeof System.systemLanguage == "undefined") System.systemLanguage = "ja-JP";	// the games' home platform
+if (typeof System.uiLanguage == "undefined") System.uiLanguage = "ja";
+if (typeof System.uiLanguageCandidates == "undefined") System.uiLanguageCandidates = [ "ja" ];
+if (typeof System.writeEnvValue == "undefined") System.writeEnvValue = function(name, value) {};
+if (typeof System.registerHotKey == "undefined") System.registerHotKey = function() { return false; };
+if (typeof System.unregisterHotKey == "undefined") System.unregisterHotKey = function() {};
+)TJS");
+
+void InstallEngineNativesCompat() {
+    LinkFstatDll();
+    g_linked_plugins.insert("fstat.dll");
+    LinkWindowExDll();
+    g_linked_plugins.insert("windowex.dll");
+
+    iTJSDispatch2* g = Global();
+    tTJSVariant sv;
+    if (TJS_SUCCEEDED(g->PropGet(0, TJS_W("System"), nullptr, &sv, g)) && sv.Type() == tvtObject) {
+        // System.inputString(caption, prompt, initial) -> text, or void when cancelled
+        // (Kirikiri 2's TVPInputQuery dialog; games use it for name entry). Switch: the
+        // system keyboard; PC: the initial text as if confirmed, or $KK4S_INPUT_STRING.
+        DefineFunction(sv.AsObjectNoAddRef(), TJS_W("inputString"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
+            if (n < 3) return TJS_E_BADPARAMCOUNT;
+            ttstr caption = *p[0], prompt = *p[1], initial = *p[2];
+            std::string text = Utf8(initial);
+            bool ok;
+            if (kk4s::EditTextAvailable()) {
+                ok = kk4s::EditText(Utf8(prompt.IsEmpty() ? caption : prompt), text);
+            } else {
+                if (const char* env = getenv("KK4S_INPUT_STRING")) text = env;
+                ok = true;
+            }
+            kk4s::Log("compat: System.inputString(\"%s\") -> %s", Utf8(prompt).c_str(), ok ? text.c_str() : "(cancelled)");
+            if (r) {
+                if (ok) {
+                    tjs_string w;
+                    *r = TVPUtf8ToUtf16(w, text) ? ttstr(w.c_str()) : ttstr(text.c_str());
+                } else {
+                    r->Clear();
+                }
+            }
+            return TJS_S_OK;
+        });
+    }
+    tTJSVariant no(false);
+    EnsureClassMember(TJS_W("Debug"), TJS_W("visible"), no); // the debug console is never shown
+    RunTjsShim("engine natives", kEngineNativesShim);
+}
+
 // KAGParserEx.dll replaces the KAG parser: the engine's own parser does the work; the one
 // visible difference games rely on is "taglist" in tag elements (KAGParser.cpp).
 static void LinkKAGParserExDll() { ::TVPKAGParserExMode = true; }
@@ -1704,7 +1761,7 @@ static const PluginEntry kPlugins[] = {
 // One link per game: a plugin registered twice would overwrite globals. This
 // must be cleared for every new game (the TJS engine and its globals are new,
 // but this file stays loaded when the player returns to the launcher).
-static std::set<std::string> g_linked_plugins;
+// (g_linked_plugins is defined above InstallEngineNativesCompat.)
 
 void ResetPluginLinks() { g_linked_plugins.clear(); }
 

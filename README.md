@@ -128,7 +128,7 @@ bash tools/run-tests.sh                                                  # xp3 +
 - [docs/roadmap.md](docs/roadmap.md) — план
 - [docs/HANDOFF.md](docs/HANDOFF.md) — з чого почати розробнику
 - [docs/debugging.md](docs/debugging.md) — логи, краш-репорти, FTP
-- [docs/kirikiroid-compat.md](docs/kirikiroid-compat.md), [docs/plugins.md](docs/plugins.md) — сумісність
+- [docs/kirikiroid-compat.md](docs/kirikiroid-compat.md), [docs/plugins.md](docs/plugins.md), [docs/api-coverage.md](docs/api-coverage.md) — сумісність (плагіни; які вбудовані члени класів є, а яких бракує порівняно з krkr2/krkrz)
 
 ## Правила проєкту
 

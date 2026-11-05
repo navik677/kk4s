@@ -536,6 +536,7 @@ void BeforeStartup() {
     DetectSteamBuild();
     InstallScriptsCompat(); // Scripts.foreach/getObjectKeys/clone when the engine lacks them
     InstallWindowMenuCompat(); // Window.exSystemMenu (menu.dll member KAGZ sets early)
+    InstallEngineNativesCompat(); // krkrz-native Storages/Window/System members, System.inputString
     if (!RunGameScript("xp3filter.tjs")) {
         // A .tpm plugin decrypts the archives on Windows; kk4s cannot run it yet.
         std::string dir = kk4s::GameDir();

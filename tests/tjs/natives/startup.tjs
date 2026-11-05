@@ -1,0 +1,33 @@
+// Members Kirikiri Z / Kirikiri 2 have natively, present without Plugins.link
+// (compat/kk4s_plugins.cpp InstallEngineNativesCompat).
+var failures = 0;
+function check(what, ok) { if (!ok) { Debug.message("natives FAIL " + what); failures++; } }
+
+var st = ["dirlist", "dirlistEx", "dirtree", "fstat", "getTime", "isExistentDirectory", "createDirectory",
+          "removeDirectory", "copyFile", "moveFile", "deleteFile", "exportFile", "getMD5HashString",
+          "getTemporaryName", "truncateFile", "clearStorageCaches", "isExistentStorageNoSearchNoNormalize"];
+for (var i = 0; i < st.count; i++) check("Storages." + st[i], typeof Storages[st[i]] == "Object");
+var sy = ["getMonitorInfo", "getDisplayMonitors", "getSystemMetrics", "readEnvValue", "expandEnvString",
+          "getCursorPos", "breathe", "getAboutString", "inputString", "writeEnvValue"];
+for (var i = 0; i < sy.count; i++) check("System." + sy[i], typeof System[sy[i]] == "Object");
+check("System.systemLanguage", System.systemLanguage == "ja-JP" && System.uiLanguage == "ja");
+check("Debug.visible", Debug.visible == false);
+check("readEnvValue(OS)", System.readEnvValue("OS") == "Windows_NT");
+
+// inputString: Switch shows the system keyboard; the PC returns $KK4S_INPUT_STRING (set by the test)
+var name = System.inputString("Name", "Enter your name", "default");
+check("inputString -> " + name, name == "名前テスト");
+
+class TestWindow extends Window {
+    function TestWindow() { super.Window(); setInnerSize(200, 100); add(new Layer(this, null)); }
+}
+var w = new TestWindow();
+check("Window.getClientRect without windowEx", w.getClientRect().w == w.innerWidth);
+w.maximize();
+// linking the plugins afterwards changes nothing
+Plugins.link("fstat.dll");
+Plugins.link("windowEx.dll");
+check("dirlist after link", typeof Storages.dirlist == "Object");
+
+if (failures == 0) Debug.message("engine natives: PASS");
+else Debug.message("engine natives: " + failures + " failure(s)");

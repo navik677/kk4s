@@ -35,6 +35,10 @@ void AfterExecuteStorage(const ttstr& shortname);
 // Window.exSystemMenu during construction). Idempotent; called from BeforeStartup().
 void InstallWindowMenuCompat();
 
+// Kirikiri Z's native Storages/Window/System members (fstat / windowEx contracts) and
+// Kirikiri 2's System.inputString, for every game; only missing members are added.
+void InstallEngineNativesCompat();
+
 // Plugins.link(): kk4s native replacement for a Windows plugin DLL.
 // Returns false if kk4s has none (compat/kk4s_plugins.cpp).
 bool LinkBuiltinPlugin(const ttstr& name);
