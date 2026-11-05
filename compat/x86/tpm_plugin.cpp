@@ -35,11 +35,74 @@ std::string BareName(const std::string& sig) {
 TpmPlugin::TpmPlugin() : m_(new Machine) {}
 TpmPlugin::~TpmPlugin() = default;
 
+// A guest tTJSVariantString with Kirikiri's layout (tjsVariantString.h, 32-bit):
+// RefCount @0, LongString @4, ShortString[22] @8, Length @52, HeapFlag @56,
+// Hint @60. The text always goes to LongString, which tp_stub's inline
+// operator const tjs_char*() returns when it is set.
+static uint32_t MakeVariantString(Machine& m, const std::u16string& s) {
+    uint32_t vs = m.Alloc(64 + 2 * ((uint32_t)s.size() + 1));
+    uint32_t text = vs + 64;
+    for (size_t i = 0; i < s.size(); ++i) m.mem.Write16(text + 2 * (uint32_t)i, (uint16_t)s[i]);
+    m.mem.Write32(vs + 0, 0);  // RefCount (0 = one reference in TJS)
+    m.mem.Write32(vs + 4, text);
+    m.mem.Write32(vs + 52, (uint32_t)s.size());
+    return vs;
+}
+
+// The text of a guest ttstr (a pointer to a tTJSVariantString, or 0 = empty).
+static std::u16string ReadTtstr(Machine& m, uint32_t self) {
+    uint32_t vs = self ? m.mem.Read32(self) : 0;
+    if (!vs) return std::u16string();
+    uint32_t text = m.mem.Read32(vs + 4);
+    return m.mem.ReadWString(text ? text : vs + 8, 1 << 16);
+}
+
 uint32_t TpmPlugin::TpStub(const std::string& sig) {
     Machine& m = *m_;
     std::string name = BareName(sig);
-    if (notes_.size() < 64) notes_.push_back("asks for " + name);
+    if (notes_.size() < 64) notes_.push_back("asks for " + sig);
     using C = Machine::Conv;
+    // tTJSString (ttstr): one pointer to a tTJSVariantString; tp_stub calls its
+    // members as __stdcall functions with `this` first
+    if (sig.compare(0, 23, "tTJSString::tTJSString(") == 0) {
+        if (sig.find("const tjs_char *") != std::string::npos)
+            return m.AddHost(sig, 2, C::Stdcall, [](Machine& mm) {
+                uint32_t self = mm.Arg(0), str = mm.Arg(1);
+                mm.mem.Write32(self, str ? MakeVariantString(mm, mm.mem.ReadWString(str, 1 << 16)) : 0);
+                return self;
+            });
+        if (sig.find("const tjs_nchar *") != std::string::npos || sig.find("const char *") != std::string::npos)
+            return m.AddHost(sig, 2, C::Stdcall, [](Machine& mm) {
+                uint32_t self = mm.Arg(0), str = mm.Arg(1);
+                std::u16string w;
+                if (str) for (char c : mm.mem.ReadCString(str, 1 << 16)) w += (char16_t)(uint8_t)c;
+                mm.mem.Write32(self, str ? MakeVariantString(mm, w) : 0);
+                return self;
+            });
+        if (sig.find("const tTJSString &") != std::string::npos || sig.find("const ttstr &") != std::string::npos)
+            return m.AddHost(sig, 2, C::Stdcall, [](Machine& mm) {
+                uint32_t self = mm.Arg(0), other = mm.Arg(1);
+                mm.mem.Write32(self, other ? mm.mem.Read32(other) : 0);  // shared, never freed
+                return self;
+            });
+        if (sig == "tTJSString::tTJSString()")
+            return m.AddHost(sig, 1, C::Stdcall, [](Machine& mm) { mm.mem.Write32(mm.Arg(0), 0); return mm.Arg(0); });
+    }
+    if (sig.find("tTJSString::operator +=(const tjs_char *)") != std::string::npos)
+        return m.AddHost(sig, 2, C::Stdcall, [](Machine& mm) {
+            uint32_t self = mm.Arg(0);
+            mm.mem.Write32(self, MakeVariantString(mm, ReadTtstr(mm, self) + mm.mem.ReadWString(mm.Arg(1), 1 << 16)));
+            return 0u;
+        });
+    if (sig.find("tTJSString::operator +=(const tTJSString &)") != std::string::npos ||
+        sig.find("tTJSString::operator +=(const ttstr &)") != std::string::npos)
+        return m.AddHost(sig, 2, C::Stdcall, [](Machine& mm) {
+            uint32_t self = mm.Arg(0);
+            mm.mem.Write32(self, MakeVariantString(mm, ReadTtstr(mm, self) + ReadTtstr(mm, mm.Arg(1))));
+            return 0u;
+        });
+    if (sig.compare(0, 13, "tTJSString::~") == 0)
+        return m.AddHost(sig, 1, C::Stdcall, [](Machine&) { return 0u; });
     if (name == "TVPSetXP3ArchiveExtractionFilter")
         return m.AddHost(name, 1, C::Stdcall, [this](Machine& mm) { filter_ = mm.Arg(0); return 0u; });
     if (name == "TVPThrowPluginUnboundFunctionError")
@@ -49,6 +112,26 @@ uint32_t TpmPlugin::TpStub(const std::string& sig) {
     if (name == "TVPThrowExceptionMessage")
         return m.AddHost(name, 1, C::Stdcall, [](Machine& mm) -> uint32_t {
             throw Fault{"the plugin raised an error: " + Narrow(mm.mem.ReadWString(mm.Arg(0), 512))};
+        });
+    if (name == "TVPGetAppPath")  // ttstr returned by value: hidden result pointer first
+        return m.AddHost(name, 1, C::Stdcall, [](Machine& mm) {
+            mm.mem.Write32(mm.Arg(0), MakeVariantString(mm, u"file://./c/game/"));
+            return mm.Arg(0);
+        });
+    if (name == "TVPRegisterStorageMedia" || name == "TVPUnregisterStorageMedia")  // not used, recorded
+        return m.AddHost(name, 1, C::Stdcall, [this, name](Machine& mm) {
+            if (notes_.size() < 64) notes_.push_back(name + " called (ignored)");
+            (void)mm;
+            return 0u;
+        });
+    if (name == "TVPSetCommandLine")  // (const tjs_char *name, const ttstr &value): recorded only
+        return m.AddHost(name, 2, C::Stdcall, [this](Machine& mm) {
+            std::string opt = Narrow(mm.mem.ReadWString(mm.Arg(0), 256));
+            uint32_t vs = mm.Arg(1) ? mm.mem.Read32(mm.Arg(1)) : 0;
+            uint32_t text = vs ? mm.mem.Read32(vs + 4) : 0;
+            std::string val = text ? Narrow(mm.mem.ReadWString(text, 256)) : "";
+            if (notes_.size() < 64) notes_.push_back("sets command line " + opt + "=" + val);
+            return 0u;
         });
     if (name == "TVPAddLog" || name == "TVPAddImportantLog")
         return m.AddHost(name, 1, C::Stdcall, [](Machine&) { return 0u; });
@@ -250,6 +333,47 @@ uint32_t TpmPlugin::Win32(const std::string& n) {
             uint32_t n2 = (uint32_t)s.size() < cap ? (uint32_t)s.size() : cap;
             for (uint32_t i = 0; i < n2; ++i) mm.mem.Write8(dst + i, s[i] < 0x80 ? (uint8_t)s[i] : '?');
             return n2;
+        });
+    if (n == "LCMapStringW" || n == "LCMapStringA" || n == "LCMapStringEx")
+        return H(n == "LCMapStringEx" ? 9 : 6, [n](Machine& mm) {
+            // case mapping only (LCMAP_LOWERCASE 0x100, LCMAP_UPPERCASE 0x200)
+            bool wide = n != "LCMapStringA";
+            uint32_t flags = mm.Arg(1), src = mm.Arg(2), dst = mm.Arg(4), cap = mm.Arg(5);
+            int32_t len = (int32_t)mm.Arg(3);
+            if (len < 0) len = (int32_t)(wide ? mm.mem.ReadWString(src, 1 << 16).size() : mm.mem.ReadCString(src, 1 << 16).size()) + 1;
+            if (!cap) return (uint32_t)len;
+            if ((uint32_t)len > cap) return 0u;
+            for (int32_t i = 0; i < len; ++i) {
+                uint32_t c = wide ? mm.mem.Read16(src + 2 * (uint32_t)i) : mm.mem.Read8(src + (uint32_t)i);
+                if ((flags & 0x100) && c >= 'A' && c <= 'Z') c += 32;
+                if ((flags & 0x200) && c >= 'a' && c <= 'z') c -= 32;
+                if (wide) mm.mem.Write16(dst + 2 * (uint32_t)i, (uint16_t)c); else mm.mem.Write8(dst + (uint32_t)i, (uint8_t)c);
+            }
+            return (uint32_t)len;
+        });
+    if (n == "GetStringTypeW" || n == "GetStringTypeA" || n == "GetStringTypeExW")
+        return H(n == "GetStringTypeA" || n == "GetStringTypeExW" ? 5 : 4, [n](Machine& mm) {
+            // CT_CTYPE1 classes for ASCII; everything else is "alpha"
+            bool ex = n != "GetStringTypeW";
+            uint32_t src = mm.Arg(ex ? 2 : 1), dst = mm.Arg(ex ? 4 : 3);
+            int32_t len = (int32_t)mm.Arg(ex ? 3 : 2);
+            bool wide = n.find('W') != std::string::npos;
+            if (len < 0) len = (int32_t)(wide ? mm.mem.ReadWString(src, 1 << 16).size() : mm.mem.ReadCString(src, 1 << 16).size()) + 1;
+            for (int32_t i = 0; i < len; ++i) {
+                uint32_t c = wide ? mm.mem.Read16(src + 2 * (uint32_t)i) : mm.mem.Read8(src + (uint32_t)i);
+                uint16_t t = 0;
+                if (c >= 'A' && c <= 'Z') t |= 0x101;
+                else if (c >= 'a' && c <= 'z') t |= 0x102;
+                else if (c >= '0' && c <= '9') t |= 0x4;
+                else if (c == ' ' || c == '\t') t |= 0x48;
+                else if (c == '\n' || c == '\r' || c == '\v' || c == '\f') t |= 0x28;
+                else if (c < 0x20 || c == 0x7f) t |= 0x20;
+                else if (c < 0x80) t |= 0x10;
+                else t |= 0x100;
+                if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) t |= 0x80;
+                mm.mem.Write16(dst + 2 * (uint32_t)i, t);
+            }
+            return 1u;
         });
     if (n == "lstrlenA") return H(1, [](Machine& mm) { return mm.Arg(0) ? (uint32_t)mm.mem.ReadCString(mm.Arg(0), 1 << 20).size() : 0u; });
     if (n == "lstrlenW") return H(1, [](Machine& mm) { return mm.Arg(0) ? (uint32_t)mm.mem.ReadWString(mm.Arg(0), 1 << 20).size() : 0u; });
