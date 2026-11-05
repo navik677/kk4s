@@ -521,7 +521,7 @@ fmtint(tjs_char *buffer, size_t *currlen, size_t maxlen,
 {
 	int signvalue = 0;
 	tjs_uint64 uvalue;
-	tjs_char convert[20];
+	tjs_char convert[24]; /* kk4s: 22 octal digits of a 64-bit value (was 20: the top digit was dropped) */
 	int place = 0;
 	int spadlen = 0; /* amount to space pad */
 	int zpadlen = 0; /* amount to zero pad */
@@ -535,7 +535,7 @@ fmtint(tjs_char *buffer, size_t *currlen, size_t maxlen,
 	if(!(flags & DP_F_UNSIGNED)) {
 		if( value < 0 ) {
 			signvalue = TJS_W('-');
-			uvalue = -value;
+			uvalue = (tjs_uint64)0 - (tjs_uint64)value; /* kk4s: -INT64_MIN was UB */
 		} else {
 			if (flags & DP_F_PLUS)  /* Do a sign (+/i) */
 				signvalue = TJS_W('+');
@@ -558,12 +558,16 @@ fmtint(tjs_char *buffer, size_t *currlen, size_t maxlen,
 		unsigned digit = (unsigned)(uvalue % (unsigned)base);
 		convert[place++] = digits[digit];
 		uvalue = (uvalue / (unsigned)base );
-	} while(uvalue && (place < 20));
-	if (place == 20) place--;
+	} while(uvalue && (place < 23));
+	/* kk4s: C's '#' flag. Octal: the first digit is a 0. Hex: "0x" / "0X"
+	   before non-zero values (it was ignored). */
+	if ((flags & DP_F_NUM) && base == 8 && convert[place - 1] != TJS_W('0') && max <= place)
+		convert[place++] = TJS_W('0');
+	int prefixlen = ((flags & DP_F_NUM) && base == 16 && value != 0) ? 2 : 0;
 	convert[place] = 0;
 
 	zpadlen = max - place;
-	spadlen = min - MAX (max, place) - (signvalue ? 1 : 0);
+	spadlen = min - MAX (max, place) - (signvalue ? 1 : 0) - prefixlen;
 	if (zpadlen < 0) zpadlen = 0;
 	if (spadlen < 0) spadlen = 0;
 	if (flags & DP_F_ZERO) {
@@ -587,6 +591,10 @@ fmtint(tjs_char *buffer, size_t *currlen, size_t maxlen,
 	/* Sign */
 	if (signvalue) 
 		DOPR_OUTCH(buffer, *currlen, maxlen, signvalue);
+	if (prefixlen) {
+		DOPR_OUTCH(buffer, *currlen, maxlen, TJS_W('0'));
+		DOPR_OUTCH(buffer, *currlen, maxlen, caps ? TJS_W('X') : TJS_W('x'));
+	}
 
 	/* Zeros */
 	if (zpadlen > 0) {
