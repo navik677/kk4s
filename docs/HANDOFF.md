@@ -65,6 +65,25 @@ Test state at `476353c`: 29/29 on the normal desktop build; the Switch NRO build
 at `cd79ed5` (24/24) — everything after that (extrans, saveStruct, KAGParserEx, psdfile) has not been
 under ASan yet.
 
+Session 3 (2026-11-05, local Fedora box, user's task list). **Step 1: full ASan + UBSan run.** First
+run of extrans / saveStruct / KAGParserEx / psdfile and everything else under sanitizers since `cd79ed5`,
+built with clang 22 (see Dev setup), with `UBSAN_OPTIONS=halt_on_error=1`:
+
+| Commit | What | Verified by |
+|---|---|---|
+| `f9554f9` | csvParser `initStorage` deleted an `iTJSTextReadStream` through the interface (no virtual destructor): ASan new-delete-type-mismatch; now `Destruct()`, also on a throw | `tests/csvvar` under ASan |
+| `cc6de88` | TLG5 slide decoder / TLG6 bit pool: unaligned `uint16`/`uint32` loads → `memcpy`; TLG6 chroma decode shifted negative values → unsigned shifts (same bytes out) | `tests/layersave` (TLG5/TLG6 round trips) under UBSan |
+| `81f8794` | psd:// in-memory BMP: pixels at offset 56 instead of 54 (psdparse writes `uint32_t`) | `tests/psdfile` under UBSan |
+| `10006a6` | wheel: sdl2-compat delivers notches only in `preciseY` (y == 0); scripted wheel events were lost on this box | `tests/input` |
+| `b88dfbb` | clang build fix (const `GetHint`), `-fno-sanitize=null`: TJS calls methods on a null `tTJSVariantString` (the empty string) by design, `if(!this)` + `-fno-delete-null-pointer-checks` | whole suite |
+
+Test state at `b88dfbb`: **29/29** normal (GCC 16), **29/29** ASan+UBSan (clang 22, halt on error), no
+sanitizer report left in the suite's stderr. Not run: leak checking (`detect_leaks=0`, third-party leaks).
+Open question noticed on the way, not changed: `TVPTLG5DecompressSlide_c`'s fast path copies a match with
+`memcpy`/`memmove` when `mpos + mlen < 4096`, which differs from a byte-by-byte LZSS copy when the match
+overlaps the write position (`mpos < r < mpos + mlen`). Our encoder's round trips pass; whether real TLG5
+files contain such matches is unchecked (compare with krkrz's `tvpgl.c` before touching it).
+
 **STOP POINT 2 (2026-11-05, user stopped the session).** Committed as work in progress and **not
 built**: `engine/source/plugins/layerExDraw/` — layerExDraw.dll without GDI+: vendored plutovg (MIT,
 `plutovg/UPSTREAM.txt`), `gdip_kk4s.h` (GDI+ enums with their real values, PointF / RectF / Matrix /
@@ -324,6 +343,19 @@ bash tools/build-desktop.sh            # or ASAN=1; DEPS=1 installs deps with ap
 cmake --build build-desktop -j$(nproc) && cp build-desktop/kk4s out-desktop/   # incremental
 KK4S_ROOT=/tmp/kk4s-run ./out-desktop/kk4s game/fsn    # one game; without an argument: launcher
 ```
+
+The desktop build also needs **capstone** (CX scheme recovery). On the dev box without root it comes
+from the Fedora RPM, unpacked (2026-11-05; `capstone` itself is installed, only `-devel` is missing):
+`dnf download capstone-devel` → `rpm2cpio … | cpio -idm` into `~/.local/kk4s-deps/root`, symlink
+`libcapstone.so` → `/usr/lib64/libcapstone.so.5`, a `~/.local/kk4s-deps/pc/capstone.pc` pointing there.
+Then configure with `PKG_CONFIG_PATH=~/.local/kk4s-deps/pc CXXFLAGS=-I$HOME/.local/kk4s-deps/root/usr/include`
+(the sources include `<capstone/capstone.h>`). **ASan here: clang** — GCC's `libasan` is not installed,
+clang's compiler-rt is: `CC=clang CXX=clang++ cmake -S . -B build-asan -G Ninja -DKK4S_PLATFORM=desktop
+-DKK4S_ASAN=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo` (same env as above). To see sanitizer reports, which the
+tests capture, run the suite through a wrapper that appends kk4s' stderr to a file, with
+`UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1`; symbolize with `addr2line -f -C -i -e build-asan/kk4s`.
+The box has **sdl2-compat** (SDL2 API over SDL3); engine tests must run with `SDL_VIDEODRIVER=dummy`
+(`run-tests.sh` sets it; a test started by hand without it opens a real window and the mouse lands 1 px off).
 
 ### Regression suite (before touching storage, startup or decoders)
 
