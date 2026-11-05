@@ -125,6 +125,15 @@ protected:
 	 */
 	void close() {
 		if (stream) {
+			// kk4s: write back into the variable, as upstream did on close; the
+			// Kirikiroid2 port had lost this, so writing to var:// did nothing
+			if (name != TJS_W("")) {
+				tTVPMemoryStream *ms = static_cast<tTVPMemoryStream *>(stream); // created in open()
+				tjs_uint64 size = ms->GetSize();
+				const tjs_uint8 *data = (const tjs_uint8 *)ms->GetInternalBuffer();
+				value = tTJSVariant(data, (tjs_uint)size);
+				parent.AsObjectClosureNoAddRef().PropSet(TJS_MEMBERENSURE, name.c_str(), NULL, &value, NULL);
+			}
 			delete stream;
 			stream = NULL;
 		}

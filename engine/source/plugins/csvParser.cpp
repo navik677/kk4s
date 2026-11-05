@@ -287,7 +287,10 @@ public:
 	/**
 	 * 初期化処理
 	 */
-	void initStorage(tTJSVariantString *filename, bool utf8=false) {
+	// kk4s: readmode as upstream: omitted -> TextStream, a String -> TextStream
+	// with that mode (Array.load style), an Integer -> raw UTF-8 when true. A
+	// mode string was converted to a number before.
+	void initStorage(tTJSVariantString *filename, bool utf8=false, const tjs_char *modestr=TJS_W("")) {
 		clear();
 		ttstr text;
 		if (utf8) {
@@ -300,7 +303,7 @@ public:
 			delete []buff;
 			delete pStream;
 		} else {
-			iTJSTextReadStream *pStream = TVPCreateTextStreamForRead(filename, TJS_W(""));
+			iTJSTextReadStream *pStream = TVPCreateTextStreamForRead(filename, modestr ? modestr : TJS_W(""));
 			pStream->Read(text, 0);
 			delete pStream;
 		}
@@ -395,7 +398,9 @@ static iTJSDispatch2 * Create_NC_CSVParser()
 		{
 			TJS_GET_NATIVE_INSTANCE(/*var. name*/_this, /*var. type*/NI_CSVParser);
 			if (numparams < 1) return TJS_E_BADPARAMCOUNT;
-			_this->initStorage(param[0]->AsStringNoAddRef(), numparams > 1 && (tjs_int)*param[1] != 0);
+			if (!TJS_PARAM_EXIST(1)) _this->initStorage(param[0]->AsStringNoAddRef());
+			else if (param[1]->Type() == tvtString) _this->initStorage(param[0]->AsStringNoAddRef(), false, param[1]->GetString());
+			else _this->initStorage(param[0]->AsStringNoAddRef(), (tjs_int)*param[1] != 0);
 			return TJS_S_OK;
 		}
 		TJS_END_NATIVE_METHOD_DECL(/*func. name*/initStorage)
@@ -423,7 +428,9 @@ static iTJSDispatch2 * Create_NC_CSVParser()
 		{
 			TJS_GET_NATIVE_INSTANCE(/*var. name*/_this, /*var. type*/NI_CSVParser);
 			if (numparams > 0) {
-				_this->initStorage(param[0]->AsStringNoAddRef(), numparams > 1 && (tjs_int)*param[1] != 0);
+				if (!TJS_PARAM_EXIST(1)) _this->initStorage(param[0]->AsStringNoAddRef());
+				else if (param[1]->Type() == tvtString) _this->initStorage(param[0]->AsStringNoAddRef(), false, param[1]->GetString());
+				else _this->initStorage(param[0]->AsStringNoAddRef(), (tjs_int)*param[1] != 0);
 			}
 			_this->parse(objthis);
 			return TJS_S_OK;

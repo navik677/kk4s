@@ -1,0 +1,52 @@
+// csvParser.dll and varfile.dll (tests/csvvar/smoke.py): both are engine
+// internal plugins inherited from Kirikiroid2; values from the upstream
+// sources (wamsoft/csvParser, wamsoft/varfile).
+Plugins.link("csvParser.dll");
+Plugins.link("varfile.dll");
+var fails = 0;
+function expect(name, got, want) {
+    if (got !== want) {
+        fails++;
+        Debug.message("CSVVAR FAIL " + name + ": got [" + got + "] want [" + want + "]");
+    }
+}
+
+// quotes, doubled quotes, separators and a line break inside a field
+var text = 'a,b,c\n"x,1","say ""hi""",\n"two\nlines",z\n';
+var p = new CSVParser();
+p.init(text);
+var rows = [];
+var cols;
+while ((cols = p.getNextLine()) !== void) rows.add(cols.join("|"));
+expect("rows", rows.join("/"), "a|b|c/x,1|say \"hi\"|/two\r\nlines|z");
+expect("line number", p.currentLineNumber, 3);
+
+// parse() with doLine events and a tab separator
+class Collect extends CSVParser {
+    var got = [];
+    function Collect() { super.CSVParser(this, #"\t"); } // the separator is a character code
+    function doLine(columns, lineNo) { got.add(lineNo + ":" + columns.join(",")); }
+}
+var c = new Collect();
+c.parse("k\tv\nname\t名前\n");
+expect("doLine", c.got.join(" "), "1:k,v 2:name,名前");
+
+// from a file, the readmode variants
+var path = System.dataPath + "t.csv";
+["id,name", "1,テスト", "2,їжак"].save(path);
+var q = new CSVParser();
+q.initStorage(path);
+expect("storage default", q.getNextLine().join("|") + "/" + q.getNextLine().join("|"), "id|name/1|テスト");
+q.initStorage(path, "");
+q.getNextLine(); q.getNextLine();
+expect("storage mode string", q.getNextLine().join("|"), "2|їжак");
+
+// varfile: var://./<global dictionary path>/<octet member>
+global.vfdata = %[blob: <% 61 62 63 0a 64 65 66 %>];
+var lines = [].load("var://./vfdata/blob");
+expect("var read", lines.join("|"), "abc|def");
+["one", "two"].save("var://./vfdata/out");
+expect("var write type", typeof vfdata.out, "Octet");
+expect("var write back", [].load("var://./vfdata/out").join("|"), "one|two");
+
+Debug.message(fails ? "CSVVAR: " + fails + " failure(s)" : "CSVVAR PASS");
