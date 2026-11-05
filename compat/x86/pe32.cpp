@@ -31,10 +31,14 @@ std::string Lower(std::string s) {
 uint32_t PeImage::Export(const std::string& name) const {
     auto it = exports.find(name);
     if (it != exports.end()) return it->second;
-    for (const auto& e : exports)  // _V2Link@4 and friends
-        if (e.first.size() > name.size() + 1 && e.first[0] == '_' && e.first.compare(1, name.size(), name) == 0 &&
-            e.first[name.size() + 1] == '@')
-            return e.second;
+    for (const auto& e : exports) {  // stdcall decorations: _V2Link@4 (MSVC), V2Link@4 (MinGW)
+        const std::string& n = e.first;
+        size_t at = n.rfind('@');
+        if (at == std::string::npos) continue;
+        std::string bare = n.substr(0, at);
+        if (!bare.empty() && bare[0] == '_') bare.erase(0, 1);
+        if (bare == name) return e.second;
+    }
     return 0;
 }
 
