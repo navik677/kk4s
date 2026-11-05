@@ -8,7 +8,22 @@ not the target. No per-game fixes, game files, keys or conversion; compatibility
 
 ## Where we are (2026-11-05)
 
-### Branch `cloud-session` — universal-runtime sprint (2026-11-05, not merged, not hardware-tested)
+### Branch `cloud-session` — universal-runtime sprint (2026-11-05)
+
+**STOP POINT 3 (2026-11-05, end of session 3 on the local Fedora box).** `main` = `49dfe56` (the sprint up
+to the layerExDraw WIP, merged and seen on the Switch: games run, Fate/FSN and Tsukihime show 4:3 with
+bars). `cloud-session` is ahead of it with session 3 (steps 1-5 below): sanitizer fixes, layerExDraw built,
+optional soft mode, the `.tpm` x86 interpreter, sprintf fixes, ripple / BGRA checks. Test state at the
+last code commit: **35/35** normal (GCC 16) and **35/35** ASan+UBSan (clang 22, halt on error, no
+report); the NRO builds (29,029,797 bytes, not deployed). Nothing of session 3 was run on the Switch or
+with a real game. Next, in this order:
+1. Hardware check of this branch (FSN incl. the Russian patch, ATRI, Tsukihime, NekoPara), then merge.
+2. A real game's `.tpm` through the interpreter: its log names any missing Win32 / tp_stub function
+   (`tpm: ... (not provided by kk4s)`); add those to `compat/x86/tpm_plugin.cpp`.
+3. Aspect: 16:9 by stretch or an upscaler + a launcher switch original 4:3 / 16:9 (user, 2026-11-05).
+4. KAGZ `<storage>@<piece>%layer` (NekoPara `title.ks:13`), plugins by real logs, soft mode on a real game.
+5. Open question noted in step 1: TLG5's fast path for overlapping LZSS matches (compare with krkrz).
+
 
 **Goal of the sprint** (user brief): kk4s must run *any* Kirikiri2/KAG/TJS2 game folder unmodified —
 commercial, doujin, ancient, KAGZ, odd plugins and archives. No per-title code; implement the engine

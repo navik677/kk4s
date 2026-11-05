@@ -15,7 +15,9 @@ Last update: 2026-11-05.
 
 ## Branch `cloud-session` (2026-11-05, universal-runtime sprint)
 
-Not merged, not run on hardware, no real game available in the cloud session. Verified: the
+The sprint up to `49dfe56` is merged into `main` and ran on the Switch (games work; 4:3 note above).
+Session 3 on top of it (sanitizer fixes, layerExDraw, soft mode, `.tpm` interpreter, sprintf) is not
+merged and not run on hardware: **35/35** normal and ASan+UBSan, NRO builds. Earlier verification: the
 synthetic suite (`tools/run-tests.sh`, 25/25 normal; 24/24 ASan+UBSan before extrans) on the Linux build, and
 that the Switch NRO builds (devkitA64 docker image). Commit list and details: `docs/HANDOFF.md`.
 
