@@ -167,6 +167,25 @@ V2Link (`7c3f2ea`) but does not host storage media; NekoPara does not need it. T
 ASan+UBSan; the NRO builds. Never write probe output with a relative `file://./` path: it lands in the game
 folder (happened once, cleaned up).
 
+**E-mote investigation (2026-11-05, stopped by the usage limit; no code yet).**
+- NekoPara has no static character sprites: every character is an E-mote 3.0 PSB (`emote.xp3`, 79 files;
+  `emotewin.xp3` holds `dx_` variants). Scripts drive it through `Motion.EmotePlayer` variables
+  (`face_eye_open`, `head_LR`, `body_slant`, ...), `playTimeline`, `setVariable(name, value, time, easing)`.
+- The PSB (v2) header is plain; `[OffsetNames, OffsetChunkOffsets)` is encrypted, chunk tables and
+  texture data are plain. FreeMote (CC BY-NC-SA: read only, never copy) describes a xorshift128 body cipher
+  (seeds 123456789 / 362436069 / 521288629, key = 4th word, next byte from the low byte of the current word,
+  new word when it is 0). A 2^32 search with that cipher and keystream skips 0/4/8/32/36/40, checked by the
+  exact length of the strings offset array (it must end at OffsetStringsData), found **no** key: this
+  2014 build uses a variant. Search tool: rebuild from this note (it was in the scratchpad, not committed).
+- The game's `plugin/emoteplayer.dll` contains the seeds at file offsets 0x4b399 (code at VA 0x1004bf93,
+  `mov [ebp-0xc8], 0x75bcd15` — most likely the PSB cipher, read this next) and 0xb58fe / 0xb5bda (VA
+  0x100b64fc: a global RNG seeded from a call, probably time(), not the cipher). `emotedriver.dll` has
+  them at 0x9bc, 0xd68, 0x2092, 0xc9ff, 0xcbdb. Next: disassemble around VA 0x1004bf93 (`objdump -d -M intel`)
+  to get the exact generator, the start offset and where the key comes from; then recover it at runtime
+  from the game's DLL like the CX scheme recovery (keys stay in the game files).
+- Rendering: FreeMote's viewer calls the game's own emotedriver.dll; there is no open E-mote renderer.
+  Plan: first a static pose (each layer's default frame, no mesh deformation), then variables / timelines.
+
 **STOP POINT 2 (2026-11-05, user stopped the session; resolved in step 2 above).** Committed as work in progress and **not
 built**: `engine/source/plugins/layerExDraw/` — layerExDraw.dll without GDI+: vendored plutovg (MIT,
 `plutovg/UPSTREAM.txt`), `gdip_kk4s.h` (GDI+ enums with their real values, PointF / RectF / Matrix /
