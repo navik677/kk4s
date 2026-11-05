@@ -30,26 +30,24 @@ class TransLayer extends Layer {
     }
 }
 
-// sources: white -> black; mosaic starts from a 2 px black/white checkerboard,
-// ripple from 8 px horizontal stripes (its displacement bends them)
-function paint(l, method) {
+// sources: white -> black, or a black/white checkerboard of `cell` px going to
+// black (mosaic: 2 px; ripple and its cross-fade control: 16 px, so that its
+// displacement moves squares off their places)
+function paint(l, cell) {
     l.fillRect(0, 0, 640, 480, 0xffffffff);
-    if (method == "mosaic")
-        for (var y = 0; y < 480; y += 2)
-            for (var x = (y \ 2) % 2 * 2; x < 640; x += 4)
-                l.fillRect(x, y, 2, 2, 0xff000000);
-    if (method == "ripple")
-        for (var y = 0; y < 480; y += 16)
-            l.fillRect(0, y, 640, 8, 0xff000000);
+    if (cell)
+        for (var y = 0; y < 480; y += cell)
+            for (var x = (y \ cell) % 2 * cell; x < 640; x += cell * 2)
+                l.fillRect(x, y, cell, cell, 0xff000000);
 }
 
 global.fore = void;
 global.back = void;
-function start(method, opts = %[]) {
+function start(method, opts = %[], cell = 0) {
     if (fore !== void) { invalidate fore; invalidate back; }
     fore = new TransLayer(tw, tw.primaryLayer);
     back = new TransLayer(tw, tw.primaryLayer);
-    paint(fore, method);
+    paint(fore, cell);
     back.fillRect(0, 0, 640, 480, 0xff000000);
     fore.visible = true;
     back.visible = false;

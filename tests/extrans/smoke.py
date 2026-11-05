@@ -11,11 +11,12 @@ what only that transition can produce:
   not swapped: krkrs pixels are RGBA, option colours are 0xRRGGBB)
 - mosaic: the 2 px checkerboard of the first image has become large blocks
 - turn / rotatezoom / rotatevanish: pure white and pure black at once
-- crossfade (control): one uniform grey, which none of the above may be
-Every transition, ripple included, must end with onTransitionCompleted, and the
-log must not say "-> crossfade". Ripple's picture is NOT checked: half-way its
-frame of 8 px stripes still looked like a cross-fade on the desktop build (no
-visible displacement); see docs/HANDOFF.md.
+- ripple: from a 16 px checkerboard, many samples show the other colour than
+  the square they lie in (displacement); the same cross-fade shows none
+- crossfade (controls): one uniform grey from white; the checkerboard in place
+Every transition must end with onTransitionCompleted, and the log must not say
+"-> crossfade". (Horizontal stripes showed no vertical displacement in ripple;
+see docs/HANDOFF.md.)
 """
 import os
 from pathlib import Path
@@ -26,14 +27,16 @@ import tempfile
 
 BG = "0xff8000"
 METHODS = [
-    ("wave", f"%[bgcolor1: {BG}, bgcolor2: {BG}, maxh: 80]"),
-    ("mosaic", "%[maxsize: 40]"),
-    ("turn", f"%[bgcolor: {BG}]"),
-    ("rotatezoom", "%[]"),
-    ("rotatevanish", "%[]"),
-    ("rotateswap", f"%[bgcolor: {BG}]"),
-    ("ripple", "%[]"),
-    ("crossfade", "%[]"),
+    # (name, method, options, checkerboard cell in px or 0 for plain white)
+    ("wave", "wave", f"%[bgcolor1: {BG}, bgcolor2: {BG}, maxh: 80]", 0),
+    ("mosaic", "mosaic", "%[maxsize: 40]", 2),
+    ("turn", "turn", f"%[bgcolor: {BG}]", 0),
+    ("rotatezoom", "rotatezoom", "%[]", 0),
+    ("rotatevanish", "rotatevanish", "%[]", 0),
+    ("rotateswap", "rotateswap", f"%[bgcolor: {BG}]", 0),
+    ("ripple", "ripple", "%[]", 16),
+    ("crossfade", "crossfade", "%[]", 0),
+    ("crossfade-checker", "crossfade", "%[]", 16),
 ]
 STEP = 2400  # ms per transition (time 1600 + margin)
 
@@ -70,6 +73,18 @@ def near(c, want, tol=40):
     return all(abs(a - b) <= tol for a, b in zip(c, want))
 
 
+def displaced(px: dict, cell: int = 16) -> int:
+    """Samples whose darkness differs from the checkerboard square they lie in."""
+    count = 0
+    for (x, y), c in px.items():
+        if x % cell in (0, 1, cell - 2, cell - 1) or y % cell in (0, 1, 2, cell - 3, cell - 2, cell - 1):
+            continue  # square borders: scaling of the screenshot
+        black_square = (x - (y // cell) % 2 * cell) % (cell * 2) < cell
+        if (sum(c) < 60) != black_square:
+            count += 1
+    return count
+
+
 def check(method: str, px: dict):
     colours = list(px.values())
     orange = sum(near(c, (255, 128, 0)) for c in colours)
@@ -88,8 +103,14 @@ def check(method: str, px: dict):
     elif method == "crossfade":
         if white > n // 50 or black > n // 50:
             return f"crossfade control is not uniform (white {white}, black {black})"
+    elif method == "crossfade-checker":
+        moved = displaced(px)
+        if moved > n // 100:
+            return f"crossfade control moved checkerboard squares ({moved} of {n})"
     elif method == "ripple":
-        return None  # unverified picture, see the docstring
+        moved = displaced(px)
+        if moved < n // 20:
+            return f"ripple: no displacement half-way ({moved} of {n} samples off their square)"
     else:
         if white < n // 200 or black < n // 200:
             return f"{method}: looks like a cross-fade half-way (white {white}, black {black} of {n})"
@@ -107,10 +128,10 @@ def main() -> int:
         base = Path(temp)
         root = base / "user-data"
         lines = []
-        for i, (method, opts) in enumerate(METHODS):
+        for i, (name, method, opts, cell) in enumerate(METHODS):
             t = 1500 + i * STEP
-            lines.append(f"{t} eval start('{method}', {opts})")
-            lines.append(f"{t + 800} shot {method}.bmp")
+            lines.append(f"{t} eval start('{method}', {opts}, {cell})")
+            lines.append(f"{t + 800} shot {name}.bmp")
         lines.append(f"{1500 + len(METHODS) * STEP + 300} quit")
         script = base / "input.txt"
         script.write_text("\n".join(lines) + "\n", encoding="ascii")
@@ -126,14 +147,14 @@ def main() -> int:
         if "-> crossfade" in log:
             problems.append("a transition fell back to crossfade: " +
                             "; ".join(l for l in log.splitlines() if "-> crossfade" in l))
-        for method, _ in METHODS:
+        for name, method, _, _ in METHODS:
             if f"EXTRANS_DONE {method}" not in log:
                 problems.append(f"{method}: onTransitionCompleted never came")
-            shot = root / "shots" / f"{method}.bmp"
+            shot = root / "shots" / f"{name}.bmp"
             if not shot.exists():
-                problems.append(f"{method}: no screenshot")
+                problems.append(f"{name}: no screenshot")
                 continue
-            verdict = check(method, game_pixels(shot))
+            verdict = check(name, game_pixels(shot))
             if verdict:
                 problems.append(verdict)
         if result.returncode != 0:
@@ -143,7 +164,7 @@ def main() -> int:
         print("\n".join(l for l in log.splitlines() if "EXTRANS" in l or "exception" in l.lower()
                         or "script: eval" in l)[-4000:], file=sys.stderr)
         return 1
-    print(f"extrans transitions: PASS ({len(METHODS) - 1} methods + crossfade control)")
+    print(f"extrans transitions: PASS ({len(METHODS) - 2} methods + 2 crossfade controls)")
     return 0
 
 

@@ -54,11 +54,12 @@ ASan+UBSan build was 24/24 at `cd79ed5` (input and KAG3 tests also with
 
 **STOP POINT (2026-11-05, budget ran out).** Last commit `b644084` + this docs commit. Nothing is
 half-done in the working tree. Open threads, in this order:
-1. *Unverified:* ripple's picture. Half-way through white → black with 8 px stripes, the frame
-   looked exactly like a cross-fade (no displacement) on the desktop build; it finishes and does
-   not fall back. Check `Process` actually runs its displacement path (temporary log in
-   `StartProcess`/`Process` needs `#include "DebugIntf.h"` for `TVPAddLog`), compare with a krkr2
-   screenshot if possible. Also unverified: the extrans pictures on the Switch, extrans under ASan.
+1. *Partly verified:* ripple. From a 16 px checkerboard, ~30% of the half-way samples lie on the
+   wrong colour (displacement works; `tests/extrans` checks it against a cross-fade control), but
+   8 px **horizontal** stripes showed no displacement at all — the vertical component may be
+   missing. Look at the y part of the drift map / `TVPRippleTransform_*` arguments (temporary
+   logs need `#include "DebugIntf.h"` for `TVPAddLog`); compare with a krkr2 screenshot if
+   possible. Also unverified: the extrans pictures on the Switch, extrans under ASan.
 2. Plan step 1 (native plugin contracts), remaining: **saveStruct** is the old version (no
    `ssoIndent`/`ssoConst`/`ssoSort`/`ssoHidden` globals, no `Scripts.toStructString`, no hidden
    members; upstream `wamsoft/saveStruct` `Main.cpp` uses json's `Writer.hpp`) → upgrade;
