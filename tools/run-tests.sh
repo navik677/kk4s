@@ -11,8 +11,9 @@
 #              keyless .tpm encryption discovery
 #   io         engine I/O: TextStream encoding, AlphaMovie, Scripts.loadDataPack,
 #              layerEx* / layerExSave Layer methods, fstat.dll Storages methods,
-#              json.dll / scriptsEx.dll / windowEx.dll, and the original
-#              KAG3 system scripts playing a scenario (tests/kag3, ~30 s)
+#              json.dll / scriptsEx.dll / windowEx.dll, mouse / wheel / touch
+#              input semantics, and the original KAG3 system scripts playing a
+#              scenario (tests/kag3, ~30 s)
 #   decoders   PBD / PSB / CXDEC decoders vs their Python references (no engine)
 #
 # Engine groups boot a synthetic game headlessly (SDL_VIDEODRIVER=dummy) and
@@ -72,7 +73,7 @@ group_xp3() {
 }
 
 group_io() {
-    echo "== io: TextStream, AlphaMovie, Scripts.loadDataPack, layerEx, layerExSave, fstat, json, windowEx, KAG3 =="
+    echo "== io: TextStream, AlphaMovie, Scripts.loadDataPack, layerEx, layerExSave, fstat, json, windowEx, input, KAG3 =="
     run textstream   python3 tests/textstream/smoke.py "$EXE"
     run alphamovie   python3 tests/alphamovie/smoke.py "$EXE"
     run loaddatapack python3 tests/pbd/loaddatapack_smoke.py "$EXE"
@@ -83,6 +84,7 @@ group_io() {
     run windowex     python3 tests/windowex/smoke.py "$EXE"
     run natives      python3 tests/natives/smoke.py "$EXE"
     run aspect       python3 tests/aspect/smoke.py "$EXE"
+    run input        python3 tests/input/smoke.py "$EXE"
     run kag3         python3 tests/kag3/smoke.py "$EXE"
 }
 

@@ -154,6 +154,21 @@ static tjs_uint32 kk4sShiftState() {
 	if (kk4sKeyState[VK_MENU] & 1) s |= TVP_SS_ALT;
 	return s;
 }
+// kk4s: the shift of mouse events carries the mouse buttons held too (ssLeft,
+// ssRight, ssMiddle), as on Windows (krkrz TTVPWindowForm::GetMouseButtonState):
+// scripts drag with "shift & ssLeft" in onMouseMove, and the layer manager keeps
+// the mouse capture while a button is still down. The buttons live in
+// kk4sKeyState under VK_LBUTTON / VK_RBUTTON / VK_MBUTTON, so
+// System.getKeyState(VK_LBUTTON) works as well (KAG3: left + right = auto mode,
+// a held button cancels skipping).
+static tjs_uint32 kk4sMouseShiftState() {
+	tjs_uint32 s = kk4sShiftState();
+	if (kk4sKeyState[VK_LBUTTON] & 1) s |= TVP_SS_LEFT;
+	if (kk4sKeyState[VK_RBUTTON] & 1) s |= TVP_SS_RIGHT;
+	if (kk4sKeyState[VK_MBUTTON] & 1) s |= TVP_SS_MIDDLE;
+	return s;
+}
+static bool kk4sIsMouseVK(tjs_uint vk) { return vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON; }
 static tjs_uint kk4sSdlKeyToVK(SDL_Keycode k) {
 	if (k >= SDLK_a && k <= SDLK_z) return 0x41 + (k - SDLK_a); // VK_A..VK_Z
 	if (k >= SDLK_0 && k <= SDLK_9) return 0x30 + (k - SDLK_0); // VK_0..VK_9
@@ -319,15 +334,33 @@ public:
 	virtual void SetDefaultMouseCursor() override {
 
 	}
+	// kk4s: the cursor in game coordinates, the same space as the mouse events
+	// (Layer.cursorX/Y). SDL_GetMouseState gave window pixels, wrong as soon as the
+	// picture is scaled, and nothing useful for touch on the Switch.
 	virtual void GetCursorPos(tjs_int &x, tjs_int &y) override {
-		SDL_GetMouseState(&x, &y);
-		// x = _LastMouseX;
-		// y = _LastMouseY;
+		x = mouseLastX;
+		y = mouseLastY;
 	}
+	// kk4s: moving the cursor from a script (KAG3 puts it on the link chosen with
+	// the arrow keys) is a mouse move for the game, as Windows' SetCursorPos makes
+	// one: the link under it lights up. The real mouse follows on the PC.
 	virtual void SetCursorPos(tjs_int x, tjs_int y) override {
-		SDL_WarpMouseInWindow(window, x, y);
-		// _LastMouseX = x;
-		// _LastMouseY = y;
+		if (x == mouseLastX && y == mouseLastY) return;
+		mouseLastX = x;
+		mouseLastY = y;
+		if (TJSNativeInstance && !isBeingDeleted)
+			TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, x, y, kk4sMouseShiftState()), TVP_EPT_DISCARDABLE);
+#ifndef __SWITCH__
+		if (window && renderer && curWindowW > 0 && curWindowH > 0) {
+			int ww = 0, wh = 0, ow = 0, oh = 0;
+			SDL_GetWindowSize(window, &ww, &wh);
+			SDL_GetRendererOutputSize(renderer, &ow, &oh);
+			SDL_Rect r = kk4sGameRect();
+			if (ow > 0 && oh > 0)
+				SDL_WarpMouseInWindow(window, (int)((r.x + (x + 0.5) * r.w / curWindowW) * ww / ow),
+				                      (int)((r.y + (y + 0.5) * r.h / curWindowH) * wh / oh));
+		}
+#endif
 	}
 	virtual void SetHintText(const ttstr &text) override {
 
@@ -710,14 +743,44 @@ public:
 		else if (was)
 			TVPPostInputEvent(new tTVPOnKeyUpInputEvent(TJSNativeInstance, vk, kk4sShiftState()));
 	}
-	void kk4sPostMouseButton(tTVPMouseButton btn, bool down) {
+	// kk4s: a mouse button at (mouseLastX, mouseLastY), with Windows' rules
+	// (krkrz TVPWindow.cpp / WindowForm.cpp): the shift carries the buttons held;
+	// onClick is for the left button only, at the point where it went down, before
+	// its onMouseUp, and not for the second press of a double click (that one makes
+	// onDoubleClick). A click event for every right release made B / right click
+	// press buttons that react to onClick. `clicks` is SDL's click count.
+	// `click` = false lets a button go without clicking (menu opening over it).
+	void kk4sMouseButton(tTVPMouseButton btn, bool down, int clicks = 1, bool click = true) {
+		tjs_uint vk = btn == tTVPMouseButton::mbLeft ? VK_LBUTTON : btn == tTVPMouseButton::mbRight ? VK_RBUTTON : VK_MBUTTON;
+		bool was = kk4sKeyState[vk] & 1;
+		kk4sSetKeyState(vk, down);
 		if (down) {
-			TVPPostInputEvent(new tTVPOnMouseDownInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, btn, 0));
-		} else {
-			TVPPostInputEvent(new tTVPOnClickInputEvent(TJSNativeInstance, mouseLastX, mouseLastY));
-			TVPPostInputEvent(new tTVPOnMouseUpInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, btn, 0));
+			if (btn == tTVPMouseButton::mbLeft) {
+				LastMouseDownX = mouseLastX;
+				LastMouseDownY = mouseLastY;
+				kk4sDoubleClicked = clicks >= 2 && clicks % 2 == 0;
+				if (kk4sDoubleClicked)
+					TVPPostInputEvent(new tTVPOnDoubleClickInputEvent(TJSNativeInstance, mouseLastX, mouseLastY));
+			}
+			TVPPostInputEvent(new tTVPOnMouseDownInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, btn, kk4sMouseShiftState()));
+		} else if (was) {
+			if (btn == tTVPMouseButton::mbLeft) {
+				if (click && !kk4sDoubleClicked)
+					TVPPostInputEvent(new tTVPOnClickInputEvent(TJSNativeInstance, LastMouseDownX, LastMouseDownY));
+				kk4sDoubleClicked = false;
+			}
+			TVPPostInputEvent(new tTVPOnMouseUpInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, btn, kk4sMouseShiftState()));
 		}
 	}
+	bool kk4sDoubleClicked = false; // the left button went down as a double click
+	// kk4s: one notch of the mouse wheel is 120 (WHEEL_DELTA) on Windows; scripts
+	// divide by it (KAG3's history: delta \ 120), so SDL's 1 per notch did nothing.
+	void kk4sWheel(int notches) {
+		if (notches)
+			TVPPostInputEvent(new tTVPOnMouseWheelInputEvent(TJSNativeInstance, kk4sMouseShiftState(), notches * 120, mouseLastX, mouseLastY));
+	}
+	SDL_FingerID kk4sMouseFinger = -1; // the finger that acts as the mouse (-1: none)
+	bool kk4sHasMouseFinger = false;
 	// Gamepad: D-pad / left stick = arrows; the other buttons do what the
 	// launcher's controls settings say (kk4s::Settings::pad). Defaults:
 	//   A = Enter (next / OK)         B = right click (menu / cancel / hide text)
@@ -737,7 +800,7 @@ public:
 		switch (kk4s::LiveSettings().PadFor(button)) {
 			case kk4s::PadAction::Overlay: if (down) kk4sOpenOverlay(); break;
 			case kk4s::PadAction::Enter: kk4sPostKey(VK_RETURN, down); break;
-			case kk4s::PadAction::RightClick: kk4sPostMouseButton(tTVPMouseButton::mbRight, down); break;
+			case kk4s::PadAction::RightClick: kk4sMouseButton(tTVPMouseButton::mbRight, down); break;
 			case kk4s::PadAction::Ctrl: kk4sPostKey(VK_CONTROL, down); break;
 			case kk4s::PadAction::Space: kk4sPostKey(VK_SPACE, down); break;
 			case kk4s::PadAction::PageUp: kk4sPostKey(VK_PRIOR, down); break;
@@ -770,7 +833,11 @@ public:
 	// kk4s in-game menu: let go of keys the game thinks are held, then open it.
 	void kk4sOpenOverlay() {
 		for (tjs_uint vk = 1; vk < 256; ++vk)
-			if (kk4sKeyState[vk] & 1) kk4sPostKey(vk, false);
+			if ((kk4sKeyState[vk] & 1) && !kk4sIsMouseVK(vk)) kk4sPostKey(vk, false);
+		kk4sMouseButton(tTVPMouseButton::mbLeft, false, 1, false);
+		kk4sMouseButton(tTVPMouseButton::mbRight, false, 1, false);
+		kk4sMouseButton(tTVPMouseButton::mbMiddle, false, 1, false);
+		kk4sHasMouseFinger = false;
 		std::string title = kk4s::GameDir();
 		while (!title.empty() && title.back() == '/') title.pop_back();
 		title = title.substr(title.find_last_of('/') + 1);
@@ -926,26 +993,32 @@ public:
 				switch (event.type) { 
 					// kk4s: touch = left mouse button; each case used to fall through
 					// into the next, so one tap clicked twice
+					// The first finger down is the mouse until it lifts; others are ignored.
 					case SDL_FINGERDOWN: {
+						if (kk4sHasMouseFinger) break;
+						kk4sHasMouseFinger = true;
+						kk4sMouseFinger = event.tfinger.fingerId;
 						kk4sToGame(event.tfinger.x, event.tfinger.y, mouseLastX, mouseLastY);
-						TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, 0));
-						TVPPostInputEvent(new tTVPOnMouseDownInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, tTVPMouseButton::mbLeft, 0));
+						TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, kk4sMouseShiftState()));
+						kk4sMouseButton(tTVPMouseButton::mbLeft, true);
 						break;
 					}
 					case SDL_FINGERUP: {
+						if (!kk4sHasMouseFinger || event.tfinger.fingerId != kk4sMouseFinger) break;
+						kk4sHasMouseFinger = false;
 						kk4sToGame(event.tfinger.x, event.tfinger.y, mouseLastX, mouseLastY);
-						TVPPostInputEvent(new tTVPOnClickInputEvent(TJSNativeInstance, mouseLastX, mouseLastY));
-						TVPPostInputEvent(new tTVPOnMouseUpInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, tTVPMouseButton::mbLeft, 0));
+						kk4sMouseButton(tTVPMouseButton::mbLeft, false);
 						break;
 					}
 					case SDL_FINGERMOTION: {
+						if (!kk4sHasMouseFinger || event.tfinger.fingerId != kk4sMouseFinger) break;
 						kk4sToGame(event.tfinger.x, event.tfinger.y, mouseLastX, mouseLastY);
-						TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, 0));
+						TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, kk4sMouseShiftState()), TVP_EPT_DISCARDABLE);
 						break;
 					}
 					case SDL_MOUSEMOTION: {
 						kk4sMouseToGame(event.motion.x, event.motion.y, mouseLastX, mouseLastY); // kk4s: window -> game
-						TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, 0));
+						TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, kk4sMouseShiftState()), TVP_EPT_DISCARDABLE);
 						break;
 					}
 					case SDL_MOUSEBUTTONDOWN: {
@@ -966,8 +1039,8 @@ public:
 								break;
 						}
 						if (hasbtn) {
-							kk4sMouseToGame(event.button.x, event.button.y, mouseLastX, mouseLastY);
-							TVPPostInputEvent(new tTVPOnMouseDownInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, btn, 0));
+								kk4sMouseToGame(event.button.x, event.button.y, mouseLastX, mouseLastY);
+							kk4sMouseButton(btn, true, event.button.clicks);
 						}
 						break;
 					}
@@ -989,9 +1062,8 @@ public:
 								break;
 						}
 						if (hasbtn) {
-							kk4sMouseToGame(event.button.x, event.button.y, mouseLastX, mouseLastY);
-							TVPPostInputEvent(new tTVPOnClickInputEvent(TJSNativeInstance, mouseLastX, mouseLastY));
-							TVPPostInputEvent(new tTVPOnMouseUpInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, btn, 0));
+								kk4sMouseToGame(event.button.x, event.button.y, mouseLastX, mouseLastY);
+							kk4sMouseButton(btn, false);
 						}
 						break;
 					}
@@ -1014,7 +1086,7 @@ public:
 					}
 #endif
 					case SDL_MOUSEWHEEL: {
-						TVPPostInputEvent(new tTVPOnMouseWheelInputEvent(TJSNativeInstance, 0, event.wheel.y, mouseLastX, mouseLastY));
+						kk4sWheel(event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -event.wheel.y : event.wheel.y);
 						break;
 					}
 					case SDL_WINDOWEVENT_CLOSE:
@@ -1154,16 +1226,20 @@ static void kk4sOverlayFrame() {
 // Switch pad and touch screen (docs/debugging.md). One command per line:
 //   <ms> pad A [hold_ms]     A B X Y L R ZL ZR PLUS MINUS LEFT UP RIGHT DOWN L3 R3
 //   <ms> tap <x> <y>         x, y in 0..1 of the screen
+//   <ms> mouse <x> <y> [left|right|middle] [hold_ms] [clicks]   a mouse button (PC mouse path)
+//   <ms> move <x> <y>        mouse move
+//   <ms> wheel <notches>     mouse wheel, + = up (away from the player)
 //   <ms> shot <file.bmp>     relative names go to $KK4S_ROOT/shots/
 //   <ms> quit
 //   <ms> eval <tjs expression>   logs the result ("script: eval -> ...")
 // <ms> counts from the game start; "+<ms>" is relative to the previous line.
-struct kk4sScriptCmd { Uint32 at; std::string op, a1, a2; };
+struct kk4sScriptCmd { Uint32 at; std::string op, a1, a2, a3, a4, a5; };
 static std::vector<kk4sScriptCmd> kk4sScript;
 static size_t kk4sScriptPos = 0;
 static Uint32 kk4sScriptStart = 0;
 static std::vector<std::pair<Uint32, unsigned>> kk4sScriptReleases; // (time, pad bit)
 static std::vector<std::pair<Uint32, SDL_Event>> kk4sScriptEvents;
+static Sint32 kk4sScriptMouseX = 0, kk4sScriptMouseY = 0; // where the scripted mouse is (window pixels)
 
 static void kk4sScriptLoad() {
 	static bool loaded = false;
@@ -1176,8 +1252,8 @@ static void kk4sScriptLoad() {
 	char line[512];
 	Uint32 last = 0;
 	while (fgets(line, sizeof(line), f)) {
-		char t[32] = {0}, op[32] = {0}, a1[256] = {0}, a2[64] = {0};
-		if (line[0] == '#' || sscanf(line, "%31s %31s %255s %63s", t, op, a1, a2) < 2) continue;
+		char t[32] = {0}, op[32] = {0}, a1[256] = {0}, a2[64] = {0}, a3[64] = {0}, a4[64] = {0}, a5[64] = {0};
+		if (line[0] == '#' || sscanf(line, "%31s %31s %255s %63s %63s %63s %63s", t, op, a1, a2, a3, a4, a5) < 2) continue;
 		Uint32 at = t[0] == '+' ? last + (Uint32)atoi(t + 1) : (Uint32)atoi(t);
 		last = at;
 		if (!strcmp(op, "eval")) { // the rest of the line is the expression
@@ -1185,10 +1261,10 @@ static void kk4sScriptLoad() {
 			while (*e == ' ' || *e == '\t') ++e;
 			std::string expr = e;
 			while (!expr.empty() && (expr.back() == '\n' || expr.back() == '\r')) expr.pop_back();
-			kk4sScript.push_back({at, op, expr, ""});
+			kk4sScript.push_back({at, op, expr, "", "", "", ""});
 			continue;
 		}
-		kk4sScript.push_back({at, op, a1, a2});
+		kk4sScript.push_back({at, op, a1, a2, a3, a4, a5});
 	}
 	fclose(f);
 	kk4s::Log("script: %zu command(s) from %s", kk4sScript.size(), path);
@@ -1218,7 +1294,12 @@ static void kk4sScriptTick() {
 	}
 	for (size_t i = 0; i < kk4sScriptEvents.size();) {
 		if (t >= kk4sScriptEvents[i].first) {
-			SDL_PushEvent(&kk4sScriptEvents[i].second);
+			SDL_Event& e = kk4sScriptEvents[i].second;
+			if (e.type == SDL_MOUSEBUTTONUP) { // let go where the mouse is now (after a move)
+				e.button.x = kk4sScriptMouseX;
+				e.button.y = kk4sScriptMouseY;
+			}
+			SDL_PushEvent(&e);
 			kk4sScriptEvents.erase(kk4sScriptEvents.begin() + i);
 		} else ++i;
 	}
@@ -1241,6 +1322,39 @@ static void kk4sScriptTick() {
 			SDL_PushEvent(&e);
 			e.type = SDL_FINGERUP;
 			kk4sScriptEvents.push_back({t + 80, e});
+		} else if (c.op == "mouse" || c.op == "move") {
+			int ww = 0, wh = 0;
+			SDL_GetWindowSize(window, &ww, &wh);
+			SDL_Event e;
+			memset(&e, 0, sizeof(e));
+			e.type = SDL_MOUSEMOTION;
+			e.motion.windowID = SDL_GetWindowID(window);
+			e.motion.x = kk4sScriptMouseX = (Sint32)(atof(c.a1.c_str()) * ww);
+			e.motion.y = kk4sScriptMouseY = (Sint32)(atof(c.a2.c_str()) * wh);
+			SDL_PushEvent(&e);
+			if (c.op == "move") continue;
+			Uint8 button = c.a3 == "right" ? SDL_BUTTON_RIGHT : c.a3 == "middle" ? SDL_BUTTON_MIDDLE : SDL_BUTTON_LEFT;
+			Sint32 x = e.motion.x, y = e.motion.y;
+			memset(&e, 0, sizeof(e));
+			e.type = SDL_MOUSEBUTTONDOWN;
+			e.button.windowID = SDL_GetWindowID(window);
+			e.button.button = button;
+			e.button.state = SDL_PRESSED;
+			e.button.clicks = (Uint8)(c.a5.empty() ? 1 : atoi(c.a5.c_str()));
+			e.button.x = x;
+			e.button.y = y;
+			SDL_PushEvent(&e);
+			e.type = SDL_MOUSEBUTTONUP;
+			e.button.state = SDL_RELEASED;
+			kk4sScriptEvents.push_back({t + (c.a4.empty() ? 80 : (Uint32)atoi(c.a4.c_str())), e});
+		} else if (c.op == "wheel") {
+			SDL_Event e;
+			memset(&e, 0, sizeof(e));
+			e.type = SDL_MOUSEWHEEL;
+			e.wheel.windowID = SDL_GetWindowID(window);
+			e.wheel.y = atoi(c.a1.c_str());
+			e.wheel.direction = SDL_MOUSEWHEEL_NORMAL;
+			SDL_PushEvent(&e);
 		} else if (c.op == "shot") {
 			std::string file = c.a1;
 			if (!file.empty() && file[0] != '/') {
@@ -1541,7 +1655,7 @@ namespace TJS {
 
 tjs_uint32 TVPGetCurrentShiftKeyState()
 {
-	tjs_uint32 f = 0;
+	tjs_uint32 f = kk4sMouseShiftState(); // kk4s: keys and mouse buttons held
 
 	// if (_scancode[VK_SHIFT] & 1) f |= ssShift;
 	// if (_scancode[VK_MENU] & 1) f |= ssAlt;

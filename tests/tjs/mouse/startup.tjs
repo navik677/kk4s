@@ -1,0 +1,61 @@
+// Records mouse, wheel and key events with their details (tests/input/smoke.py).
+// Each event adds one word to `ev`; the input script reads and clears it with
+// eval flush(). Moves go to `mv` ("x,y"); moves with a button held also add
+// a "drag" word to `ev`.
+global.ev = [];
+global.mv = [];
+function flush() { var s = ev.join(" "); ev.clear(); return s; }
+function bn(b) { return b == mbLeft ? "L" : b == mbRight ? "R" : b == mbMiddle ? "M" : "?" + b; }
+function sh(s) {
+    var r = "";
+    if (s & ssLeft) r += "+L";
+    if (s & ssRight) r += "+R";
+    if (s & ssMiddle) r += "+M";
+    if (s & ssShift) r += "+S";
+    if (s & ssCtrl) r += "+C";
+    return r;
+}
+function rec(s) { if (ev.count == 0 || ev[ev.count - 1] != s || s.indexOf("drag") < 0) ev.add(s); }
+
+class RecLayer extends Layer {
+    var tag;
+    function RecLayer(win, par, tag, w, h) {
+        super.Layer(win, par);
+        this.tag = tag;
+        setImageSize(w, h);
+        setSizeToImageSize();
+        fillRect(0, 0, w, h, 0xff204060);
+        visible = true;
+    }
+    function onClick(x, y) { rec(tag + ".click"); super.onClick(...); }
+    function onDoubleClick(x, y) { rec(tag + ".dbl"); super.onDoubleClick(...); }
+    function onMouseDown(x, y, b, s) { rec(tag + ".down:" + bn(b) + sh(s)); super.onMouseDown(...); }
+    function onMouseUp(x, y, b, s) { rec(tag + ".up:" + bn(b) + sh(s)); super.onMouseUp(...); }
+    function onMouseMove(x, y, s) {
+        if (s & (ssLeft | ssRight | ssMiddle)) rec(tag + ".drag" + sh(s));
+        super.onMouseMove(...);
+    }
+}
+
+class MouseWindow extends Window {
+    function MouseWindow() {
+        super.Window();
+        setInnerSize(640, 480);
+        add(new RecLayer(this, null, "P", 640, 480));
+        add(new RecLayer(this, primaryLayer, "L", 320, 480)); // left half
+        visible = true;
+    }
+    function onClick(x, y) { rec("W.click"); }
+    function onDoubleClick(x, y) { rec("W.dbl"); }
+    function onMouseDown(x, y, b, s) { rec("W.down:" + bn(b) + sh(s)); }
+    function onMouseUp(x, y, b, s) { rec("W.up:" + bn(b) + sh(s)); }
+    function onMouseMove(x, y, s) {
+        mv.add(x + "," + y);
+        if (s & (ssLeft | ssRight | ssMiddle)) rec("W.drag" + sh(s));
+    }
+    function onMouseWheel(s, delta, x, y) { rec("W.wheel" + delta + sh(s)); }
+    function onKeyDown(key, s) { rec("W.key" + key + ((s & ssRepeat) ? "r" : "")); }
+    function onKeyUp(key, s) { rec("W.keyup" + key); }
+}
+global.mw = new MouseWindow();
+Debug.message("MOUSE_READY");
