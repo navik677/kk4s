@@ -5,7 +5,7 @@ Full requirements: [original-prompt.md](original-prompt.md). Risk = chance of a 
 | # | Milestone | Status | Risk |
 |---|---|---|---|
 | M0 | Repo structure, CI build of `kk4s.nro`, launcher, log | **done** | low |
-| M1 | Runs real games on hardware; PC viewer (Linux + Windows); aspect-correct scaling | **partly** — games run on hardware; letterboxing + touch/mouse mapping (`tests/aspect`) works, but Fate/FSN and Tsukihime come out 4:3 with bars (user wants 16:9); 16:9 options below | medium |
+| M1 | Runs real games on hardware; PC viewer (Linux + Windows); aspect-correct scaling | **partly** — games run on hardware; letterboxing + touch/mouse mapping (`tests/aspect`) works, but Fate/FSN and Tsukihime come out 4:3 with bars (user wants 16:9); 16:9 options below | medium — **screen mode switch done 2026-11-05** (original / stretch / zoom-fill, in the launcher and the in-game menu); an upscaler is still open |
 | M2 | Storage: case-insensitive lookup, save redirect, overlay dir over xp3, memory-bounded caches | **partly** — lookup + saves done, overlay dir todo | medium |
 | M3 | Game detection by hash + `profiles/<game_id>.json`; diagnostic report for unknown games | todo | low |
 | M4 | Plugin shim: wuvorbis, krmovie, layerEx*, extrans, stubs for the rest | **partly** — layerExBtoA / layerExImage / layerExRaster / layerExSave (and PackinOne, which bundles them), fstat, json, scriptsEx, windowEx, shrinkCopy, layerExAreaAverage, menu, Motion model done; extrans done (`tests/extrans`); saveStruct, varfile, csvParser, KAGParserEx, addFont, psdfile, layerExDraw done (2026-11-05); KAGZ `%layer` storage open (see [plugins.md](plugins.md)). No universal Windows-DLL runtime | **high** |

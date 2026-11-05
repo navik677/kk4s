@@ -26,7 +26,7 @@ const SDL_Color kText2 = Rgba(163, 171, 194);
 const SDL_Color kText3 = Rgba(110, 118, 144);
 const SDL_Color kWarn = Rgba(255, 160, 140);
 
-enum RowId { kResume, kQuickSave, kQuickLoad, kVolume, kControls, kToLauncher, kQuit, kPadFirst = 100, kReset = 200, kMenuCombo };
+enum RowId { kResume, kQuickSave, kQuickLoad, kVolume, kScreen, kControls, kToLauncher, kQuit, kPadFirst = 100, kReset = 200, kMenuCombo };
 
 const struct { unsigned bit; const char* name; } kPads[] = {
     {kPadA, "A"}, {kPadB, "B"}, {kPadX, "X"}, {kPadY, "Y"}, {kPadL, "L"},
@@ -91,6 +91,11 @@ std::vector<Row> Rows() {
     vol.value = std::to_string(s.volume) + "%";
     vol.choice = true;
     rows.push_back(vol);
+    Row scr{kScreen, T(i18n::kScreenMode)};
+    scr.value = T(s.ScreenMode() == Settings::kScreenStretch ? i18n::kScreenStretch
+                  : s.ScreenMode() == Settings::kScreenZoom ? i18n::kScreenZoom : i18n::kScreenOriginal);
+    scr.choice = true;
+    rows.push_back(scr);
     Row ctl{kControls, T(i18n::kControls), T(i18n::kControlsHint)};
     ctl.submenu = true;
     rows.push_back(ctl);
@@ -125,6 +130,10 @@ void Apply(const Row& r, int dir) {
             s.volume = std::max(0, std::min(100, s.volume + d * 10));
             s.Save();
             g.request = Request::Volume;
+            break;
+        case kScreen:
+            s.SetScreenMode(s.ScreenMode() + d);
+            s.Save();
             break;
         case kControls: g.controls = true; g.row = 0; break;
         case kToLauncher: g.request = Request::ToLauncher; break;

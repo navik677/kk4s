@@ -721,7 +721,11 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
 #ifdef __SWITCH__ // last: rows before it are addressed by index (kRowControls)
             toggle(kRowCpuBoost, i18n::kCpuBoost, settings.cpu_boost, i18n::kCpuBoostHint);
 #endif
-            toggle(kRowKeepAspect, i18n::kKeepAspect, settings.keep_aspect, i18n::kKeepAspectHint);
+            SheetRow screen{kRowKeepAspect, T(i18n::kScreenMode), T(i18n::kScreenModeHint)};
+            screen.value = T(settings.ScreenMode() == Settings::kScreenStretch ? i18n::kScreenStretch
+                             : settings.ScreenMode() == Settings::kScreenZoom ? i18n::kScreenZoom : i18n::kScreenOriginal);
+            screen.choice = true;
+            rows.push_back(screen);
             toggle(kRowSoftMode, i18n::kSoftMode, settings.soft_mode, i18n::kSoftModeHint);
         } else if (which == Sheet::Controls) {
             for (size_t i = 0; i < sizeof(kPadRows) / sizeof(kPadRows[0]); ++i) {
@@ -798,7 +802,7 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             case kRowReturn: settings.return_to_launcher = !settings.return_to_launcher; break;
             case kRowAutostart: settings.autostart = !settings.autostart; break;
             case kRowCpuBoost: settings.cpu_boost = !settings.cpu_boost; break;
-            case kRowKeepAspect: settings.keep_aspect = !settings.keep_aspect; break;
+            case kRowKeepAspect: settings.SetScreenMode(settings.ScreenMode() + d); break;
             case kRowSoftMode: settings.soft_mode = !settings.soft_mode; break;
             case kRowControls: open_sheet(Sheet::Controls); save = false; break;
             case kRowCovers: {

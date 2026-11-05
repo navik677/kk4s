@@ -43,6 +43,21 @@ suite after these edits (Windows has no `python3`/bash setup here), Linux, Switc
 pack's stub of a plugin kk4s links itself are now decided by kk4s' built-in (fstat, krkrsteam); other
 Kirikiroid2 stubs (`Layer.*` of unsupported plugins) are still honoured as the pack defines them.
 
+### Switch feedback and follow-ups (2026-11-05, late)
+
+First Switch run of the session-4 NRO (logs read over FTP, sdmc:/switch/kk4s/logs/):
+- **Yosuga no Sora** did not start: the SD copy lacked `ヨスガノソラ.cf` / `ヨスガノソラ.exe` (files with Japanese
+  names did not survive the copy); the game checks that `.cf` and quits with "正常に起動できませんでした". The
+  `.cf` (958 bytes) was uploaded over FTP afterwards (the Switch FTP server accepts UTF-8 names but does not list
+  them, `SIZE` shows the file). Copy such files with a card reader / MTP, not FTP, when in doubt.
+- **11 eyes** was not listed: it sat in `games/11 eyes/11 eyes/`. The launcher and `SetGameDir` now accept a
+  wrapper folder whose single sub-folder (up to two levels) is the game (`platform/common/kk4s_common.cpp`).
+- **Screen mode for 4:3 games on 16:9:** `Settings::ScreenMode()` = original with bars (default) / stretch /
+  zoom to fill (crop). Stored as `keep_aspect` + new `zoom_fill` in `settings.ini`; row "Screen" in the
+  launcher settings and in the in-game menu (`kk4sGameRect` in `engine/source/core/sdl2/stubs.cpp`). Touch /
+  mouse mapping goes through the same rect. Seen on the PC (Fate logo fills 1280x720 in zoom mode); not seen on
+  the Switch.
+
 ### E-mote (`compat/emote/`, merged into `main`)
 
 Universal E-mote runtime started in `compat/emote/` (design, evidence, limits: `docs/universal_emote_runtime.md`).

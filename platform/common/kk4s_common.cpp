@@ -343,7 +343,7 @@ static bool SubfolderHas(const std::string& dir, const char* sub, const char* na
 
 // A folder is a game when Kirikiri would find a project in it: startup.tjs or an
 // XP3 at the top, startup.tjs in data/ or content-data/, or an archive inside an exe.
-bool IsGameFolder(const std::string& dir) {
+static bool IsGameFolderFlat(const std::string& dir) {
     DIR* d = opendir(dir.c_str());
     if (!d) return false;
     bool ok = false;
@@ -360,6 +360,38 @@ bool IsGameFolder(const std::string& dir) {
     if (ok) return true;
     if (SubfolderHas(dir, "data", "startup.tjs") || SubfolderHas(dir, "content-data", "startup.tjs")) return true;
     return !FindSelfCombinedExe(dir, false).empty();
+}
+
+// Archives often unpack into a wrapper: games/<Name>/<Name>/data.xp3. When `dir` is not a game itself
+// but exactly one of its sub-folders (up to two levels down) is, that sub-folder is the game.
+// Returns it with no trailing slash, or "" when `dir` has no unambiguous game inside.
+static std::string WrapperGameDir(const std::string& dir, int depth = 0) {
+    if (depth >= 2) return "";
+    DIR* d = opendir(dir.c_str());
+    if (!d) return "";
+    std::string found;
+    int hits = 0;
+    while (struct dirent* e = readdir(d)) {
+        if (e->d_name[0] == '.') continue;
+        std::string sub = dir;
+        if (!sub.empty() && sub.back() != '/' && sub.back() != '\\') sub += '/';
+        sub += e->d_name;
+        struct stat st;
+        if (stat(sub.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) continue;
+        std::string game;
+        if (IsGameFolderFlat(sub)) game = sub;
+        else game = WrapperGameDir(sub, depth + 1);
+        if (!game.empty()) {
+            found = game;
+            hits++;
+        }
+    }
+    closedir(d);
+    return hits == 1 ? found : std::string();
+}
+
+bool IsGameFolder(const std::string& dir) {
+    return IsGameFolderFlat(dir) || !WrapperGameDir(dir).empty();
 }
 
 // True if <dir>/<name> exists (case-insensitive); want_dir also requires a
@@ -480,6 +512,13 @@ void ListFontFiles(const std::string& dir, bool recursive, std::vector<std::stri
 
 std::string SetGameDir(const std::string& dir) {
     g_game_dir = dir;
+    if (!IsGameFolderFlat(g_game_dir)) {
+        std::string inner = WrapperGameDir(g_game_dir);
+        if (!inner.empty()) {
+            Log("game folder: %s is a wrapper, the game is in %s", g_game_dir.c_str(), inner.c_str());
+            g_game_dir = inner;
+        }
+    }
     for (char& c : g_game_dir)
         if (c == '\\') c = '/';
     if (g_game_dir.empty() || g_game_dir.back() != '/') g_game_dir += '/';

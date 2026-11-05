@@ -27,6 +27,17 @@ struct Settings {
     bool autostart = false;        // start the last game after a short countdown
     bool cpu_boost = true;         // Switch: CPU at 1785 MHz while a game runs
     bool keep_aspect = true;       // letterbox the game picture instead of stretching it
+    bool zoom_fill = false;        // with keep_aspect: fill the whole screen, cropping the overflow (4:3 on 16:9)
+
+    // Screen mode for games whose picture is not the screen's shape (4:3 on 16:9):
+    // 0 original proportions with black bars, 1 stretched over the whole screen, 2 zoomed to fill (crop).
+    enum { kScreenBars = 0, kScreenStretch = 1, kScreenZoom = 2, kScreenModes = 3 };
+    int ScreenMode() const { return !keep_aspect ? kScreenStretch : (zoom_fill ? kScreenZoom : kScreenBars); }
+    void SetScreenMode(int m) {
+        m = ((m % kScreenModes) + kScreenModes) % kScreenModes;
+        keep_aspect = m != kScreenStretch;
+        zoom_fill = m == kScreenZoom;
+    }
     bool soft_mode = false;        // missing members of native classes -> log + void once a plugin was ignored
     int volume = 100;              // game sound volume, 0..100 (WaveSoundBuffer.globalVolume)
 

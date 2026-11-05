@@ -75,6 +75,7 @@ void Settings::Load() {
         else if (k == "autostart") autostart = v != "0";
         else if (k == "cpu_boost") cpu_boost = v != "0";
         else if (k == "keep_aspect") keep_aspect = v != "0";
+        else if (k == "zoom_fill") zoom_fill = v != "0";
         else if (k == "soft_mode") soft_mode = v != "0";
         else if (k == "volume") volume = std::max(0, std::min(100, atoi(v.c_str())));
         else if (k.compare(0, 4, "pad.") == 0) {
@@ -106,6 +107,7 @@ void Settings::Save() const {
     fprintf(f, "autostart=%d\n", autostart ? 1 : 0);
     fprintf(f, "cpu_boost=%d\n", cpu_boost ? 1 : 0);
     fprintf(f, "keep_aspect=%d\n", keep_aspect ? 1 : 0);
+    fprintf(f, "zoom_fill=%d\n", zoom_fill ? 1 : 0);
     fprintf(f, "soft_mode=%d\n", soft_mode ? 1 : 0);
     fprintf(f, "volume=%d\n", volume);
     for (const auto& b : kButtons)

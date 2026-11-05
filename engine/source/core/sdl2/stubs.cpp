@@ -954,7 +954,18 @@ public:
 		int ow = 0, oh = 0;
 		SDL_GetRendererOutputSize(renderer, &ow, &oh);
 		SDL_Rect r = {0, 0, ow, oh};
-		if (!kk4s::LiveSettings().keep_aspect || curWindowW <= 0 || curWindowH <= 0 || ow <= 0 || oh <= 0) return r;
+		const kk4s::Settings& st = kk4s::LiveSettings();
+			if (!st.keep_aspect || curWindowW <= 0 || curWindowH <= 0 || ow <= 0 || oh <= 0) return r;
+			if (st.zoom_fill) { // fill the output keeping proportions: the picture overflows and is cropped
+				if ((long long)ow * curWindowH > (long long)oh * curWindowW) { // output is wider: fit the width, crop top and bottom
+					r.h = (int)((long long)ow * curWindowH / curWindowW);
+					r.y = (oh - r.h) / 2;
+				} else { // output is taller: fit the height, crop left and right
+					r.w = (int)((long long)oh * curWindowW / curWindowH);
+					r.x = (ow - r.w) / 2;
+				}
+				return r;
+			}
 		if ((long long)ow * curWindowH > (long long)oh * curWindowW) { // output is wider: bars left and right
 			r.w = (int)((long long)oh * curWindowW / curWindowH);
 			r.x = (ow - r.w) / 2;

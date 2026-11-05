@@ -22,6 +22,7 @@ enum Str {
     kKeepAspect, kKeepAspectHint,
     kSoftMode, kSoftModeHint,
     kProtectedGame,
+    kScreenMode, kScreenModeHint, kScreenOriginal, kScreenStretch, kScreenZoom,
     kCount
 };
 
