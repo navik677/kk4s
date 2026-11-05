@@ -346,6 +346,19 @@ set(SOURCES
     engine/source/plugins/varfile.cpp
     engine/source/plugins/win32dialog.cpp
     engine/source/plugins/wutcwf.cpp
+    engine/source/plugins/layerExDraw/LayerExDraw.cpp
+    engine/source/plugins/layerExDraw/main.cpp
+    engine/source/plugins/layerExDraw/plutovg/plutovg-blend.c
+    engine/source/plugins/layerExDraw/plutovg/plutovg-canvas.c
+    engine/source/plugins/layerExDraw/plutovg/plutovg-font.c
+    engine/source/plugins/layerExDraw/plutovg/plutovg-ft-math.c
+    engine/source/plugins/layerExDraw/plutovg/plutovg-ft-raster.c
+    engine/source/plugins/layerExDraw/plutovg/plutovg-ft-stroker.c
+    engine/source/plugins/layerExDraw/plutovg/plutovg-matrix.c
+    engine/source/plugins/layerExDraw/plutovg/plutovg-paint.c
+    engine/source/plugins/layerExDraw/plutovg/plutovg-path.c
+    engine/source/plugins/layerExDraw/plutovg/plutovg-rasterize.c
+    engine/source/plugins/layerExDraw/plutovg/plutovg-surface.c
 )
 find_package(PkgConfig REQUIRED)
 set(KK4S_PKG_MODULES
@@ -396,8 +409,8 @@ else()
 endif()
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${INCLUDES})
-# kk4s: engine/source/plugins/layerExDraw (layerExDraw.dll over plutovg) is not
-# built yet: it crashes in its test (docs/HANDOFF.md, stop point 2026-11-05).
+# kk4s: layerExDraw.dll over plutovg (vendored, static, no exported symbols)
+target_compile_definitions(${PROJECT_NAME} PRIVATE PLUTOVG_BUILD_STATIC PLUTOVG_BUILD)
 target_compile_options(${PROJECT_NAME} PUBLIC $<$<COMPILE_LANGUAGE:C>:${C_FLAGS}>)
 target_compile_options(${PROJECT_NAME} PUBLIC $<$<COMPILE_LANGUAGE:C>:${C_ONLY_FLAGS}>)
 target_compile_definitions(${PROJECT_NAME} PRIVATE KK4S_VERSION="${KK4S_VERSION}" KK4S_GIT_HASH="${KK4S_GIT_HASH}")

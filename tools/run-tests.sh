@@ -10,7 +10,7 @@
 #              game-folder layouts (data/, data.exe, XP3 inside an exe),
 #              keyless .tpm encryption discovery
 #   io         engine I/O: TextStream encoding, AlphaMovie, Scripts.loadDataPack,
-#              layerEx* / layerExSave Layer methods, fstat.dll Storages methods,
+#              layerEx* / layerExSave / layerExDraw Layer methods, fstat.dll Storages methods,
 #              json.dll / scriptsEx.dll / windowEx.dll, mouse / wheel / touch /
 #              pad input semantics, and the original KAG3 system scripts
 #              playing a scenario and played with the pad (tests/kag3, ~60 s)
@@ -85,6 +85,7 @@ group_io() {
     run csvvar       python3 tests/csvvar/smoke.py "$EXE"
     run kagparserex  python3 tests/kagparserex/smoke.py "$EXE"
     run psdfile      python3 tests/psdfile/smoke.py "$EXE"
+    run layerexdraw  python3 tests/layerexdraw/smoke.py "$EXE"
     run windowex     python3 tests/windowex/smoke.py "$EXE"
     run natives      python3 tests/natives/smoke.py "$EXE"
     run aspect       python3 tests/aspect/smoke.py "$EXE"

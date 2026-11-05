@@ -24,11 +24,11 @@
 #include <functional>
 #include <string>
 
-namespace kk4s {
-std::vector<std::string> SystemFontFiles();
-std::string GameDir();
-namespace detail { void ListFontFiles(const std::string &dir, bool recursive, std::vector<std::string> &out); }
-}
+// kk4s: the real declarations. A hand-written "std::string GameDir()" (it returns
+// const std::string&) linked fine - the return type is not mangled - and freed a
+// string that was never constructed (GCC build: double free in ensureFonts).
+#include "kk4s_platform.h"
+#include "kk4s_internal.h"
 extern FontSystem *TVPFontSystem;
 
 extern bool IsArray(const tTJSVariant &var); // main.cpp

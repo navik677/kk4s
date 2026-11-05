@@ -51,3 +51,14 @@ Kirikiri license, adapted to krkrs' streams.
   streams, packed BMP header, no license-registry call).
 - `psdparse/`: wamsoft/psdparse, MIT License, Copyright (c) 2026 wamsoft
   (`psdparse/LICENSE`, upstream commit in `psdparse/UPSTREAM.txt`).
+
+## layerExDraw (`engine/source/plugins/layerExDraw/`)
+
+- `main.cpp`: wamsoft/layerExDraw's ncbind glue (Kirikiri license), only GCC
+  template fixes. `LayerExDraw.cpp/.hpp`, `gdip_kk4s.h`: kk4s' own GDI+
+  stand-in over plutovg.
+- `plutovg/`: sammycage/plutovg, MIT License (`plutovg/LICENSE`); the
+  `plutovg-ft-*` files are FreeType code under the FreeType License
+  (`plutovg/FTL.TXT`); stb_truetype / stb_image (public domain / MIT) are
+  bundled in it. Upstream commit in `plutovg/UPSTREAM.txt`; kk4s change:
+  a file-read fallback instead of `mmap` on the Switch (marked `kk4s:`).

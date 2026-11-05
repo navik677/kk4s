@@ -702,7 +702,9 @@ plutovg_font_face_t* plutovg_font_face_cache_get(plutovg_font_face_cache_t* cach
 #define PATH_MAX 4096
 #endif
 
+#ifndef __SWITCH__ /* kk4s: libnx has no mmap */
 #include <sys/mman.h>
+#endif
 #include <sys/stat.h>
 #endif
 
@@ -738,6 +740,38 @@ static void* plutovg_mmap(const char* filename, long* length)
 static void plutovg_unmap(void* data, long length)
 {
     UnmapViewOfFile(data);
+}
+
+#elif defined(__SWITCH__)
+
+/* kk4s: libnx has no mmap; read the file into memory. Only used while a font
+   file's names are indexed, then freed. */
+static void* plutovg_mmap(const char* filename, long* length)
+{
+    FILE* fp = fopen(filename, "rb");
+    if(fp == NULL)
+        return NULL;
+    void* data = NULL;
+    long size = -1;
+    if(fseek(fp, 0, SEEK_END) == 0)
+        size = ftell(fp);
+    if(size > 0 && fseek(fp, 0, SEEK_SET) == 0 && (data = malloc(size)) != NULL) {
+        if(fread(data, 1, size, fp) != (size_t)size) {
+            free(data);
+            data = NULL;
+        }
+    }
+    fclose(fp);
+    if(data == NULL)
+        return NULL;
+    *length = size;
+    return data;
+}
+
+static void plutovg_unmap(void* data, long length)
+{
+    (void)length;
+    free(data);
 }
 
 #else
