@@ -34,9 +34,9 @@ files** under `game/`.  The only binaries containing the NekoPara key string are
 Other games named by external sources were **not** tested (no files here):
 NekoPara Vol.0/2/3/4/Extra, Maitetsu: Last Run!!, KukkoroDays, NinNinDays,
 NekoMiko, Sakura: The Jirai-kei Magical Girl, Malus Code, Song of Memories,
-Go! Go! Nippon!.  SteamDB's E-mote technology page lists 61 Steam products;
-VNDB and TV Tropes list E-mote titles.  Those listings prove that other E-mote
-games exist, **not** that their PSB files use this key.
+Go! Go! Nippon!.  SteamDB's E-mote technology page lists 61 Steam products; TV Tropes lists
+E-mote titles.  Those listings prove that other E-mote games exist, **not** that
+their PSB files use this key.
 
 ## 2. E-mote versions found
 
@@ -237,6 +237,59 @@ XP3 reader ──► archive filter (TinyFilter/None) ──► PSB container pa
 No renderer, animation runtime or `cloud-session` integration is implemented
 here; this is only the proposed boundary.
 
+## Appendix A — raw audit evidence (2026-11-05)
+
+All commands are read-only; outputs are under
+`research/emote-crossgame/work/` (gitignored).
+
+```sh
+python3 research/emote-crossgame/audit_dll.py \
+  "game/NekoPara Vol.1/plugin/emoteplayer.dll" \
+  "game/NekoPara Vol.1/emotedriver.dll" \
+  "game/NekoPara Vol.1/plugin/psbfile.dll" \
+  "game/ATRI -My Dear Moments-/plugin/psbfile.dll" \
+  "game/ATRI -My Dear Moments-/ATRI -My Dear Moments-.exe" \
+  "game/fsn/Fate.exe" --json-out research/emote-crossgame/work/audit_dll.json
+python3 research/emote-crossgame/scan_environment.py
+python3 research/emote-crossgame/inspect_sample.py \
+  --xp3 "game/NekoPara Vol.1/emote.xp3" --entry 1
+```
+
+Exact locations behind the summary tables:
+
+| Fact | Value |
+|---|---|
+| player key string | file `0xD3794`, VA `0x100D4394`, `.rdata` |
+| player key `push imm32` | file `0x4B36D`, VA `0x1004BF6D` |
+| player init block | file `0x4B393`, VA `0x1004BF93`; writes vtable `0x100D7C0C` at `[ebp-0xCC]`, seeds at `[ebp-0xC8/-0xC4/-0xC0]`, `[ebp-0xBC]` = parsed key |
+| player seed immediates | file `0x4B399/0x4B3A3/0x4B3AD`, VA `0x1004BF99/0x1004BFA3/0x1004BFAD` |
+| driver key refs | file `0xD50` → VA `0x10001950`; file `0x2069` → VA `0x10002C69` |
+| ATRI exe seed block | `.data` file `0x3AE550/0x3AE554/0x3AE558`, no key string |
+| environment scan | 74 PE files, 32 XP3, 0 loose PSB under `game/` |
+| XP3 entry #1 (`emote.xp3`) | 298 names, 555 strings, 80 resources, region `0x28..0x3925D`, filter `0xFC`, all checks true |
+| loose `dx_` sample #1 | 467 names, 491 strings, 3 resources, region `0x28..0x3E2BB`, filter `0x56`, all checks true |
+| archive revalidation | 168 entries, 157 PSB, 157 decrypted/round-trip/adler, 0 errors, inputs unchanged |
+
+`audit_dll.py` reports `key_u32_immediate_present: false` for all six audited
+binaries, including both NekoPara DLLs.  The old sentence in
+`docs/emote_psb_research.md` that called `0x4B399` the key is corrected there.
+
+## Appendix B — external sources and what they do (not) prove
+
+| Source | What it establishes |
+|---|---|
+| <https://steamdb.info/tech/SDK/E-mote> | SteamDB auto-detects E-mote in 61 Steam products; a population, not a key test |
+| <https://tvtropes.org/pmwiki/pmwiki.php/MediaNotes/Live2D> | E-mote works include Go! Go! Nippon!, Malus Code, NekoMiko, Nekopara, Song of Memories |
+| <https://gist.github.com/LukeZGD/64b0ecfb7eaccdfbb327ddfea4621723> | NekoPara extraction guide; `EmtConvert … 742877301` for the NekoPara series — same-series evidence, not an independent game |
+| <https://store.steampowered.com/app/3009640/> | Sakura, The Jirai-kei Magical Girl is advertised as E-mote-powered |
+| <https://www.gonintendo.com/archives/341492> | KukkoroDays uses E-mote |
+| <https://tyranoscript.com/> | E-mote can be used outside Kirikiri (TyranoScript plugin), so engine alone does not identify a build |
+| <https://github.com/storycraft/emote-psb-rs> | MIT-licensed description of PSB/MDF; read-only reference, no code copied |
+
+None of these sources contains a second game's PSB plus DLL, so none can move
+that game out of class U.  They are listed to make the gap auditable, not to
+claim compatibility.
+
 ## 10. Git state and reproducibility
 
 * Branch: `research/emote-crossgame`, based on `research/emote-psb@70ef869`.
@@ -248,7 +301,7 @@ here; this is only the proposed boundary.
 * Empirical outputs: `work/audit_dll.json`, `work/env_scan.json`,
   `work/inspect_sample.json`, `work/revalidate_157.log` (gitignored).
 * Cross-game tests: 8, all passing.  NekoPara decoder tests: 35, all passing.
-* Cross-game audit commit: `cbdb190` (this file included).
-* Push: `origin/research/emote-crossgame` updated successfully; this
-  docs-only addendum is the branch tip and `git ls-remote` matches it.
+* Cross-game audit commit: `cbdb190`; documentation update: the commit that
+  adds this appendix (see `git log -1`).
+* Push: `origin/research/emote-crossgame` updated successfully.
 * No game DLL, PSB, XP3 or extracted resource is part of any commit.

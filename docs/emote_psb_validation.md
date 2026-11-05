@@ -4,6 +4,10 @@ Scope: every E-mote PSB available in the local NekoPara Vol.1 installation,
 three XP3 archives, plus the synthetic and CLI test suite. Nothing in
 `game/NekoPara Vol.1/` was modified; the archives were opened read-only.
 
+Cross-game follow-up: `docs/emote_crossgame_compatibility.md`. It also corrects
+the key evidence: `742877301` is an ASCII string pushed from `.rdata`, not a
+u32 immediate at file offset `0x4B399` (that offset is seed x).
+
 Reproduce with:
 
 ```sh
@@ -151,9 +155,10 @@ Additional regression tests added for previously untested safety properties:
 
 1. Obtain one PSB and the corresponding `emoteplayer.dll` from another E-mote
    3.0 title; record game/build, file sizes and SHA-256 of both.
-2. Search that DLL for ASCII `742877301`, the constants `0x2C46C275`,
-   `0x75BCD15`, `0x159A55E5`, `0x1F123BB5`, and the decryptor vtable slot;
-   diff against the NekoPara build.
+2. Search that DLL for ASCII `742877301` and `push imm32` references to it
+   (in NekoPara the key is ASCII-only, not a u32 immediate), plus the seed
+   immediates `0x75BCD15`, `0x159A55E5`, `0x1F123BB5`; diff against the
+   NekoPara build.
 3. Run `emote_psb.py inspect` on the PSB. If it validates, run the same
    archive-wide validation and record `adler32`/filter-key results. If the key
    differs, recover the fourth word from the init block and retry with `--key`.

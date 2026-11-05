@@ -237,6 +237,9 @@ this harness (the same taps do open FSN's menu), so the long run proves stabilit
 
 ## Not done / not checked
 
+- **E-mote backend:** the PSB cipher is solved and validated for NekoPara Vol.1 (157/157), but there is no
+  E-mote renderer yet and no second E-mote game locally. Research and cross-game evidence:
+  [emote_psb_research.md](emote_psb_research.md), [emote_crossgame_compatibility.md](emote_crossgame_compatibility.md).
 - Video: plays on PC; not checked on the Switch yet (speed of software MPEG / WMV decoding).
 - The audio format converter is not flushed at end of stream: the last ~20 ms of a short sound
   (or the tail of a resampled voice) can be dropped. The 8-bit `mute.wav` is silent, so it no

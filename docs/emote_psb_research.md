@@ -29,12 +29,16 @@ name trie, strings and root object are read.
 | decrypt call | `0x100AE662` | `0x100019D5` |
 | key text `742877301` | `.rdata` `0x100D4394` | `.rdata` `0x10071350` |
 
-`emoteplayer.dll` is a PE32 image with base `0x10000000`; its `.text` starts at
-file offset `0x400`, so file offset `0x4B399` maps to VA `0x1004BF99` (the
-immediate field of the instruction that begins at `0x1004BF93`). The 32-bit
-value `0x2C46C275` there is the fourth seed. The same decimal text also occurs
-at file offsets `0xB58FE` and `0xB5BDA`; the code converts it with
-`strtol(s, NULL, 10)`, so the key is decimal `742877301` = `0x2C46C275`.
+`emoteplayer.dll` is a PE32 image with base `0x10000000`. The key is **not** a
+32-bit immediate: file offset `0x4B399` (VA `0x1004BF99`) holds seed x,
+`0x075BCD15`. The key exists as the ASCII decimal text `742877301` at `.rdata`
+file `0xD3794` / VA `0x100D4394`; the code does `push 0x100D4394` at VA
+`0x1004BF6D`, parses the decimal value, and stores the result as the fourth
+state word at `[ebp-0xBC]`, next to the seed immediates at
+`[ebp-0xC8]`/`[ebp-0xC4]`/`[ebp-0xC0]` and the vtable at `[ebp-0xCC]`
+(`0x100D7C0C`). `0xB58FE`/`0xB5BDA` are a separate runtime RNG, not this key.
+An earlier revision of this file misread `0x4B399` as the key; corrected on
+2026-11-05, see `docs/emote_crossgame_compatibility.md`.
 
 The initialisation block also writes the vtable pointer `0x100D7C0C`, the seeds
 `123456789` (`0x75BCD15`), `362436069` (`0x159A55E5`), `521288629`
@@ -158,9 +162,12 @@ from `info.name`.
 
 ## 3. Hypotheses / not verified
 
-* **Key is per-build, not per-file.** All tested files share it, and the key is
-  baked into both DLLs as a constant. Whether other E-mote 3.0 builds or other
-  games use `742877301` is untested.
+* **Key is per-build, not per-file.** All 157 NekoPara files share it. The
+  cross-game audit found no other E-mote build locally; both M2 `psbfile.dll`
+  readers contain no key or seeds, and ATRI/FSN have no E-mote player DLL.
+  External extraction guides use the same key for the NekoPara series, but no
+  independent game has been tested. See
+  `docs/emote_crossgame_compatibility.md`.
 * **`emotedriver.dll` block at `0x100015B6`.** It initialises the same xorshift
   seeds but uses `time()` (import `[0x1006F020]`, call `0x1005B368`, divided by
   10,000,000) as the fourth word. This is a runtime RNG, not the PSB cipher;
