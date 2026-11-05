@@ -68,6 +68,7 @@ Network work runs on detached SDL threads with a 1 MiB stack; the UI polls the j
 | Autostart the last game | 3 s countdown, any input cancels; not after coming back from a game |
 | Controls | action per pad button (A, B, X, Y, L, R, ZL, ZR, +, −) in games; defaults L = wheel up (backlog), R = wheel down, + = Esc, − = Tab; Page Up / Page Down stay available. L3 + R3 (menu) is fixed |
 | Keep aspect ratio | on (default): the game picture keeps its proportions with black bars (a 640x480 game uses the middle 960x720 of the 1280x720 screen); off: stretched to the whole screen. Touch and mouse are mapped through the same rectangle (`settings.ini`: `keep_aspect`). On hardware (2026-11-05) Fate/FSN and Tsukihime show 4:3 with bars with this on; planned: a switch between original 4:3 and 16:9, with 16:9 by stretch or upscaler |
+| Soft plugin mode | off (default) / on: after a game linked a plugin kk4s does not have, missing members of native objects (System, Layer, …) give void instead of an error, logged once each; may hide real breakage, even in saves (`settings.ini`: `soft_mode`; [plugins.md](plugins.md)) |
 | CPU boost (Switch) | on (default): 1785 MHz instead of 1020 MHz while a game runs (`appletSetCpuBoostMode(FastLoad)`, the GPU drops to its minimum, which is plenty for one textured quad) |
 | Download all covers | see above |
 

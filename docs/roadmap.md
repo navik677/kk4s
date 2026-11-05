@@ -27,5 +27,6 @@ Full requirements: [original-prompt.md](original-prompt.md). Risk = chance of a 
 | Native members of built-in classes that krkrs lacks compared with krkrz / krkr2 | any game calling them | **diffed** (`tools/native-api.py`, `docs/api-coverage.md`); fstat / windowEx / inputString sets done, the rest listed there |
 | extrans transitions are cross-fades | KAG3 games using `[trans method=wave|mosaic|turn|rotate*]` | **done** (krkrz extrans ported into the engine, `tests/extrans`; ripple's picture unverified) |
 | layerExDraw (GDI+ drawing) ignored | games drawing UI or text effects with it | **done** (plutovg; `tests/layerexdraw`, ASan+UBSan; approximations in plugins.md); not checked against a real game |
+| A missing member of an ignored plugin throws and usually ends the game | games with plugins kk4s lacks | **optional soft mode** (off by default, `tests/softmode`); the real fix stays a native plugin |
 | MIDI BGM, `.tft` pre-rendered fonts, ERI images, `.sli` loop files — not yet checked | older Kirikiri 2 titles | investigate |
 

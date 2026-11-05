@@ -5,6 +5,13 @@ Lookup order: engine internal plugins (`engine/source/plugins`) → kk4s table (
 
 Status: **full** = same behaviour, **approx** = similar result, **stub** = does nothing (game logic continues, the effect is missing).
 
+**Soft mode** (optional, off by default; launcher setting "Soft plugin mode", `settings.ini` `soft_mode=1`):
+once a game has linked a DLL kk4s ignores, `obj.member` / `obj.member(...)` on a native object (a native
+class such as `System`, or an instance of one such as a KAG layer) that has no such member reads / returns
+void instead of throwing, logged once per `Class.member` (`compat: soft mode: ...`). Script objects, unknown
+globals, `obj[name]`, `typeof` and `in` are unchanged. Risk: a value the plugin would have returned is
+missing, which can go wrong later, even in saves. `compat/kk4s_softmode.cpp`, `tests/softmode`.
+
 | DLL | Provides | Status |
 |---|---|---|
 | wuvorbis.dll | Ogg Vorbis decoding | full (engine decoder) |

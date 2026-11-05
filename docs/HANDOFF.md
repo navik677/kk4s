@@ -101,6 +101,14 @@ Lesson: never re-declare kk4s functions by hand in engine/plugin code; include `
 `kk4s_internal.h`. Unverified: layerExDraw output in a real game and on the Switch (fonts are indexed on
 the first `GdiPlus.Font`: every font file is read once — with big CJK `.ttc` files on the SD that may be slow).
 
+**Step 3: optional soft mode** (user's plan step 3). A TJS VM hook (`TJSSoftMissingMemberHook` in
+`tjsInterCodeExec.cpp`, only `GetPropertyDirect` and `CallFunctionDirect/Indirect`) asks
+`compat/kk4s_softmode.cpp`, which says yes only when `soft_mode=1`, a plugin was ignored in this game
+(`PluginIgnoredThisGame`, reset in `BeforeStartup`) and the object is a native class object or an instance
+of one (the native classes are collected from the global object at startup). Launcher toggle with
+uk/en/ru/ja text naming the risk. `tests/softmode` runs both settings. **31/31** GCC and ASan+UBSan; NRO
+builds. Not tried on a real game: whether it gets any stuck game further is unknown.
+
 **STOP POINT 2 (2026-11-05, user stopped the session; resolved in step 2 above).** Committed as work in progress and **not
 built**: `engine/source/plugins/layerExDraw/` — layerExDraw.dll without GDI+: vendored plutovg (MIT,
 `plutovg/UPSTREAM.txt`), `gdip_kk4s.h` (GDI+ enums with their real values, PointF / RectF / Matrix /
