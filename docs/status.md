@@ -13,7 +13,7 @@ Last update: 2026-11-05.
 ## Branch `cloud-session` (2026-11-05, universal-runtime sprint)
 
 Not merged, not run on hardware, no real game available in the cloud session. Verified: the
-synthetic suite (`tools/run-tests.sh`, 16/16) on the normal **and** the ASan+UBSan Linux build, and
+synthetic suite (`tools/run-tests.sh`, 24/24) on the normal **and** the ASan+UBSan Linux build, and
 that the Switch NRO builds (devkitA64 docker image). Commit list and details: `docs/HANDOFF.md`.
 
 | Area | Change | Level |
@@ -25,7 +25,12 @@ that the Switch NRO builds (devkitA64 docker image). Commit list and details: `d
 | Launcher | `data/`-only folders, `data.exe` and XP3 appended to an exe are recognised; `kk4s --list-games` | synthetic layouts tested |
 | Plugins | windowEx.dll complete (monitor, metrics, environment, cursor, window rects) | synthetic tests |
 | Engine | closed windows no longer receive input (UAF / frozen input after KAG's `askYesNo`); KAGParser init, ObjectList `delete[]`, hash alignment | found and verified by `tests/kag3` |
-| Tests | **original KAG3 system scripts** play a scenario end to end (`tests/kag3`) | 19/19 normal + ASan |
+| Tests | **original KAG3 system scripts** play a scenario end to end, incl. save at a label and load back (`tests/kag3`) | normal + ASan |
+| Plugins | Kirikiri Z / 2 native members (fstat + windowEx sets, `System.inputString`, `Debug.visible`, language) without `Plugins.link`; shrinkCopy, layerExAreaAverage | synthetic tests |
+| Archives | keyless `.tpm` encryption discovered per archive and verified by adlr (12 families + fitted XOR formulas) | 18 synthetic schemes + 2 controls; no real encrypted game checked |
+| Screen | aspect-correct scaling (letterbox, default on) with touch/mouse mapped through it | `tests/aspect`; not seen on hardware |
+| Input | Windows input rules: `onClick` left-button only, double click, wheel notch 120, button state in mouse shifts / `getKeyState(VK_LBUTTON)`, `cursorX/Y` in game coordinates, `setCursorPos` → mouse move | `tests/input` |
+| Input | pad L / R = wheel (opens and scrolls the KAG3 backlog; Page Up never did), held buttons repeat like Kirikiri's pad input, pad right click at the screen centre until touched | `tests/input`, `tests/kag3/interact_smoke.py`; not tried on hardware |
 
 Expected effect on ATRI (unverified): `generateWhiteNoise` no longer throws, `clipAlphaRect` really
 clips affine layers (before it silently did nothing).
@@ -49,7 +54,7 @@ run names the component. Full list and scope: [tests/README.md](../tests/README.
 | What | Command | CI |
 |---|---|---|
 | Storage: project dir, overlay precedence, XP3 parsing | `tools/run-tests.sh --group xp3 out-desktop/kk4s` | Linux, blocking |
-| Engine I/O: TextStream, AlphaMovie, `Scripts.loadDataPack` | `--group io` | Linux, blocking |
+| Engine I/O and scripts: TextStream, AlphaMovie, `Scripts.loadDataPack`, plugin contracts, input rules, KAG3 template (on `cloud-session`) | `--group io` | Linux, blocking |
 | Decoders vs Python references (PBD, PSB, CXDEC) | `--group decoders` | Linux + Windows, blocking |
 | Boot smoke test (`tests/tjs/hello`, 15 s under xvfb) | see `.github/workflows/desktop.yml` | Linux, blocking |
 

@@ -39,9 +39,15 @@ session); "tested" below means the synthetic suite on the Linux desktop build un
 | `34ce2f3` | Kirikiri Z / Kirikiri 2 native members for every game: the fstat + windowEx sets (native in krkrz, so KAGZ calls them without `Plugins.link`), `System.inputString` (Switch keyboard), `Debug.visible`, language properties | `tests/natives` |
 | `0dc90b1` | **Keyless `.tpm` encryption discovery** for plain-named archives (`compat/kk4s_xp3crypt.cpp`): 12 GARbro families + fitted "one XOR byte per entry = f(adlr)" formulas, bound only when adlr verifies | `tests/xp3/crypt_smoke.py` (18 schemes + 2 controls) |
 | `806395c` | **Aspect-correct scaling** (letterbox, default on, launcher setting) with touch/mouse mapped through the picture rect; the PC mouse was unscaled before | `tests/aspect`; KAG3 screenshot |
+| `f484e94` | docs for the API diff, natives, xp3 crypt and aspect commits | — |
+| `396b6af` | `tests/kag3`: `[save]` at a save-point label and `[load]` back, `f.*` restored | `tests/kag3` |
+| `b6ec74b` | shrinkCopy.dll (`shrinkCopy`, `shrinkCopyFast`) and layerExAreaAverage.dll (`stretchCopyAA`), area-average resampling | `tests/layerex` |
+| `82bee15` | **Input follows Kirikiri's Windows rules** (krkrz `TVPWindow.cpp` / `WindowForm.cpp`): `onClick` only for the left button, at the press point, before `onMouseUp` (pad B used to "click" anything reacting to `onClick`); double click → `onDoubleClick`; a wheel notch is **120** (KAG3's history does `delta \ 120`, so it never scrolled); `ssLeft`/`ssRight`/`ssMiddle` in mouse shifts and `System.getKeyState(VK_LBUTTON…)`; `Layer.cursorX/Y` in game coordinates (were window pixels / 0,0 on touch); `setCursorPos` makes a mouse move (KAG3 arrow-key link highlight) | `tests/input` |
+| `cd79ed5` | **Pad**: L / R = wheel up / down by default (KAG3 opens its backlog on wheel up, R or Shift+Up — never Page Up, so L did nothing); held buttons repeat like krkr2's pad input (`DInputMgn.cpp`: 500 ms, then 30 ms; wheel 100 ms); the pad's right click / wheel happen at the screen centre until a touch places the cursor (B hit KAG3's "previous page" button at 0,0) | `tests/input`, `tests/kag3/interact_smoke.py` |
 
-Test state at `806395c`: `bash tools/run-tests.sh` → 23/23 on the normal desktop build (the ASan build
-was 19/19 at `014a756`); `tools/build-switch.sh` in `devkitpro/devkita64` builds `out/kk4s.nro`.
+Test state at `cd79ed5`: `bash tools/run-tests.sh` → **24/24** on the normal desktop build and on the
+ASan+UBSan build (the input and KAG3 tests also with `UBSAN_OPTIONS=halt_on_error=1`);
+`tools/build-switch.sh` in `devkitpro/devkita64` builds `out/kk4s.nro`.
 
 **What was learned about Kirikiri / krkrs internals** (kept in the docs named):
 - krkrs stores 32bpp layer images as RGBA bytes; Kirikiri and every Windows plugin assume BGRA.
@@ -56,6 +62,14 @@ was 19/19 at `014a756`); `tools/build-switch.sh` in `devkitpro/devkita64` builds
 - json.dll does **not** accept unquoted keys (`{a:1}` is a parse error), only quoted ones.
 - Original project-dir search order (engine `SysInitImpl.cpp`): `content-data/` → `data.xp3` →
   `data.exe` → XP3 appended to the exe itself → `data/` → exe folder.
+- Windows input semantics games rely on: `onClick` is left-button only and goes to the layer that
+  captured the press; mouse shifts include the held buttons; the wheel delta is a multiple of 120;
+  `Layer.cursorX = …` / `setCursorPos` generates a mouse move (KAG3 uses it to highlight the link
+  chosen with the arrow keys); Kirikiri itself auto-repeats pad buttons (`-paddelay` 500 ms,
+  `-padinterval` 30 ms).
+- KAG3's backlog: wheel up / `R` / Shift+Up open it; inside, wheel up scrolls back, wheel down at
+  the end closes it, right click closes it. Its top-left corner is the "previous page" button.
+- Scripted SDL mouse events need `SDL_VIDEODRIVER=dummy` (another fallback driver drops them).
 
 **Unverified assumptions** (need a real game or hardware): that ATRI's affine layers look right
 with the real `clipAlphaRect`; that alpha movies now show correct colours on screen; that games
@@ -74,18 +88,29 @@ docker run --rm -v "$PWD":/src -w /src devkitpro/devkita64:latest \
 The image already contains every portlib the build needs (`SKIP_DEPS=1`); `pkg.devkitpro.org` was
 not reachable from the cloud session.
 
-**Next, in priority order** (also tracked in `docs/roadmap.md`): extend `tests/kag3` (bookmark
-**load**, history, auto/skip modes; KAGEX / KAGZ system scripts if a redistributable copy is found);
-shrinkCopy / layerExAreaAverage / win32ole stubs; real extrans transitions; legacy formats to check
-(`.sli` BGM loops, `.tft` pre-rendered fonts, MIDI, ERI images); layerExDraw; keyed `.tpm` families
-(seed recoverable from known plaintext, e.g. Akabei/NekoWorks style); `Font.registerFontFile` and
-other krkrz members listed in `docs/api-coverage.md`; KAGZ `%layer` storages (needs NekoPara's
-scripts to verify).
+**Next, in the order the user set on 2026-11-05** (also in `docs/roadmap.md`). No universal
+Windows-DLL runtime (x86-32 on ARM64 + tp_stub ABI + Win32 is Wine/box86 territory); work by class:
+1. **Native rewrites of popular plugin contracts**, like layerEx* / fstat / json / windowEx:
+   extrans (real transitions instead of cross-fades), layerExDraw, psdfile, saveStruct, varfile,
+   csvParser, KAGParserEx, addFont. Pick by real logs: `compat: plugin not available, ignored:
+   <dll>` and `Member "…" does not exist`.
+2. **A small x86 interpreter only for XP3 `.tpm` filters**: load the game's own `.tpm`, give it a
+   fake `tp_stub` with the few functions such plugins call (`TVPSetXP3ArchiveExtractionFilter` …),
+   capture the callback and run it sandboxed, verified against adlr like the keyless discovery.
+   Keys stay in the game's files; nothing enters the repository.
+3. **Optional "soft mode"** for unknown plugins: missing members log and return void instead of
+   throwing. Only behind a switch (silent glitches in saves are the risk).
+4. (Windows PC only, low priority) a 32-bit build that loads the real DLLs.
+Smaller items still open: KAGEX / KAGZ fixtures if a redistributable copy is found; legacy formats
+to check (`.sli` loops, `.tft` fonts, MIDI, ERI); `Font.registerFontFile` and other krkrz members
+in `docs/api-coverage.md`; KAGZ `%layer` storages (needs NekoPara's scripts to verify).
 
 Reference sources used in the cloud session (fetch again when needed, never commit game data):
 `git clone --depth 1 https://github.com/krkrz/krkrz` (krkrz engine), `https://github.com/krkrz/krkr2`
 (Kirikiri 2 history incl. `kag3/`), `https://github.com/wamsoft/<plugin>` (layerExImage,
 layerExBtoA, layerExRaster, layerExSave, fstat, json, scriptsEx, windowEx, shrinkCopy, psdfile…).
+krkr2's own plugins (extrans, KAGParserEx, csvParser, saveStruct, varfile, addFont…) are in
+`krkr2/src/plugins/win32/` and `https://github.com/wamsoft/<plugin>`.
 
 Merged locally: `compat/tinyfilter-2026-11-04` was fast-forwarded into `main` (HEAD `721b62a`, code
 from `9f229bb`). **Not pushed:** the `gh` token has no `workflow` scope, and these commits touch

@@ -61,9 +61,19 @@ It prints the data-area strings and the VM instructions (opcodes are from
 
 `KK4S_INPUT_SCRIPT=<file>` plays gamepad presses, touches and screenshots through the same code as
 the Switch pad (`sdl2/stubs.cpp`, `kk4sScriptTick`): lines `<ms> pad A [hold_ms]`, `<ms> tap x y`
-(0..1), `<ms> shot name.bmp` (to `$KK4S_ROOT/shots/`), `<ms> eval <TJS expression>` (result in the
-log, e.g. `kag.mainConductor.curStorage + ":" + kag.mainConductor.curLine`), `<ms> quit`; `+<ms>` is
-relative.
+(0..1), `<ms> mouse x y [left|right|middle] [hold_ms] [clicks]` and `<ms> move x y` (the PC mouse
+path; the button is let go where the mouse is then, so `mouse` + `move` is a drag; `clicks` 2 is the
+second press of a double click), `<ms> wheel <notches>` (+ = up), `<ms> shot name.bmp` (to
+`$KK4S_ROOT/shots/`), `<ms> eval <TJS expression>` (result in the log, e.g.
+`kag.mainConductor.curStorage + ":" + kag.mainConductor.curLine`), `<ms> quit`; `+<ms>` is relative.
+Run it with `SDL_VIDEODRIVER=dummy` (as `tools/run-tests.sh` does): with another fallback video
+driver SDL may drop the pushed mouse events.
+
+Input follows Kirikiri's Windows rules (`tests/input/smoke.py`): `onClick` only for the left button,
+a wheel notch is 120, mouse-event shifts carry `ssLeft`/`ssRight`/`ssMiddle`, `Layer.cursorX/Y` are
+game coordinates. Held pad buttons repeat like krkr2's pad input (500 ms, then every 30 ms; wheel
+actions every 100 ms). Until the player touches the screen, the pad's right click and wheel happen at
+the centre of the game picture.
 
 ## Debugging aids for KiriKiri games (PC)
 
