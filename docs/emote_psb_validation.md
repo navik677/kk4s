@@ -165,9 +165,10 @@ Additional regression tests added for previously untested safety properties:
 * Branch: `research/emote-psb` (only this branch was touched).
 * Base commit before the sprint: `cc5dfc6`.
 * Validation commit (decoder untouched, validator + tests + this report):
-  `HEAD` of `research/emote-psb` after the commit that adds this file.
-* Push state: pushed to `origin/research/emote-psb` (see final response for the
-  exact hash/status; `main` and `cloud-session` were not modified).
+  `8700b9b`.
+* Push state: **pushed** to `origin/research/emote-psb`; the branch was created
+  on the remote by this push. A docs-only follow-up commit records this line.
+* `main` and `cloud-session` were not modified.
 
 Artifacts added by this sprint:
 
