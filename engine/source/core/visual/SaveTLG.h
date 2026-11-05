@@ -42,4 +42,20 @@ public:
 	void Store();
 	void Restore();
 };
+
+// kk4s: krkrs keeps 32bpp bitmaps as RGBA bytes (uint32 0xAABBGGRR), while a TLG
+// file stores Kirikiri's BGRA. The TLG writers read their rows through this: a
+// BGRA copy for 32bpp images, the bitmap itself for 8bpp ones. Without it a saved
+// TLG came back with red and blue swapped.
+#include <vector>
+class tTVPTLGSourceLines
+{
+	const class iTVPBaseBitmap *Bmp;
+	std::vector<unsigned char> Data;
+	size_t Stride;
+public:
+	explicit tTVPTLGSourceLines(const class iTVPBaseBitmap *bmp);
+	const unsigned char * operator()(int y) const;
+};
+
 #endif

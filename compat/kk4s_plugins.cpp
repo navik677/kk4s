@@ -1360,6 +1360,7 @@ void LinkPackinOneDll();
 void LinkLayerExBtoADll();
 void LinkLayerExImageDll();
 void LinkLayerExRasterDll();
+void LinkLayerExSaveDll();
 
 // menu.dll: the Win32 menu bar. The engine already has MenuItem and Window.menu
 // (engine/source/core/visual/MenuItemIntf.cpp), so items added by KAGZ work; the
@@ -1437,6 +1438,7 @@ static const PluginEntry kPlugins[] = {
     {"layerexbtoa.dll", LinkLayerExBtoADll},
     {"layereximage.dll", LinkLayerExImageDll},
     {"layerexraster.dll", LinkLayerExRasterDll},
+    {"layerexsave.dll", LinkLayerExSaveDll},
     {"windowex.dll", LinkWindowExDll},
     {"menu.dll", LinkMenuDll},
     {"emoteplayer.dll", LinkEmotePlayerDll},

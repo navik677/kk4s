@@ -1031,6 +1031,7 @@ void SaveTLG6( tTJSBinaryStream* stream, const iTVPBaseBitmap* bmp, bool is24 )
 	}
 	int stride = colors;
 	if( stride == 3 ) stride = 4;
+	tTVPTLGSourceLines lines(bmp); // kk4s: BGRA rows (krkrs stores RGBA)
 
 	// output stream header
 	{
@@ -1102,10 +1103,10 @@ void SaveTLG6( tTJSBinaryStream* stream, const iTVPBaseBitmap* bmp, bool is24 )
 						for(int yy = y; yy < ylim; yy++)
 						{
 							const unsigned char * sl = x*stride +
-								c + (const unsigned char *)bmp->GetScanLine(yy);
+								c + lines(yy);
 							const unsigned char * usl;
 							if(yy >= 1)
-								usl = x*stride + c + (const unsigned char *)bmp->GetScanLine(yy-1);
+								usl = x*stride + c + lines(yy-1);
 							else
 								usl = NULL;
 							for(int xx = x; xx < xlim; xx++)

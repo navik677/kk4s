@@ -1,0 +1,117 @@
+// Contract test for the layerExSave.dll replacement (compat/kk4s_layerex.cpp).
+// Files go to System.dataPath (kk4s keeps it outside the game folder).
+Plugins.link("layerExSave.dll");
+var failures = 0;
+function hex(v) { return "0x%08x".sprintf(v & 0xffffffff); }
+function expect(what, got, want) {
+    if ((got & 0xffffffff) != (want & 0xffffffff)) {
+        Debug.message("layerSave FAIL " + what + ": got " + hex(got) + ", want " + hex(want)); failures++;
+    }
+}
+function check(what, ok) { if (!ok) { Debug.message("layerSave FAIL " + what); failures++; } }
+function px(l, x, y) { return (l.getMaskPixel(x, y) << 24) | l.getMainPixel(x, y); }
+function put(l, x, y, argb) { l.fillRect(x, y, 1, 1, argb); }
+
+class TestWindow extends Window {
+    var saved = false;
+    function TestWindow() { super.Window(); setInnerSize(64, 64); add(new Layer(this, null)); }
+    function onSaveLayerImageProgress(h, percent, layer, filename) {}
+    function onSaveLayerImageDone(h, canceled, layer, filename) {
+        check("onSaveLayerImageDone not canceled", canceled == 0);
+        check("onSaveLayerImageDone gets a copy", layer.name == "saveLayer:" + filename);
+        check("async save wrote the file", Storages.isExistentStorage(filename));
+        invalidate layer;   // games do this; it must not be their own layer
+        check("original layer survives", isvalid kk4s_src);
+        if (failures == 0) Debug.message("layerExSave synthetic contract: PASS");
+        else Debug.message("layerExSave synthetic contract: " + failures + " failure(s)");
+    }
+}
+var win = new TestWindow();
+global.kk4s_src = new Layer(win, win.primaryLayer);
+
+var names = ["saveLayerImagePng", "saveLayerImageTlg5", "saveLayerImagePngOctet", "getCropRect",
+             "getCropRectZero", "getDiffRect", "getDiffPixel", "oozeColor", "copyBlueToAlpha",
+             "isBlank", "clearAlpha", "getAverageColor"];
+for (var i = 0; i < names.count; i++) check("Layer." + names[i] + " exists", typeof kk4s_src[names[i]] == "Object");
+check("Window.startSaveLayerImage exists", typeof win.startSaveLayerImage == "Object");
+
+var l = kk4s_src;
+l.setImageSize(4, 3);
+l.fillRect(0, 0, 4, 3, 0x00000000);
+put(l, 1, 1, 0xffff0000);
+put(l, 2, 1, 0x8000ff00);
+var dp = System.dataPath;
+
+// PNG round-trip (the Python side also decodes this file)
+l.saveLayerImagePng(dp + "probe.png");
+var r = new Layer(win, win.primaryLayer);
+r.loadImages(dp + "probe.png");
+expect("png red", px(r, 1, 1), 0xffff0000);
+expect("png half green", px(r, 2, 1), 0x8000ff00);
+
+// TLG5 with tags
+l.saveLayerImageTlg5(dp + "probe.tlg", %[ kk4s: "tag" ]);
+var meta = r.loadImages(dp + "probe.tlg");
+expect("tlg red", px(r, 1, 1), 0xffff0000);
+check("tlg tags", meta !== void && meta.kk4s == "tag");
+
+// the engine's own writers keep the colour order too
+l.saveLayerImage(dp + "probe6.tlg", "tlg6");
+r.loadImages(dp + "probe6.tlg");
+expect("tlg6 red", px(r, 1, 1), 0xffff0000);
+l.saveLayerImage(dp + "probe.bmp", "bmp");
+r.loadImages(dp + "probe.bmp");
+expect("bmp red", r.getMainPixel(1, 1), 0xff0000);
+
+var oct = l.saveLayerImagePngOctet();
+check("png octet", typeof oct == "Octet" && oct.length > 8 && oct[0] == 0x89 && oct[1] == 0x50);
+
+var c = l.getCropRect();
+check("getCropRect", c !== void && c.x == 1 && c.y == 1 && c.w == 2 && c.h == 1);
+var e = new Layer(win, win.primaryLayer);
+e.setImageSize(4, 3);
+e.fillRect(0, 0, 4, 3, 0);
+check("getCropRect empty", e.getCropRect() === void);
+put(e, 3, 2, 0x00000001);
+var z = e.getCropRectZero();
+check("getCropRectZero", z !== void && z.x == 3 && z.y == 2 && z.w == 1);
+
+var d = l.getDiffRect(e);
+check("getDiffRect (transparent pixels are equal)", d !== void && d.x == 1 && d.y == 1 && d.w == 2 && d.h == 1);
+check("getDiffRect same", l.getDiffRect(l) === void);
+
+// clearAlpha: alpha <= threshold becomes fillColor with alpha 0
+var k = new Layer(win, win.primaryLayer);
+k.setImageSize(2, 1);
+put(k, 0, 0, 0x10123456);
+put(k, 1, 0, 0xff123456);
+k.clearAlpha(0x20, 0xabcdef);
+expect("clearAlpha cleared", px(k, 0, 0), 0x00abcdef);
+expect("clearAlpha kept", px(k, 1, 0), 0xff123456);
+
+// copyBlueToAlpha / isBlank / getAverageColor
+var b = new Layer(win, win.primaryLayer);
+b.setImageSize(2, 1);
+put(b, 0, 0, 0xff0000c0);
+put(b, 1, 0, 0xff000000);
+k.copyBlueToAlpha(b);
+check("copyBlueToAlpha", k.getMaskPixel(0, 0) == 0xc0 && k.getMaskPixel(1, 0) == 0);
+check("isBlank looks at blue", !b.isBlank(0, 0, 1, 1) && b.isBlank(1, 0, 1, 1));
+var g = new Layer(win, win.primaryLayer);
+g.setImageSize(2, 1);
+put(g, 0, 0, 0xff102030);
+put(g, 1, 0, 0xff102030);
+expect("getAverageColor (DLL byte packing B,G,R,A)", g.getAverageColor(0, 0, 2, 1), 0x302010ff);
+
+// oozeColor: a transparent neighbour takes the opaque colour, alpha unchanged
+var o = new Layer(win, win.primaryLayer);
+o.setImageSize(3, 1);
+o.fillRect(0, 0, 3, 1, 0x00000000);
+put(o, 0, 0, 0xff00ff00);
+o.oozeColor(1);
+expect("oozeColor spreads one pixel", px(o, 1, 0), 0x0000ff00);
+expect("oozeColor stops after level", px(o, 2, 0), 0x00000000);
+
+// async save: events arrive on a later frame
+var h = win.startSaveLayerImage(kk4s_src, dp + "async.png", void);
+check("startSaveLayerImage handler", h == 0);

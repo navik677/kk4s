@@ -23,9 +23,13 @@
 // count, so a game log shows which contract it actually used.
 #include "kk4s_compat.h"
 
+#include "GraphicsLoaderIntf.h"
+#include "LayerIntf.h"
 #include "MsgIntf.h"
 #include "ScriptMgnIntf.h"
+#include "UtilStreams.h"
 #include "tjsArray.h"
+#include "tjsDictionary.h"
 #include "tjsNative.h"
 #include "kk4s_platform.h"
 
@@ -668,6 +672,263 @@ tjs_error CopyRaster(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* la
 }
 
 // ---------------------------------------------------------------------------
+// layerExSave: image saving and the analysis helpers that ship with it
+// (wamsoft/layerExSave). Saving goes through the engine's own PNG / TLG
+// writers (they know krkrs' RGBA order and write through the storage layer,
+// so the save-folder redirect applies).
+
+tTVPBaseTexture* MainImageOf(iTJSDispatch2* lay) {
+    tTJSNI_Layer* ni = nullptr;
+    if (!lay || TJS_FAILED(lay->NativeInstanceSupport(TJS_NIS_GETINSTANCE, tTJSNC_Layer::ClassID,
+                                                      (iTJSNativeInstance**)&ni)) || !ni)
+        return nullptr;
+    return ni->GetMainImage();
+}
+
+iTJSDispatch2* DictParam(tjs_int n, tTJSVariant** p, tjs_int i) {
+    return ParamExists(n, p, i) && p[i]->Type() == tvtObject ? p[i]->AsObjectNoAddRef() : nullptr;
+}
+
+tjs_error SaveAs(const tjs_char* mode, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
+    if (n < 1) return TJS_E_BADPARAMCOUNT;
+    tTVPBaseTexture* img = MainImageOf(lay);
+    if (!img) TVPThrowExceptionMessage(TJS_W("Invalid layer image."));
+    TVPSaveImage(*p[0], mode, img, DictParam(n, p, 1));
+    return TJS_S_OK;
+}
+
+// saveLayerImagePng(filename, tags = void). The engine writer ignores the tags and
+// comp_lv (PNG text chunks are not written); the image itself is exact.
+tjs_error SaveLayerImagePng(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
+    return SaveAs(TJS_W("png"), n, p, lay);
+}
+
+// saveLayerImageTlg5(filename, tags = void): tags go into the TLG "tags" chunk.
+tjs_error SaveLayerImageTlg5(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
+    return SaveAs(TJS_W("tlg5"), n, p, lay);
+}
+
+// saveLayerImagePngOctet(level_or_tags = 1) -> octet with the PNG file
+tjs_error SaveLayerImagePngOctet(tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
+    tTVPBaseTexture* img = MainImageOf(lay);
+    if (!img) TVPThrowExceptionMessage(TJS_W("Invalid layer image."));
+    tTVPMemoryStream mem;
+    TVPSaveAsPNG(nullptr, &mem, img, TJS_W("png"), DictParam(n, p, 0));
+    if (r) *r = tTJSVariant((const tjs_uint8*)mem.GetInternalBuffer(), (tjs_uint)mem.GetSize());
+    return TJS_S_OK;
+}
+
+void RectDict(tTJSVariant* r, tjs_int x, tjs_int y, tjs_int w, tjs_int h) {
+    if (!r) return;
+    iTJSDispatch2* d = TJSCreateDictionaryObject();
+    tTJSVariant v;
+    v = (tjs_int64)x; d->PropSet(TJS_MEMBERENSURE, TJS_W("x"), nullptr, &v, d);
+    v = (tjs_int64)y; d->PropSet(TJS_MEMBERENSURE, TJS_W("y"), nullptr, &v, d);
+    v = (tjs_int64)w; d->PropSet(TJS_MEMBERENSURE, TJS_W("w"), nullptr, &v, d);
+    v = (tjs_int64)h; d->PropSet(TJS_MEMBERENSURE, TJS_W("h"), nullptr, &v, d);
+    *r = tTJSVariant(d, d);
+    d->Release();
+}
+
+// Bounding box of the pixels for which keep(pixel) is true; void if none.
+template <class Keep>
+void BoundingBox(const Img& s, tTJSVariant* r, Keep keep) {
+    tjs_int x1 = s.w, y1 = s.h, x2 = -1, y2 = -1;
+    for (tjs_int y = 0; y < s.h; ++y) {
+        const uint32_t* row = s.px(0, y);
+        for (tjs_int x = 0; x < s.w; ++x)
+            if (keep(row[x], x, y)) {
+                if (x < x1) x1 = x;
+                if (x > x2) x2 = x;
+                if (y < y1) y1 = y;
+                if (y > y2) y2 = y;
+            }
+    }
+    if (r) r->Clear();
+    if (x2 >= 0) RectDict(r, x1, y1, x2 - x1 + 1, y2 - y1 + 1);
+}
+
+// getCropRect(): box of the pixels with alpha != 0 -> %[x, y, w, h] or void
+tjs_error GetCropRect(tTJSVariant* r, tjs_int, tTJSVariant**, iTJSDispatch2* lay) {
+    Img s;
+    if (!GetImg(lay, false, s)) TVPThrowExceptionMessage(TJS_W("Invalid layer image."));
+    BoundingBox(s, r, [](uint32_t c, tjs_int, tjs_int) { return (c >> 24) != 0; });
+    return TJS_S_OK;
+}
+
+// getCropRectZero(): box of the pixels that are not 0x00000000
+tjs_error GetCropRectZero(tTJSVariant* r, tjs_int, tTJSVariant**, iTJSDispatch2* lay) {
+    Img s;
+    if (!GetImg(lay, false, s)) TVPThrowExceptionMessage(TJS_W("Invalid layer image."));
+    BoundingBox(s, r, [](uint32_t c, tjs_int, tjs_int) { return c != 0; });
+    return TJS_S_OK;
+}
+
+// Same colour as layerExSave compares: equal alpha, and equal colour unless transparent.
+inline bool SameColor(uint32_t a, uint32_t b) {
+    return (a >> 24) == (b >> 24) && ((a >> 24) == 0 || (a & 0xffffffu) == (b & 0xffffffu));
+}
+
+bool SameSizePair(iTJSDispatch2* lay, bool write, tjs_int n, tTJSVariant** p, Img& t, Img& b) {
+    if (n < 1) return false;
+    if (!GetImg(lay, write, t) || !GetImg(p[0]->AsObjectNoAddRef(), false, b))
+        TVPThrowExceptionMessage(TJS_W("Invalid layer image."));
+    if (t.w != b.w || t.h != b.h) TVPThrowExceptionMessage(TJS_W("Different layer size."));
+    return true;
+}
+
+// getDiffRect(base): box of the pixels that differ from base -> dict or void
+tjs_error GetDiffRect(tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
+    Img t, b;
+    if (!SameSizePair(lay, false, n, p, t, b)) return TJS_E_BADPARAMCOUNT;
+    BoundingBox(t, r, [&](uint32_t c, tjs_int x, tjs_int y) { return !SameColor(c, *b.px(x, y)); });
+    return TJS_S_OK;
+}
+
+// getDiffPixel(base, samecol = void, diffcol = void) -> number of differing pixels,
+// optionally painting same / different pixels (0xAARRGGBB)
+tjs_error GetDiffPixel(tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
+    Img t, b;
+    if (!SameSizePair(lay, true, n, p, t, b)) return TJS_E_BADPARAMCOUNT;
+    bool sfill = ParamExists(n, p, 1), dfill = ParamExists(n, p, 2);
+    uint32_t scol = sfill ? RevRGB((uint32_t)p[1]->AsInteger()) : 0;
+    uint32_t dcol = dfill ? RevRGB((uint32_t)p[2]->AsInteger()) : 0;
+    tjs_int64 count = 0;
+    for (tjs_int y = 0; y < t.h; ++y) {
+        uint32_t* q = t.px(0, y);
+        const uint32_t* o = b.px(0, y);
+        for (tjs_int x = 0; x < t.w; ++x) {
+            if (SameColor(q[x], o[x])) { if (sfill) q[x] = scol; }
+            else { if (dfill) q[x] = dcol; ++count; }
+        }
+    }
+    if (sfill || dfill) Update(lay, 0, 0, t.w, t.h);
+    if (r) *r = count;
+    return TJS_S_OK;
+}
+
+// oozeColor(level, threshold = 1, fillColor = 0): spread the colour of opaque pixels
+// into transparent neighbours `level` times (keeps shrunk images free of dark fringes).
+tjs_error OozeColor(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
+    if (n < 1) return TJS_E_BADPARAMCOUNT;
+    int level = (int)p[0]->AsInteger();
+    if (level <= 0) TVPThrowExceptionMessage(TJS_W("Invalid level count."));
+    int threshold = n > 1 ? (int)(uint8_t)p[1]->AsInteger() : 1;
+    if (threshold < 1) threshold = 1;
+    uint32_t fill = n > 2 ? (uint32_t)p[2]->AsInteger() : 0;
+    uint8_t fr = (uint8_t)(fill >> 16), fg = (uint8_t)(fill >> 8), fb = (uint8_t)fill;
+    Img d;
+    if (!GetImg(lay, true, d)) TVPThrowExceptionMessage(TJS_W("Invalid layer image."));
+    const tjs_int ow = d.w + 2;
+    std::vector<signed char> map((size_t)ow * (d.h + 2), 0); // -1 done, 1 filled this pass
+    auto at = [&](tjs_int x, tjs_int y) -> signed char& { return map[(size_t)(y + 1) * ow + x + 1]; };
+    for (tjs_int y = 0; y < d.h; ++y)
+        for (tjs_int x = 0; x < d.w; ++x) {
+            uint8_t* q = (uint8_t*)d.px(x, y);
+            if (q[kA] >= threshold) at(x, y) = -1;
+            else { q[kR] = fr; q[kG] = fg; q[kB] = fb; }
+        }
+    for (int i = 0; i < level; ++i) {
+        for (tjs_int y = 0; y < d.h; ++y)
+            for (tjs_int x = 0; x < d.w; ++x) {
+                if (at(x, y)) continue;
+                unsigned cr = 0, cg = 0, cb = 0, cnt = 0;
+                auto add = [&](tjs_int xx, tjs_int yy) {
+                    if (at(xx, yy) >= 0) return;
+                    const uint8_t* c = (const uint8_t*)d.px(xx, yy);
+                    cr += c[kR]; cg += c[kG]; cb += c[kB]; ++cnt;
+                };
+                add(x, y - 1); add(x, y + 1); add(x - 1, y); add(x + 1, y);
+                if (!cnt) continue;
+                uint8_t* q = (uint8_t*)d.px(x, y);
+                q[kR] = (uint8_t)(cr / cnt); q[kG] = (uint8_t)(cg / cnt); q[kB] = (uint8_t)(cb / cnt);
+                at(x, y) = 1;
+            }
+        for (signed char& m : map) if (m > 0) m = -1;
+    }
+    Update(lay, 0, 0, d.w, d.h);
+    return TJS_S_OK;
+}
+
+// copyBlueToAlpha(src): src's blue channel becomes this layer's alpha (common size)
+tjs_error CopyBlueToAlpha(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
+    if (n < 1) return TJS_E_BADPARAMCOUNT;
+    Img d, s;
+    if (!GetImg(lay, true, d) || !GetImg(p[0]->AsObjectNoAddRef(), false, s))
+        TVPThrowExceptionMessage(TJS_W("src must be Layer."));
+    tjs_int w = std::min(d.w, s.w), h = std::min(d.h, s.h);
+    for (tjs_int y = 0; y < h; ++y) {
+        uint8_t* q = (uint8_t*)d.px(0, y);
+        const uint8_t* b = (const uint8_t*)s.px(0, y);
+        for (tjs_int x = 0; x < w; ++x) q[x * 4 + kA] = b[x * 4 + kB];
+    }
+    Update(lay, 0, 0, w, h);
+    return TJS_S_OK;
+}
+
+// isBlank(x, y, w, h): true if the rect has no non-zero byte where the DLL looks
+// (the first byte of each pixel on Windows, which is blue)
+tjs_error IsBlank(tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
+    if (n < 4) return TJS_E_BADPARAMCOUNT;
+    Img s;
+    if (!GetImg(lay, false, s)) TVPThrowExceptionMessage(TJS_W("src must be Layer."));
+    tjs_int l = (tjs_int)p[0]->AsInteger(), t = (tjs_int)p[1]->AsInteger();
+    tjs_int w = (tjs_int)p[2]->AsInteger(), h = (tjs_int)p[3]->AsInteger();
+    if (l < 0) { w += l; l = 0; }
+    if (t < 0) { h += t; t = 0; }
+    if (l + w > s.w) w = s.w - l;
+    if (t + h > s.h) h = s.h - t;
+    bool blank = true;
+    for (tjs_int y = t; blank && y < t + h; ++y)
+        for (tjs_int x = l; x < l + w; ++x)
+            if (((const uint8_t*)s.px(x, y))[kB]) { blank = false; break; }
+    if (r) *r = (tjs_int)blank;
+    return TJS_S_OK;
+}
+
+// clearAlpha(threshold = 0, fillColor = 0): pixels with alpha <= threshold become
+// fillColor (0xRRGGBB) with alpha 0
+tjs_error ClearAlpha(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
+    int threshold = n > 0 ? (int)p[0]->AsInteger() : 0;
+    uint32_t fill = RevRGB((uint32_t)(n > 1 ? p[1]->AsInteger() : 0) & 0xffffffu);
+    Img d;
+    if (!GetImg(lay, true, d)) TVPThrowExceptionMessage(TJS_W("dest must be Layer."));
+    for (tjs_int y = 0; y < d.h; ++y) {
+        uint32_t* q = d.px(0, y);
+        for (tjs_int x = 0; x < d.w; ++x)
+            if ((int)(q[x] >> 24) <= threshold) q[x] = fill;
+    }
+    Update(lay, 0, 0, d.w, d.h);
+    return TJS_S_OK;
+}
+
+// getAverageColor(x, y, w, h). Kept as the DLL computes it: it averages the bytes
+// of each Windows pixel (B, G, R, A) and packs them as (B << 24 | G << 16 | R << 8 | A).
+tjs_error GetAverageColor(tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
+    if (n < 4) return TJS_E_BADPARAMCOUNT;
+    Img s;
+    if (!GetImg(lay, false, s)) TVPThrowExceptionMessage(TJS_W("src must be Layer."));
+    tjs_int l = (tjs_int)p[0]->AsInteger(), t = (tjs_int)p[1]->AsInteger();
+    tjs_int w = (tjs_int)p[2]->AsInteger(), h = (tjs_int)p[3]->AsInteger();
+    if (l < 0) { w += l; l = 0; }
+    if (t < 0) { h += t; t = 0; }
+    if (l + w > s.w) w = s.w - l;
+    if (t + h > s.h) h = s.h - t;
+    if (w <= 0 || h <= 0) TVPThrowExceptionMessage(TJS_W("invalid layer range"));
+    double sum[4] = {0, 0, 0, 0}; // Windows byte order: B, G, R, A
+    for (tjs_int y = t; y < t + h; ++y)
+        for (tjs_int x = l; x < l + w; ++x) {
+            const uint8_t* q = (const uint8_t*)s.px(x, y);
+            sum[0] += q[kB]; sum[1] += q[kG]; sum[2] += q[kR]; sum[3] += q[kA];
+        }
+    double size = (double)w * h;
+    uint32_t c = 0;
+    for (int i = 0; i < 4; ++i) c |= ((uint32_t)(sum[i] / size) & 0xffu) << (24 - 8 * i);
+    if (r) *r = (tjs_int64)(tjs_int)c;
+    return TJS_S_OK;
+}
+
+// ---------------------------------------------------------------------------
 // registration
 
 struct Method {
@@ -703,6 +964,20 @@ const Method kImage[] = {
 const Method kRaster[] = {
     KK4S_LX(CopyRaster, "copyRaster"),
 };
+const Method kSave[] = {
+    KK4S_LX(SaveLayerImagePng, "saveLayerImagePng"),
+    KK4S_LX(SaveLayerImageTlg5, "saveLayerImageTlg5"),
+    KK4S_LX(SaveLayerImagePngOctet, "saveLayerImagePngOctet"),
+    KK4S_LX(GetCropRect, "getCropRect"),
+    KK4S_LX(GetCropRectZero, "getCropRectZero"),
+    KK4S_LX(GetDiffRect, "getDiffRect"),
+    KK4S_LX(GetDiffPixel, "getDiffPixel"),
+    KK4S_LX(OozeColor, "oozeColor"),
+    KK4S_LX(CopyBlueToAlpha, "copyBlueToAlpha"),
+    KK4S_LX(IsBlank, "isBlank"),
+    KK4S_LX(ClearAlpha, "clearAlpha"),
+    KK4S_LX(GetAverageColor, "getAverageColor"),
+};
 
 #undef KK4S_LX
 
@@ -715,6 +990,7 @@ tjs_error TJS_INTF_METHOD Logged(tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJ
         for (const Method& m : kBtoA) if (m.fn == &Logged<F>) name = m.name8;
         for (const Method& m : kImage) if (m.fn == &Logged<F>) name = m.name8;
         for (const Method& m : kRaster) if (m.fn == &Logged<F>) name = m.name8;
+        for (const Method& m : kSave) if (m.fn == &Logged<F>) name = m.name8;
         kk4s::Log("compat: Layer.%s first call, %d argument(s)", name, (int)n);
     }
     return F(r, n, p, o);
@@ -748,11 +1024,69 @@ void LinkLayerExBtoADll() { Attach("layerExBtoA.dll", kBtoA); }
 void LinkLayerExImageDll() { Attach("layerExImage.dll", kImage); }
 void LinkLayerExRasterDll() { Attach("layerExRaster.dll", kRaster); }
 
-// PackinOne.dll bundles the layerEx plugins into one DLL.
+// Window.startSaveLayerImage(layer, filename, tags) -> handler. The DLL copies the
+// layer (assignImages), saves the copy on a thread (.png -> PNG, else TLG5) and
+// then calls window.onSaveLayerImageProgress(handler, percent, layer, filename) and
+// onSaveLayerImageDone(handler, canceled, layer, filename) with that copy, which
+// games usually invalidate there. kk4s saves the copy at once and delivers the two
+// events on the next frame; cancel/stop before then behave like the DLL's.
+static const tjs_char* kWindowSaveShim = TJS_W(R"TJS(
+if (typeof Window.startSaveLayerImage == "undefined") {
+global.kk4s_saveimage = %[ next: 0, jobs: [], hooked: false ];
+global.kk4s_saveimage_tick = function() {
+	var s = global.kk4s_saveimage, jobs = s.jobs;
+	s.jobs = [];
+	System.removeContinuousHandler(global.kk4s_saveimage_tick);
+	s.hooked = false;
+	for (var i = 0; i < jobs.count; i++) {
+		var j = jobs[i];
+		if (j.stopped || !isvalid j.window) continue;
+		if (!j.canceled && typeof j.window.onSaveLayerImageProgress != "undefined")
+			j.window.onSaveLayerImageProgress(j.handler, 100, j.layer, j.filename);
+		if (typeof j.window.onSaveLayerImageDone != "undefined")
+			j.window.onSaveLayerImageDone(j.handler, j.canceled ? 1 : 0, j.layer, j.filename);
+	}
+};
+global.kk4s_saveimage_find = function(h) {
+	var jobs = global.kk4s_saveimage.jobs;
+	for (var i = 0; i < jobs.count; i++) if (jobs[i].handler == h) return jobs[i];
+	return void;
+};
+Window.startSaveLayerImage = function(layer, filename, tags) {
+	var copy = new Layer(this, this.primaryLayer);
+	copy.name = "saveLayer:" + filename;
+	copy.assignImages(layer);
+	if (Storages.extractStorageExt(filename).toLowerCase() == ".png") copy.saveLayerImagePng(filename, tags);
+	else copy.saveLayerImageTlg5(filename, tags);
+	var s = global.kk4s_saveimage;
+	var h = s.next++;
+	s.jobs.add(%[ window: this, handler: h, layer: copy, filename: filename, canceled: false, stopped: false ]);
+	if (!s.hooked) { System.addContinuousHandler(global.kk4s_saveimage_tick); s.hooked = true; }
+	return h;
+};
+Window.cancelSaveLayerImage = function(h) { var j = kk4s_saveimage_find(h); if (j !== void) j.canceled = true; };
+Window.stopSaveLayerImage = function(h) { var j = kk4s_saveimage_find(h); if (j !== void) j.stopped = true; };
+}
+)TJS");
+
+void LinkLayerExSaveDll() {
+    Attach("layerExSave.dll", kSave);
+    try {
+        TVPExecuteScript(ttstr(kWindowSaveShim));
+    } catch (const eTJS& e) {
+        kk4s::Log("compat: layerExSave.dll Window shim failed: %s", e.GetMessage().AsNarrowStdString().c_str());
+    }
+}
+
+
+
+// PackinOne.dll bundles the layerEx plugins (layerExSave among them, its source
+// notes the static-link name clash) into one DLL.
 void LinkPackinOneDll() {
     LinkLayerExBtoADll();
     LinkLayerExImageDll();
     LinkLayerExRasterDll();
+    LinkLayerExSaveDll();
 }
 
 } // namespace compat

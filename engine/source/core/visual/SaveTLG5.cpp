@@ -259,6 +259,7 @@ static void Compress( const iTVPBaseBitmap *bmp, tTJSBinaryStream * out, bool is
 	}
 
 	int blockcount = (int)((bmp->GetHeight() - 1) / BLOCK_HEIGHT) + 1;
+	tTVPTLGSourceLines lines(bmp); // kk4s: BGRA rows (krkrs stores RGBA)
 
 
 	// buffers/compressors
@@ -305,11 +306,11 @@ static void Compress( const iTVPBaseBitmap *bmp, tTJSBinaryStream * out, bool is
 				// retrieve scan lines
 				const unsigned char * upper;
 				if(y != 0)
-					upper = (const unsigned char *)bmp->GetScanLine(y-1);
+					upper = lines(y-1);
 				else
 					upper = NULL;
 				const unsigned char * current;
-				current = (const unsigned char *)bmp->GetScanLine(y);
+				current = lines(y);
 
 				// prepare buffer
 				int prevcl[4];
@@ -428,4 +429,26 @@ void SaveTLG5( tTJSBinaryStream* stream, const iTVPBaseBitmap* image, bool is24 
 }
 //---------------------------------------------------------------------------
 
-
+//---------------------------------------------------------------------------
+// kk4s: see SaveTLG.h
+tTVPTLGSourceLines::tTVPTLGSourceLines(const iTVPBaseBitmap *bmp) : Bmp(bmp), Stride(0)
+{
+	if(!bmp->Is32BPP()) return;
+	tjs_uint w = bmp->GetWidth(), h = bmp->GetHeight();
+	Stride = (size_t)w * 4;
+	Data.resize(Stride * h);
+	for(tjs_uint y = 0; y < h; y++)
+	{
+		const unsigned char *src = (const unsigned char *)bmp->GetScanLine(y);
+		unsigned char *dst = &Data[Stride * y];
+		for(tjs_uint x = 0; x < w; x++, src += 4, dst += 4)
+		{
+			dst[0] = src[2]; dst[1] = src[1]; dst[2] = src[0]; dst[3] = src[3];
+		}
+	}
+}
+const unsigned char * tTVPTLGSourceLines::operator()(int y) const
+{
+	if(Stride) return &Data[Stride * y];
+	return (const unsigned char *)Bmp->GetScanLine(y);
+}

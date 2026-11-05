@@ -18,7 +18,11 @@ Work continues on `cloud-session`; `main` is untouched. Commit by commit:
 - Engine pixel order: krkrs stores RGBA bytes. `Layer.getMainPixel` returned R/B swapped
   (fixed in `LayerIntf.cpp`), AlphaMovie copied BGRA frames as is (red/blue swapped in alpha
   movies, fixed), `drawLine` colour fixed. See "Pixel order" in `docs/plugins.md`.
-- `tests/layerex` (io group). `tools/run-tests.sh`: 13/13 on the Linux desktop build.
+- fstat.dll completed (listings, timestamps, attributes, MD5, TemporaryFiles); layerExSave.dll
+  (PNG/TLG thumbnails, crop/diff helpers, async `Window.startSaveLayerImage`).
+- Engine: TLG5/TLG6 writers swapped R/B (`Layer.saveLayerImage(..., "tlg5")` came back blue for
+  red); they now read BGRA rows (`tTVPTLGSourceLines`, `SaveTLG.h`).
+- Tests: `tests/layerex`, `tests/fstat`, `tests/layersave` (io group).
 Retest before merging: FSN (Russian patch, `project dir: .../data.xp3>`), ATRI (affine noise /
 clipped affine layers now draw; check that colours of AlphaMovie overlays look right), NekoPara.
 
