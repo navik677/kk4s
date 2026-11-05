@@ -1046,8 +1046,13 @@ void LinkFilterDll();
 void LinkDrawerDll();
 void LinkSlideOpenDll();
 void LinkFireSparkDll();
-void LinkPackinOneDll();
 void LinkEmotePlayerDll();
+
+// compat/kk4s_layerex.cpp
+void LinkPackinOneDll();
+void LinkLayerExBtoADll();
+void LinkLayerExImageDll();
+void LinkLayerExRasterDll();
 
 // menu.dll: the Win32 menu bar. The engine already has MenuItem and Window.menu
 // (engine/source/core/visual/MenuItemIntf.cpp), so items added by KAGZ work; the
@@ -1122,6 +1127,9 @@ static const PluginEntry kPlugins[] = {
     {"slideopen.dll", LinkSlideOpenDll},
     {"firespark.dll", LinkFireSparkDll},
     {"packinone.dll", LinkPackinOneDll},
+    {"layerexbtoa.dll", LinkLayerExBtoADll},
+    {"layereximage.dll", LinkLayerExImageDll},
+    {"layerexraster.dll", LinkLayerExRasterDll},
     {"windowex.dll", LinkWindowExDll},
     {"menu.dll", LinkMenuDll},
     {"emoteplayer.dll", LinkEmotePlayerDll},

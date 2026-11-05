@@ -137,6 +137,7 @@ set(SOURCES
     compat/pbd/pbd.cpp
     compat/kk4s_plugins.cpp
     compat/kk4s_layerfx.cpp
+    compat/kk4s_layerex.cpp
     compat/cxdec/scheme_recover.cpp
     platform/${KK4S_PLATFORM}/kk4s_platform.cpp
     engine/source/core/base/BinaryStream.cpp

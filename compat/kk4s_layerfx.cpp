@@ -124,58 +124,6 @@ static tjs_error FxLine(tTJSVariant*, tjs_int n, tTJSVariant** p) {
     return TJS_S_OK;
 }
 
-// PackinOne.dll: alpha-channel helpers on Layer. `fillAlpha()` makes a mask
-// fully opaque (ATRI calls it with no arguments right after setImageSize);
-// `clipAlphaRect(x, y, w, h, ...)` then keeps the alpha only inside the rect and
-// clears it outside, which is how KAGZ clips an affine layer to a screen rect.
-// The first call logs the real argument count so the contract can be checked
-// against the game instead of being assumed.
-static tjs_error FxFillAlpha(tTJSVariant*, tjs_int n, tTJSVariant** p) {
-    if (n < 1) return TJS_E_BADPARAMCOUNT;
-    LayerPixels px;
-    if (!GetLayerPixels(*p[0], px)) return TJS_S_OK;
-    uint32_t a = (n >= 2 && p[1]->Type() != tvtVoid) ? (uint32_t)p[1]->AsInteger() : 255u;
-    if (a > 255) a = 255;
-    static bool logged = false;
-    if (!logged) {
-        logged = true;
-        kk4s::Log("compat: Layer.fillAlpha with %d argument(s), alpha=%u", (int)n - 1, a);
-    }
-    for (tjs_int y = 0; y < px.h; ++y) {
-        uint32_t* row = (uint32_t*)(px.bits + px.pitch * y);
-        for (tjs_int x = 0; x < px.w; ++x) row[x] = (row[x] & 0x00ffffffu) | (a << 24);
-    }
-    UpdateLayer(*p[0], 0, 0, px.w, px.h);
-    return TJS_S_OK;
-}
-
-static tjs_error FxClipAlphaRect(tTJSVariant*, tjs_int n, tTJSVariant** p) {
-    if (n < 1) return TJS_E_BADPARAMCOUNT;
-    LayerPixels px;
-    if (!GetLayerPixels(*p[0], px)) return TJS_S_OK;
-    tjs_int x0 = n >= 2 && p[1]->Type() != tvtVoid ? (tjs_int)p[1]->AsInteger() : 0;
-    tjs_int y0 = n >= 3 && p[2]->Type() != tvtVoid ? (tjs_int)p[2]->AsInteger() : 0;
-    tjs_int w = n >= 4 && p[3]->Type() != tvtVoid ? (tjs_int)p[3]->AsInteger() : px.w;
-    tjs_int h = n >= 5 && p[4]->Type() != tvtVoid ? (tjs_int)p[4]->AsInteger() : px.h;
-    static bool logged = false;
-    if (!logged) {
-        logged = true;
-        kk4s::Log("compat: Layer.clipAlphaRect with %d argument(s), rect=(%d,%d,%d,%d), layer=%dx%d",
-                  (int)n - 1, (int)x0, (int)y0, (int)w, (int)h, (int)px.w, (int)px.h);
-    }
-    tjs_int right = x0 + w, bottom = y0 + h;
-    for (tjs_int y = 0; y < px.h; ++y) {
-        uint32_t* row = (uint32_t*)(px.bits + px.pitch * y);
-        bool inside_row = y >= y0 && y < bottom;
-        for (tjs_int x = 0; x < px.w; ++x) {
-            uint32_t keep = (inside_row && x >= x0 && x < right) ? 0xff000000u : 0u;
-            row[x] = (row[x] & 0x00ffffffu) | keep;
-        }
-    }
-    UpdateLayer(*p[0], 0, 0, px.w, px.h);
-    return TJS_S_OK;
-}
-
 static void DefineNative(const tjs_char* name, tFxFunction::Fn fn) {
     iTJSDispatch2* g = TVPGetScriptEngine()->GetGlobalNoAddRef();
     iTJSDispatch2* f = new tFxFunction(fn);
@@ -190,8 +138,6 @@ static void EnsureNativeHelpers() {
     done = true;
     DefineNative(TJS_W("kk4s_fx_noise"), FxNoise);
     DefineNative(TJS_W("kk4s_fx_line"), FxLine);
-    DefineNative(TJS_W("kk4s_fx_fill_alpha"), FxFillAlpha);
-    DefineNative(TJS_W("kk4s_fx_clip_alpha_rect"), FxClipAlphaRect);
 }
 
 // Run a TJS shim. Each shim defines its functions only if they do not exist.
@@ -331,16 +277,6 @@ if (typeof global.drawFireSpark == "undefined") global.drawFireSpark = function(
 if (typeof global.changeFireSpark == "undefined") global.changeFireSpark = function() {};
 if (typeof global.finishFireSpark == "undefined") global.finishFireSpark = function() {};
 )TJS");
-
-// PackinOne.dll: Layer.fillAlpha / Layer.clipAlphaRect (see FxFillAlpha above).
-static const tjs_char* kPackinOneShim = TJS_W(R"TJS(
-if (typeof Layer.fillAlpha != "Object")
-	Layer.fillAlpha = function(v) { kk4s_fx_fill_alpha(this, v); };
-if (typeof Layer.clipAlphaRect != "Object")
-	Layer.clipAlphaRect = function(x, y, w, h, a, b, c, d) { kk4s_fx_clip_alpha_rect(this, x, y, w, h); };
-)TJS");
-
-void LinkPackinOneDll() { RunShim("PackinOne.dll", kPackinOneShim); }
 
 void LinkFilterDll() { RunShim("filter.dll", kFilterShim); }
 void LinkDrawerDll() { RunShim("drawer.dll", kDrawerShim); }
