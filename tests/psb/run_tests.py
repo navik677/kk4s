@@ -152,6 +152,11 @@ def samples():
     big = Writer()
     s["mdf"] = mdf(big.build({"lines": [{"text": "line %d" % i, "n": i, "f": i / 4.0} for i in range(500)]}))
     s["v2"] = Writer().build({"x": 1}, version=2)
+    # a file without resources whose chunk data offset points one byte past its
+    # end (a patched NekoPara scenario does this); Kirikiri reads it fine
+    d = bytearray(Writer().build({"k": "v", "n": [1, 2]}, version=2))
+    struct.pack_into("<I", d, 32, len(d) + 1)
+    s["chdata-past-end"] = bytes(d)
     return s
 
 

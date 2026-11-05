@@ -80,9 +80,11 @@ bool Reader::Open(const uint8_t* data, size_t size) {
     for (int i = 1; i < 8; i++) {
         Uint(8 + i * 4, 4, v);
         *fields[i] = (uint32_t)v;
-        // the chunk data area may start exactly at the end of a file without resources
-        size_t limit = (fields[i] == &off_chdata_) ? buf_.size() + 1 : buf_.size();
-        if (*fields[i] >= limit) return Fail("invalid psb file.");
+        // kk4s: the chunk data offset is only used by Resource values, which check
+        // their range themselves; files without resources may point it anywhere
+        // (NekoPara's patched 01_01.ks.scn: one byte past the end).
+        if (fields[i] == &off_chdata_) continue;
+        if (*fields[i] >= buf_.size()) return Fail("invalid psb file.");
     }
     if (!LoadStrings() || !LoadNames()) return false;
     // Files without resources may carry no valid chunk tables: keep them empty then
