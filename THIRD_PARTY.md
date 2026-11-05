@@ -30,3 +30,16 @@ Copyright (C) 2000-2009 W.Dee <dee@kikyou.info> and contributors, under the
 Kirikiri license like the engine itself. kk4s changes are marked `kk4s:`; the
 422 KB generated `turntrans_table.cpp` is replaced by the generator's
 arithmetic (`maketable/mkturntranstable.pl`), verified to give the same table.
+
+## KAGParserEx (`engine/source/plugins/KAGParserEx/`)
+
+The extended KAG parser of the KAGParserEx plugin (miahmie, wtnbgo; krkrz
+`KAGParserEx`, based on Kirikiri's KAGParser by W.Dee), Kirikiri license.
+`KAGParserEx_parser.h` / `.inc` are its `KAGParser.h` / `KAGParser.cpp`
+(line endings normalised; the constructor initialises the position state,
+marked `kk4s:`).
+
+## saveStruct (`engine/source/plugins/saveStruct.cpp`)
+
+wamsoft/saveStruct and its json `Writer.hpp` (W.Dee / miahmie / GoWatanabe),
+Kirikiri license, adapted to krkrs' streams.

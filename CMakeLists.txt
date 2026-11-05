@@ -294,6 +294,7 @@ set(SOURCES
     engine/source/plugins/LayerExBase.cpp
     engine/source/plugins/AlphaMovie.cpp
     engine/source/plugins/csvParser.cpp
+    engine/source/plugins/KAGParserEx/kagparserex.cpp
     engine/source/plugins/extrans/extrans.cpp
     engine/source/plugins/extrans/mosaic.cpp
     engine/source/plugins/extrans/ripple.cpp

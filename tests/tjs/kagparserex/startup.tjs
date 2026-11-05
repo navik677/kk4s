@@ -1,0 +1,25 @@
+// KAGParserEx.dll (tests/kagparserex/smoke.py): after Plugins.link the global
+// KAGParser is the extended parser (wamsoft/krkrz KAGParserEx).
+Plugins.link("KAGParserEx.dll");
+var p = new KAGParser();
+p.multiLineTagEnabled = true;
+p.loadScenario("test.ks");
+p.goToLabel("*start");
+var out = [];
+var tag;
+while ((tag = p.getNextTag()) !== void) {
+    if (tag.tagname == "r" || tag.tagname == "ch") continue;
+    var s = tag.tagname;
+    var keys = [];
+    keys.assign(tag);
+    var attrs = [];
+    for (var i = 0; i < keys.count; i += 2)
+        if (keys[i] != "tagname" && keys[i] != "taglist") attrs.add(keys[i] + "=" + keys[i + 1]);
+    attrs.sort();
+    if (attrs.count) s += "(" + attrs.join(",") + ")";
+    if (tag.taglist !== void) s += "[" + tag.taglist.join(",") + "]";
+    out.add(s);
+    if (tag.tagname == "last") break;
+}
+Debug.message("KAGPX tags " + out.join(" "));
+Debug.message("KAGPX hasLabel " + p.hasLabel("*start") + " " + p.hasLabel("*nope"));

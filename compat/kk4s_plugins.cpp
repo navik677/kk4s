@@ -9,7 +9,7 @@
 // Add a plugin: write a Link function and add it to kPlugins below.
 #include "kk4s_compat.h"
 
-extern bool TVPKAGParserExMode; // engine/source/core/utils/KAGParser.cpp
+void TVPLinkKAGParserEx(); // engine/source/plugins/KAGParserEx/kagparserex.cpp
 
 #include "CharacterSet.h"
 #include "GraphicsLoaderIntf.h"
@@ -1707,9 +1707,10 @@ void InstallEngineNativesCompat() {
     RunTjsShim("engine natives", kEngineNativesShim);
 }
 
-// KAGParserEx.dll replaces the KAG parser: the engine's own parser does the work; the one
-// visible difference games rely on is "taglist" in tag elements (KAGParser.cpp).
-static void LinkKAGParserExDll() { ::TVPKAGParserExMode = true; }
+// KAGParserEx.dll replaces the global KAGParser class with the extended parser
+// (engine/source/plugins/KAGParserEx: multi-line tags, taglist, parameter
+// macros, emb escape=false...). Until 2026-11 only "taglist" was emulated.
+static void LinkKAGParserExDll() { ::TVPLinkKAGParserEx(); }
 
 // scriptsEx.dll: most of it is installed for every game (kk4s_scripts.cpp,
 // InstallScriptsCompat); the link adds safeEvalStorage, which only reads data.
