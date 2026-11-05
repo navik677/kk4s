@@ -301,7 +301,6 @@ claim compatibility.
 * Empirical outputs: `work/audit_dll.json`, `work/env_scan.json`,
   `work/inspect_sample.json`, `work/revalidate_157.log` (gitignored).
 * Cross-game tests: 8, all passing.  NekoPara decoder tests: 35, all passing.
-* Cross-game audit commit: `cbdb190`; documentation update: the commit that
-  adds this appendix (see `git log -1`).
+* Cross-game audit commit: `cbdb190`; documentation update: `85b3893`.
 * Push: `origin/research/emote-crossgame` updated successfully.
 * No game DLL, PSB, XP3 or extracted resource is part of any commit.
