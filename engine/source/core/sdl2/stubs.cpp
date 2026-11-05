@@ -1182,7 +1182,11 @@ public:
 					}
 #endif
 					case SDL_MOUSEWHEEL: {
-						kk4sWheel(event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -event.wheel.y : event.wheel.y);
+						// kk4s: sdl2-compat (SDL3 underneath) can deliver whole notches
+						// only in preciseY (y == 0); use it when y has nothing.
+						int notches = event.wheel.y;
+						if (!notches) notches = (int)lroundf(event.wheel.preciseY);
+						kk4sWheel(event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -notches : notches);
 						break;
 					}
 					case SDL_WINDOWEVENT_CLOSE:
@@ -1449,6 +1453,9 @@ static void kk4sScriptTick() {
 			e.type = SDL_MOUSEWHEEL;
 			e.wheel.windowID = SDL_GetWindowID(window);
 			e.wheel.y = atoi(c.a1.c_str());
+			// kk4s: sdl2-compat (SDL3 underneath) rebuilds pushed wheel events
+			// from preciseY; with only y set the event arrived with 0 notches.
+			e.wheel.preciseY = (float)e.wheel.y;
 			e.wheel.direction = SDL_MOUSEWHEEL_NORMAL;
 			SDL_PushEvent(&e);
 		} else if (c.op == "shot") {
