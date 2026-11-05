@@ -170,12 +170,14 @@ uint32_t Machine::Alloc(uint32_t size) {
 
 void Machine::RunHost(uint32_t addr) {
     Host& h = hosts_[(addr - kHostBase) / 16];
+    const int nargs = h.nargs;
+    const Conv conv = h.conv;
     uint32_t ret_addr = mem.Read32(r[ESP]);
     uint32_t eax = h.fn(*this);
     r[EAX] = eax;
     // emulate "ret" / "ret n"
-    bool callee_pops = h.conv == Conv::Stdcall;
-    if (h.conv == Conv::Auto) {
+    bool callee_pops = conv == Conv::Stdcall;
+    if (conv == Conv::Auto) {
         // cdecl callers clean up right after the call: add esp, imm8/imm32
         uint8_t b0 = mem.IsMapped(ret_addr) ? mem.Read8(ret_addr) : 0;
         uint8_t b1 = mem.IsMapped(ret_addr + 1) ? mem.Read8(ret_addr + 1) : 0;
@@ -183,7 +185,7 @@ void Machine::RunHost(uint32_t addr) {
         callee_pops = !add_esp;
     }
     r[ESP] += 4;
-    if (callee_pops) r[ESP] += 4 * (uint32_t)h.nargs;
+    if (callee_pops) r[ESP] += 4 * (uint32_t)nargs;
     eip = ret_addr;
 }
 

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <string>
@@ -126,7 +127,7 @@ private:
     void StringOp(uint8_t op, int sz, int rep);
     void TwoByte();
 
-    std::vector<Host> hosts_;
+    std::deque<Host> hosts_;  // a deque: host functions add hosts while they run (no reallocation)
     uint32_t heap_next_ = kHeapBase;
     uint64_t steps_ = 0;
     uint64_t limit_ = 0;
