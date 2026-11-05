@@ -240,6 +240,13 @@ this harness (the same taps do open FSN's menu), so the long run proves stabilit
 - **E-mote backend:** the PSB cipher is solved and validated for NekoPara Vol.1 (157/157), but there is no
   E-mote renderer yet and no second E-mote game locally. Research and cross-game evidence:
   [emote_psb_research.md](emote_psb_research.md), [emote_crossgame_compatibility.md](emote_crossgame_compatibility.md).
+  The universal runtime (`compat/emote/`: PSB core, cipher profiles, character model, animation runtime,
+  renderer contract; 157/157 NekoPara PSB load) exists but is **not wired into `Motion.*` and draws
+  nothing**: [universal_emote_runtime.md](universal_emote_runtime.md). NekoPara on the PC still stops after
+  ~9 s (`Image Load Error` in `imageaffinesourcelayer.tjs`).
+- PC games from the 2026-11-05 test round (`HANDOFF.md`, session 4): Fate, 11 eyes, Karigurashi Renai,
+  Witch (Russian patch), Yosuga, Gyaru Express, Niji no Kanata ni, Chronobox, redwitch, Tsundere na Imouto
+  start; Steins;Gate (RU beta) and UsotsukiGenius do not. Not checked on the Switch.
 - Video: plays on PC; not checked on the Switch yet (speed of software MPEG / WMV decoding).
 - The audio format converter is not flushed at end of stream: the last ~20 ms of a short sound
   (or the tail of a resampled voice) can be dropped. The 8-bit `mute.wav` is silent, so it no
