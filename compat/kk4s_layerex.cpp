@@ -13,7 +13,9 @@
 // Differences on purpose:
 //  - a layer without an image is logged once and the call does nothing; the DLLs
 //    throw "dest must be Layer." (an effect must not take the game down);
-//  - the random source is a fixed-seed generator instead of the CRT rand().
+//  - the random source is a fixed-seed generator instead of the CRT rand();
+//  - channels are addressed in krkrs' RGBA byte order (kR/kG/kB below), and
+//    colour arguments are converted the way the engine stores them.
 //
 // Methods are native class methods attached to the Layer class (the pattern the
 // engine's own perspective.dll uses), so `this` is the layer, also for TJS
@@ -39,6 +41,12 @@ namespace compat {
 namespace {
 
 const tjs_int kLtAddAlpha = 12; // drawable.h ltAddAlpha
+
+// krkrs keeps layer pixels as RGBA bytes (uint32 0xAABBGGRR; the SDL texture is
+// ABGR8888), while the Windows DLLs address BGRA. Channel offsets inside a pixel:
+const int kR = 0, kG = 1, kB = 2, kA = 3;
+// TJS colour 0xAARRGGBB <-> stored pixel (same swap as the engine's TVP_REVRGB).
+inline uint32_t RevRGB(uint32_t v) { return (v & 0xff00ff00u) | ((v >> 16) & 0xffu) | ((v & 0xffu) << 16); }
 
 bool ParamExists(tjs_int n, tTJSVariant** p, tjs_int i) {
     return n > i && p[i]->Type() != tvtVoid;
@@ -135,7 +143,7 @@ tjs_error CopyRightBlueToLeftAlpha(tTJSVariant*, tjs_int, tTJSVariant**, iTJSDis
     tjs_int hw = d.w / 2;
     for (tjs_int y = 0; y < d.h; ++y) {
         uint8_t* r = d.row(y);
-        for (tjs_int x = 0; x < hw; ++x) r[x * 4 + 3] = r[(x + hw) * 4];
+        for (tjs_int x = 0; x < hw; ++x) r[x * 4 + kA] = r[(x + hw) * 4 + kB];
     }
     Update(lay, 0, 0, hw, d.h);
     return TJS_S_OK;
@@ -148,7 +156,7 @@ tjs_error CopyBottomBlueToTopAlpha(tTJSVariant*, tjs_int, tTJSVariant**, iTJSDis
     for (tjs_int y = 0; y < hh; ++y) {
         uint8_t* dst = d.row(y);
         const uint8_t* src = d.row(y + hh);
-        for (tjs_int x = 0; x < d.w; ++x) dst[x * 4 + 3] = src[x * 4];
+        for (tjs_int x = 0; x < d.w; ++x) dst[x * 4 + kA] = src[x * 4 + kB];
     }
     Update(lay, 0, 0, d.w, hh);
     return TJS_S_OK;
@@ -276,7 +284,7 @@ tjs_error ClipAlphaRect(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2*
     auto clear_px = [&](tjs_int x, tjs_int y) {
         uint32_t* q = dpx(x, y);
         if (addalpha) *q = ScaleAll(*q, clrval);
-        else ((uint8_t*)q)[3] = clrval;
+        else ((uint8_t*)q)[kA] = clrval;
     };
     // ltAddAlpha with clear == 255 keeps the outside as is (the DLL skips it).
     bool clear_outside = clr && !(addalpha && clrval == 255);
@@ -284,7 +292,7 @@ tjs_error ClipAlphaRect(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2*
     if (!any) {
         if (clr) { // the DLL writes the alpha byte here, also for ltAddAlpha
             for (tjs_int y = 0; y < dih; ++y)
-                for (tjs_int x = 0; x < diw; ++x) ((uint8_t*)dpx(x, y))[3] = clrval;
+                for (tjs_int x = 0; x < diw; ++x) ((uint8_t*)dpx(x, y))[kA] = clrval;
             Update(lay, dl, dt, diw, dih);
         }
         return TJS_S_OK;
@@ -302,7 +310,7 @@ tjs_error ClipAlphaRect(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2*
         const uint8_t* a = (const uint8_t*)s.px(sx, sy + y) + 3;
         for (tjs_int x = 0; x < w; ++x, ++q, a += 4) {
             if (addalpha) *q = ScaleAll(*q, *a);
-            else ((uint8_t*)q)[3] = MulAlpha(((uint8_t*)q)[3], *a);
+            else ((uint8_t*)q)[kA] = MulAlpha(((uint8_t*)q)[kA], *a);
         }
     }
     if (clr) Update(lay, dl, dt, diw, dih);
@@ -345,7 +353,7 @@ tjs_error OverwrapRect(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* 
 tjs_error FillByProvince(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
     if (n < 2) return TJS_E_BADPARAMCOUNT;
     uint8_t index = (uint8_t)p[0]->AsInteger();
-    uint32_t color = (uint32_t)p[1]->AsInteger();
+    uint32_t color = RevRGB((uint32_t)p[1]->AsInteger());
     Img d;
     Province pv;
     if (!GetImg(lay, true, d) || !GetProvince(lay, false, pv)) { NoImage("fillByProvince"); return TJS_S_OK; }
@@ -377,7 +385,7 @@ tjs_error FillToProvince(tTJSVariant* result, tjs_int n, tTJSVariant** p, iTJSDi
         const uint32_t* q = s.px(s.cl, s.ct + y);
         uint8_t* d = pv.bits + pv.pitch * (s.ct + y) + s.cl;
         for (tjs_int x = 0; x < s.cw; ++x) {
-            if ((q[x] & 0xffffffu) == color && (tjs_int)(q[x] >> 24) >= threshold) {
+            if ((RevRGB(q[x]) & 0xffffffu) == color && (tjs_int)(q[x] >> 24) >= threshold) {
                 d[x] = index;
                 if (minx < 0 || x < minx) minx = x;
                 if (miny < 0 || y < miny) miny = y;
@@ -407,7 +415,7 @@ template <class F>
 void ForEachClipPixel(const Img& d, F f) {
     for (tjs_int y = 0; y < d.ch; ++y) {
         uint8_t* r = d.row(d.ct + y) + d.cl * 4;
-        for (tjs_int x = 0; x < d.cw; ++x) f(r + x * 4); // B G R A
+        for (tjs_int x = 0; x < d.cw; ++x) f(r + x * 4); // index with kR/kG/kB/kA
     }
 }
 
@@ -420,7 +428,7 @@ tjs_error Light(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
     if (!GetImg(lay, true, d)) { NoImage("light"); return TJS_S_OK; }
     uint8_t lut[256];
     for (int i = 0; i < 256; ++i) lut[i] = Clamp8((int)((i - 128) * c + brightness));
-    ForEachClipPixel(d, [&](uint8_t* q) { q[0] = lut[q[0]]; q[1] = lut[q[1]]; q[2] = lut[q[2]]; });
+    ForEachClipPixel(d, [&](uint8_t* q) { q[kR] = lut[q[kR]]; q[kG] = lut[q[kG]]; q[kB] = lut[q[kB]]; });
     Update(lay, d.cl, d.ct, d.cw, d.ch);
     return TJS_S_OK;
 }
@@ -448,7 +456,7 @@ tjs_error Colorize(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay)
     if (!GetImg(lay, true, d)) { NoImage("colorize"); return TJS_S_OK; }
     float h = hue * 360.0f / 255.0f, s = sat / 255.0f;
     ForEachClipPixel(d, [&](uint8_t* q) {
-        int b = q[0], g = q[1], r = q[2];
+        int b = q[kB], g = q[kG], r = q[kR];
         int cmax = std::max(std::max(r, g), b), cmin = std::min(std::min(r, g), b);
         uint8_t L = (uint8_t)((((cmax + cmin) * 255) + 255) / (2 * 255));
         float l = L / 255.0f;
@@ -463,11 +471,11 @@ tjs_error Colorize(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay)
             nb = (uint8_t)(HueToRgb(m1, m2, h - 120) * 255.0f);
         }
         if (full) {
-            q[0] = nb; q[1] = ng; q[2] = nr;
+            q[kB] = nb; q[kG] = ng; q[kR] = nr;
         } else {
-            q[0] = (uint8_t)((nb * a0 + b * a1) >> 8);
-            q[1] = (uint8_t)((ng * a0 + g * a1) >> 8);
-            q[2] = (uint8_t)((nr * a0 + r * a1) >> 8);
+            q[kB] = (uint8_t)((nb * a0 + b * a1) >> 8);
+            q[kG] = (uint8_t)((ng * a0 + g * a1) >> 8);
+            q[kR] = (uint8_t)((nr * a0 + r * a1) >> 8);
         }
     });
     Update(lay, d.cl, d.ct, d.cw, d.ch);
@@ -493,7 +501,7 @@ tjs_error Modulate(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay)
     Img d;
     if (!GetImg(lay, true, d)) { NoImage("modulate"); return TJS_S_OK; }
     ForEachClipPixel(d, [&](uint8_t* q) {
-        double r = q[2] / 255.0, g = q[1] / 255.0, b = q[0] / 255.0;
+        double r = q[kR] / 255.0, g = q[kG] / 255.0, b = q[kB] / 255.0;
         double cmax = std::max(std::max(r, g), b), cmin = std::min(std::min(r, g), b);
         double delta = cmax - cmin, add = cmax + cmin;
         double lum = add / 2.0, hue = 0, sat = 0;
@@ -519,7 +527,7 @@ tjs_error Modulate(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay)
             ng = Hue2Rgb(m1, m2, hue);
             nb = Hue2Rgb(m1, m2, hue - 1.0 / 3.0);
         }
-        q[0] = Clamp8(nb); q[1] = Clamp8(ng); q[2] = Clamp8(nr);
+        q[kB] = Clamp8(nb); q[kG] = Clamp8(ng); q[kR] = Clamp8(nr);
     });
     Update(lay, d.cl, d.ct, d.cw, d.ch);
     return TJS_S_OK;
@@ -534,7 +542,7 @@ tjs_error Noise(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* lay) {
     std::uniform_real_distribution<float> u(0.0f, 1.0f);
     auto& rng = Rng();
     ForEachClipPixel(d, [&](uint8_t* q) {
-        for (int c = 0; c < 3; ++c) q[c] = Clamp8(q[c] + (int)((u(rng) - 0.5f) * level));
+        for (int c : {kB, kG, kR}) q[c] = Clamp8(q[c] + (int)((u(rng) - 0.5f) * level));
     });
     Update(lay, d.cl, d.ct, d.cw, d.ch);
     return TJS_S_OK;
@@ -547,7 +555,7 @@ tjs_error GenerateWhiteNoise(tTJSVariant*, tjs_int, tTJSVariant**, iTJSDispatch2
     auto& rng = Rng();
     ForEachClipPixel(d, [&](uint8_t* q) {
         uint8_t v = (uint8_t)(rng() >> 7);
-        q[0] = q[1] = q[2] = v;
+        q[kR] = q[kG] = q[kB] = v;
     });
     Update(lay, d.cl, d.ct, d.cw, d.ch);
     return TJS_S_OK;
@@ -584,20 +592,21 @@ std::vector<float> GaussKernel(float radius) {
     return k;
 }
 
-// Blur `count` pixels (4 bytes each, `stride` bytes apart) from in to out.
+// Blur `count` pixels (4 bytes each; `in_stride` / `out_stride` bytes apart).
 // Taps outside the line are dropped and the rest renormalised (as CxImage does).
-void BlurLine(const std::vector<float>& k, const uint8_t* in, uint8_t* out, tjs_int count, tjs_int64 stride) {
+void BlurLine(const std::vector<float>& k, const uint8_t* in, tjs_int64 in_stride,
+              uint8_t* out, tjs_int64 out_stride, tjs_int count) {
     int len = (int)k.size(), mid = len / 2;
     for (tjs_int i = 0; i < count; ++i) {
         float acc[4] = {0, 0, 0, 0}, wsum = 0;
         for (int t = 0; t < len; ++t) {
             tjs_int j = i + t - mid;
             if (j < 0 || j >= count) continue;
-            const uint8_t* q = in + stride * j;
+            const uint8_t* q = in + in_stride * j;
             for (int c = 0; c < 4; ++c) acc[c] += k[t] * q[c];
             wsum += k[t];
         }
-        uint8_t* o = out + stride * i;
+        uint8_t* o = out + out_stride * i;
         for (int c = 0; c < 4; ++c) o[c] = (uint8_t)(0.5f + acc[c] / wsum);
     }
 }
@@ -612,10 +621,10 @@ tjs_error GaussianBlur(tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2* 
     tjs_int64 tp = (tjs_int64)d.cw * 4;
     std::vector<uint8_t> tmp((size_t)(tp * d.ch));
     for (tjs_int y = 0; y < d.ch; ++y)
-        BlurLine(k, d.row(d.ct + y) + d.cl * 4, tmp.data() + tp * y, d.cw, 4);
+        BlurLine(k, d.row(d.ct + y) + d.cl * 4, 4, tmp.data() + tp * y, 4, d.cw);
     std::vector<uint8_t> col((size_t)d.ch * 4);
     for (tjs_int x = 0; x < d.cw; ++x) {
-        BlurLine(k, tmp.data() + x * 4, col.data(), d.ch, tp);
+        BlurLine(k, tmp.data() + x * 4, tp, col.data(), 4, d.ch);
         for (tjs_int y = 0; y < d.ch; ++y)
             std::copy_n(&col[(size_t)y * 4], 4, d.row(d.ct + y) + (d.cl + x) * 4);
     }

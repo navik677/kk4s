@@ -109,6 +109,8 @@ static tjs_error FxLine(tTJSVariant*, tjs_int n, tTJSVariant** p) {
     tjs_int x1 = (tjs_int)p[3]->AsInteger(), y1 = (tjs_int)p[4]->AsInteger();
     uint32_t c = (uint32_t)p[5]->AsInteger();
     if ((c >> 24) == 0) c |= 0xff000000u; // 0xRRGGBB means opaque
+    // krkrs stores pixels as RGBA bytes (uint32 0xAABBGGRR): swap R and B.
+    c = (c & 0xff00ff00u) | ((c >> 16) & 0xffu) | ((c & 0xffu) << 16);
     tjs_int minx = x0 < x1 ? x0 : x1, miny = y0 < y1 ? y0 : y1;
     tjs_int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
     tjs_int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;

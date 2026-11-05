@@ -801,8 +801,15 @@ private:
 
 		tjs_int cw = fw < lw ? fw : lw;
 		tjs_int ch = fh < lh ? fh : lh;
-		for (tjs_int y = 0; y < ch; y++)
-			memcpy(lbuf + (size_t)y * pitch, &bgra[(size_t)y * fw * 4], (size_t)cw * 4);
+		// kk4s: krkrs layer buffers hold RGBA bytes (uint32 0xAABBGGRR), not the
+		// Windows BGRA the decoder produces; swap B and R while copying.
+		for (tjs_int y = 0; y < ch; y++) {
+			const tjs_uint8 *s = &bgra[(size_t)y * fw * 4];
+			tjs_uint8 *d = lbuf + (size_t)y * pitch;
+			for (tjs_int x = 0; x < cw; x++, s += 4, d += 4) {
+				d[0] = s[2]; d[1] = s[1]; d[2] = s[0]; d[3] = s[3];
+			}
+		}
 
 		layer->FuncCall(0, TJS_W("update"), 0, 0, 0, 0, layer);
 	}

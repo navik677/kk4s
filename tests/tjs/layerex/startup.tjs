@@ -1,0 +1,187 @@
+// Contract test for the layerEx* replacements (compat/kk4s_layerex.cpp).
+// Synthetic pixels only; expected values follow the wamsoft plugin sources.
+Plugins.link("PackinOne.dll");
+
+var tree = new BitmapLayerTreeOwner();
+var failures = 0;
+
+function hex(v) { return "0x%08x".sprintf(v & 0xffffffff); }
+function expect(what, got, want) {
+    if ((got & 0xffffffff) != (want & 0xffffffff)) {
+        Debug.message("layerEx FAIL " + what + ": got " + hex(got) + ", want " + hex(want));
+        failures++;
+    }
+}
+function expectTrue(what, ok) {
+    if (!ok) { Debug.message("layerEx FAIL " + what); failures++; }
+}
+// 0xAARRGGBB of a pixel: getMainPixel is colour only (0xRRGGBB), the alpha
+// comes from getMaskPixel, as in Kirikiri.
+function px(l, x, y) { return (l.getMaskPixel(x, y) << 24) | l.getMainPixel(x, y); }
+// one ARGB pixel (setMainPixel is colour only, and a colour with a high byte
+// would be read as a system colour)
+function put(l, x, y, argb) { l.fillRect(x, y, 1, 1, argb); }
+function make(w, h, color) {
+    var l = new Layer(tree, null);
+    l.setImageSize(w, h);
+    l.setSizeToImageSize();
+    l.fillRect(0, 0, w, h, color);
+    return l;
+}
+
+// engine colour order: setMainPixel / fillRect / getMainPixel round-trip
+{
+    var l = make(2, 1, 0xff123456);
+    expect("fillRect round-trip", px(l, 0, 0), 0xff123456);
+    l.setMainPixel(1, 0, 0xabcdef);
+    expect("setMainPixel round-trip", l.getMainPixel(1, 0), 0xabcdef);
+}
+
+// every method is installed by PackinOne.dll
+var names = ["copyRightBlueToLeftAlpha", "copyBottomBlueToTopAlpha", "fillAlpha",
+             "copyAlphaToProvince", "clipAlphaRect", "overwrapRect", "fillByProvince",
+             "fillToProvince", "light", "colorize", "modulate", "noise",
+             "generateWhiteNoise", "gaussianBlur", "copyRaster"];
+var probe = make(1, 1, 0);
+for (var i = 0; i < names.count; i++)
+    expectTrue("Layer." + names[i] + " exists", typeof probe[names[i]] == "Object");
+
+// fillAlpha: alpha 255 inside the clip rect only
+{
+    var l = make(8, 8, 0x00112233);
+    expect("fillRect keeps alpha 0", px(l, 3, 3), 0x00112233);
+    l.setClip(2, 2, 2, 2);
+    l.fillAlpha();
+    l.setClip();
+    expect("fillAlpha inside clip", px(l, 2, 2), 0xff112233);
+    expect("fillAlpha outside clip", px(l, 0, 0), 0x00112233);
+    l.fillAlpha();
+    expect("fillAlpha whole layer", px(l, 7, 7), 0xff112233);
+}
+
+// clipAlphaRect: alpha *= src alpha in the rect; `clear` fills the rest
+{
+    var src = make(4, 4, 0x80ffffff);
+    var l = make(8, 8, 0xff808080);
+    l.clipAlphaRect(2, 2, src, 0, 0, 4, 4, 0);
+    expect("clipAlphaRect inside", px(l, 3, 3), 0x80808080);
+    expect("clipAlphaRect cleared outside", px(l, 0, 0), 0x00808080);
+    expect("clipAlphaRect cleared right", px(l, 6, 3), 0x00808080);
+
+    var k = make(8, 8, 0xff808080);
+    k.clipAlphaRect(2, 2, src, 0, 0, 4, 4);
+    expect("clipAlphaRect no clear keeps outside", px(k, 0, 0), 0xff808080);
+    expect("clipAlphaRect no clear inside", px(k, 5, 5), 0x80808080);
+
+    // source rect partly outside the source: only the overlap is multiplied
+    var m = make(8, 8, 0xff808080);
+    m.clipAlphaRect(0, 0, src, -2, -2, 4, 4);
+    expect("clipAlphaRect clipped source", px(m, 2, 2), 0x80808080);
+    expect("clipAlphaRect clipped source edge", px(m, 1, 1), 0xff808080);
+
+    // ltAddAlpha: the whole premultiplied pixel is scaled
+    var a = new Layer(tree, null);
+    a.type = ltAddAlpha;
+    a.setImageSize(4, 4);
+    a.fillRect(0, 0, 4, 4, 0xff808080);
+    a.clipAlphaRect(0, 0, src, 0, 0, 4, 4);
+    expect("clipAlphaRect ltAddAlpha", px(a, 1, 1), 0x80404040);
+}
+
+// blue -> alpha copies
+{
+    var l = make(4, 1, 0xff000000);
+    l.setMainPixel(2, 0, 0x0000ab);
+    l.copyRightBlueToLeftAlpha();
+    expect("copyRightBlueToLeftAlpha", px(l, 0, 0), 0xab000000);
+    var b = make(1, 4, 0xff000000);
+    b.setMainPixel(0, 3, 0x0000cd);
+    b.copyBottomBlueToTopAlpha();
+    expect("copyBottomBlueToTopAlpha", px(b, 0, 1), 0xcd000000);
+}
+
+// overwrapRect: copy pixels with alpha >= threshold
+{
+    var src = make(2, 1, 0x00000000);
+    put(src, 0, 0, 0xff00ff00);
+    put(src, 1, 0, 0x10ff0000);
+    var l = make(2, 1, 0xff0000ff);
+    l.overwrapRect(0, 0, src, 0, 0, 2, 1, 0x20);
+    expect("overwrapRect copies opaque", px(l, 0, 0), 0xff00ff00);
+    expect("overwrapRect skips below threshold", px(l, 1, 0), 0xff0000ff);
+}
+
+// province helpers
+{
+    var l = make(4, 1, 0x00000000);
+    put(l, 1, 0, 0xc0123456);
+    put(l, 2, 0, 0x40123456);
+    l.copyAlphaToProvince(0x80, 3, 0);
+    expect("copyAlphaToProvince matched", l.getProvincePixel(1, 0), 3);
+    expect("copyAlphaToProvince otherwise", l.getProvincePixel(2, 0), 0);
+    l.fillByProvince(3, 0xffff8000);
+    expect("fillByProvince", px(l, 1, 0), 0xffff8000);
+    expect("fillByProvince other", px(l, 2, 0), 0x40123456);
+    var r = l.fillToProvince(0x123456, 7, 0x20);
+    expectTrue("fillToProvince returns a rect", r !== void && r.count == 4);
+    if (r !== void) { expect("fillToProvince x", r[0], 2); expect("fillToProvince w", r[2], 1); }
+    expect("fillToProvince index", l.getProvincePixel(2, 0), 7);
+}
+
+// layerExImage
+{
+    var l = make(4, 4, 0x80404040);
+    l.light(16, 0);
+    expect("light brightness", px(l, 0, 0), 0x80505050);
+    l.noise(0);
+    expect("noise(0) is identity", px(l, 1, 1), 0x80505050);
+    l.colorize(0, 0, 0.0);
+    expect("colorize blend 0 is identity", px(l, 2, 2), 0x80505050);
+    l.modulate(0, 0, -100);
+    expect("modulate luminance -100 is black", px(l, 3, 3), 0x80000000);
+
+    var h = make(1, 1, 0xffff0000);
+    h.modulate(120, 0, 0);
+    expect("modulate hue +120 turns red into green", px(h, 0, 0), 0xff00ff00);
+    var c = make(1, 1, 0xff0000ff);
+    c.colorize(0, 255, 1.0);
+    // CxImage's float HSL truncates: pure red comes back as 0xfe0101, as on Windows
+    var cr = px(c, 0, 0);
+    expectTrue("colorize hue 0 is red (" + hex(cr) + ")",
+               (cr >>> 24) == 0xff && ((cr >> 16) & 0xff) >= 0xf0 && ((cr >> 8) & 0xff) <= 8 && (cr & 0xff) <= 8);
+
+    var n = make(16, 16, 0x40ff0000);
+    n.generateWhiteNoise();
+    var grey = true, same = true, first = px(n, 0, 0);
+    for (var y = 0; y < 16; y++) for (var x = 0; x < 16; x++) {
+        var c = px(n, x, y);
+        if ((c >>> 24) != 0x40 || (c & 0xff) != ((c >> 8) & 0xff) || (c & 0xff) != ((c >> 16) & 0xff)) grey = false;
+        if (c != first) same = false;
+    }
+    expectTrue("generateWhiteNoise is grey and keeps alpha", grey);
+    expectTrue("generateWhiteNoise is not flat", !same);
+
+    var u = make(8, 8, 0xff6080a0);
+    u.gaussianBlur(2.0);
+    expect("gaussianBlur keeps a flat image", px(u, 0, 0), 0xff6080a0);
+    expect("gaussianBlur keeps a flat image (centre)", px(u, 4, 4), 0xff6080a0);
+    var d = make(9, 9, 0xff000000);
+    put(d, 4, 4, 0xffffffff);
+    d.gaussianBlur(2.0);
+    expectTrue("gaussianBlur spreads a dot", (px(d, 5, 4) & 0xff) > 0 && (px(d, 4, 4) & 0xff) < 0xff);
+}
+
+// layerExRaster: amplitude 0 is a plain copy
+{
+    var src = make(4, 4, 0xff112233);
+    src.setMainPixel(1, 2, 0x445566);
+    var l = make(4, 4, 0);
+    l.copyRaster(src, 0, 4, 1000, 0);
+    expect("copyRaster maxh 0 copies", px(l, 1, 2), 0xff445566);
+    var w = make(4, 4, 0);
+    w.copyRaster(src, 2, 4, 1000, 0);   // shifted lines: still drawn somewhere
+    expectTrue("copyRaster with amplitude draws", px(w, 3, 1) != 0 || px(w, 0, 1) != 0);
+}
+
+if (failures == 0) Debug.message("layerEx synthetic contract: PASS");
+else Debug.message("layerEx synthetic contract: " + failures + " failure(s)");

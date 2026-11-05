@@ -2616,7 +2616,10 @@ tjs_uint32 tTJSNI_BaseLayer::GetMainPixel(tjs_int x, tjs_int y) const
 {
 	if(!MainImage) TVPThrowExceptionMessage(TVPNotDrawableLayerType);
 
-	return TVPFromActualColor(MainImage->GetPoint(x, y) & 0xffffff);
+	// kk4s: krkrs keeps pixels as RGBA bytes (uint32 0xAABBGGRR) and SetMainPixel /
+	// fillRect store TVP_REVRGB(color); reverse here too so getMainPixel returns
+	// 0xRRGGBB as in Kirikiri (it returned R and B swapped).
+	return TVPFromActualColor(TVP_REVRGB(MainImage->GetPoint(x, y)) & 0xffffff);
 }
 //---------------------------------------------------------------------------
 void tTJSNI_BaseLayer::SetMainPixel(tjs_int x, tjs_int y, tjs_uint32 color)

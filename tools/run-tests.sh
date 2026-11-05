@@ -7,7 +7,8 @@
 #
 # Groups:
 #   xp3        storage layer: project dir, overlay precedence, archive parsing
-#   io         engine I/O: TextStream encoding, AlphaMovie, Scripts.loadDataPack
+#   io         engine I/O: TextStream encoding, AlphaMovie, Scripts.loadDataPack,
+#              layerEx* Layer methods
 #   decoders   PBD / PSB / CXDEC decoders vs their Python references (no engine)
 #
 # Engine groups boot a synthetic game headlessly (SDL_VIDEODRIVER=dummy) and
@@ -65,10 +66,11 @@ group_xp3() {
 }
 
 group_io() {
-    echo "== io: TextStream, AlphaMovie, Scripts.loadDataPack =="
+    echo "== io: TextStream, AlphaMovie, Scripts.loadDataPack, layerEx =="
     run textstream   python3 tests/textstream/smoke.py "$EXE"
     run alphamovie   python3 tests/alphamovie/smoke.py "$EXE"
     run loaddatapack python3 tests/pbd/loaddatapack_smoke.py "$EXE"
+    run layerex      python3 tests/layerex/smoke.py "$EXE"
 }
 
 group_decoders() {
