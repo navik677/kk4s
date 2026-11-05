@@ -23,9 +23,13 @@ endif()
 
 option(KK4S_ASAN "desktop: build with AddressSanitizer + UBSan" OFF)
 if(KK4S_PLATFORM STREQUAL "desktop" AND KK4S_ASAN)
-    # vptr check needs RTTI for classes whose key function is never defined (tTJSNI_Pad)
-    add_compile_options(-fsanitize=address,undefined -fno-sanitize=vptr -fno-omit-frame-pointer -g)
-    add_link_options(-fsanitize=address,undefined -fno-sanitize=vptr)
+    # vptr check needs RTTI for classes whose key function is never defined (tTJSNI_Pad).
+    # null: TJS calls tTJSVariantString methods on a null pointer (the empty
+    # string) and checks `if(!this)` by design; the engine is built with
+    # -fno-delete-null-pointer-checks for it. Real null dereferences still crash
+    # under ASan.
+    add_compile_options(-fsanitize=address,undefined -fno-sanitize=vptr,null -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=address,undefined -fno-sanitize=vptr,null)
 endif()
 
 set(KK4S_VERSION "0.0.1")

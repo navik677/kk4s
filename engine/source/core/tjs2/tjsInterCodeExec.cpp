@@ -1687,7 +1687,7 @@ bool tTJSInterCodeContext::kk4sClassVarOnProperty(tTJSVariant *ra, const tjs_int
 	if(target->Type() != tvtObject || !target->AsObjectNoAddRef()) return false;
 	tTJSVariantClosure clo = target->AsObjectClosureNoAddRef();
 	iTJSDispatch2 *objthis = clo.ObjThis ? clo.ObjThis : ra[-1].AsObjectNoAddRef();
-	const tTJSVariant &name = TJS_GET_VM_REG(DataArea, code[2]);
+	tTJSVariant &name = TJS_GET_VM_REG(DataArea, code[2]); // GetHint() is not const (clang rejects const)
 	tTJSVariant existing;
 	if(TJS_FAILED(clo.PropGet(TJS_IGNOREPROP, name.GetString(), name.GetHint(), &existing, objthis)))
 		return false;
