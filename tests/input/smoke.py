@@ -13,7 +13,8 @@ krkr2's DInputMgn.cpp:
   ssMiddle); System.getKeyState(VK_LBUTTON / VK_RBUTTON) follows them
 - a wheel notch is 120 (WHEEL_DELTA)
 - Layer.cursorX/Y are game coordinates; setCursorPos makes a mouse move there
-- pad B is a right click (no onClick)
+- pad B is a right click (no onClick), L / R are wheel notches that repeat
+  while held, A and the D-pad repeat as keys with ssRepeat after 500 ms
 """
 import os
 from pathlib import Path
@@ -56,6 +57,11 @@ STEPS = [
      lambda r: r == "at=50,60" or f"setCursorPos: {r!r}"),
     (5400, [], 5500, "mv[mv.count - 1]", lambda r: r == "50,60" or f"setCursorPos made no mouse move to 50,60: {r!r}"),
     (5600, [f"tap {LEFT}"], 5940, "flush()", lambda r: r == LCLICK or f"tap: {r!r}, want {LCLICK!r}"),
+    (6000, ["pad L 100", "+300 pad R 100"], 6740, "flush()",
+     lambda r: r == "W.wheel120 W.wheel-120" or f"pad L / R: {r!r}, want one wheel notch each"),
+    (6800, ["pad L 870"], 7940, "flush()", None),  # checked in main(): repeats
+    (8000, ["pad A 800"], 9140, "flush()", None),
+    (9200, ["pad DOWN 700"], 10340, "flush()", None),
 ]
 
 
@@ -106,6 +112,18 @@ def main() -> int:
             verdict = check(got.strip())
             if verdict is not True:
                 problems.append(f"{at} ms: {verdict}")
+    if len(evals) == len(STEPS):
+        held_l, held_a, held_down = (evals[-3].split(), evals[-2].split(), evals[-1].split())
+        # L held 870 ms: a notch on press, then one every 100 ms after 500 ms
+        if not (held_l and set(held_l) == {"W.wheel120"} and 3 <= len(held_l) <= 6):
+            problems.append(f"pad L held: {held_l}, want 4 or so wheel notches")
+        # A held 800 ms: key down, repeats every 30 ms after 500 ms with ssRepeat, key up
+        if not (held_a[:1] == ["W.key13"] and held_a[-1:] == ["W.keyup13"]
+                and 5 <= held_a.count("W.key13r") <= 12 and len(held_a) == held_a.count("W.key13r") + 2):
+            problems.append(f"pad A held: {held_a}, want key13, ~10 x key13r, keyup13")
+        if not (held_down[:1] == ["W.key40"] and held_down[-1:] == ["W.keyup40"]
+                and 3 <= held_down.count("W.key40r") <= 9):
+            problems.append(f"pad DOWN held: {held_down}, want key40, ~6 x key40r, keyup40")
     if result.returncode != 0:
         problems.append(f"kk4s exited with {result.returncode}")
     if problems:
@@ -113,7 +131,7 @@ def main() -> int:
         print("\n".join(l for l in log.splitlines() if "script:" in l or "exception" in l.lower())[-6000:],
               file=sys.stderr)
         return 1
-    print("Kirikiri input semantics (mouse, wheel, touch): PASS")
+    print("Kirikiri input semantics (mouse, wheel, touch, pad repeat): PASS")
     return 0
 
 

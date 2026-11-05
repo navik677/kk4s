@@ -13,7 +13,7 @@ namespace kk4s {
 
 namespace {
 
-const char* const kActionIds[] = {"none", "enter", "rclick", "ctrl", "space", "pageup", "pagedown", "shift", "esc", "tab", "overlay"};
+const char* const kActionIds[] = {"none", "enter", "rclick", "ctrl", "space", "pageup", "pagedown", "wheelup", "wheeldown", "shift", "esc", "tab", "overlay"};
 
 const struct { unsigned bit; const char* name; } kButtons[] = {
     {kPadA, "a"}, {kPadB, "b"}, {kPadX, "x"}, {kPadY, "y"}, {kPadL, "l"},
@@ -41,8 +41,8 @@ PadAction DefaultPadAction(unsigned b) {
         case kPadB: return PadAction::RightClick;
         case kPadX: case kPadZR: return PadAction::Ctrl;
         case kPadY: return PadAction::Space;
-        case kPadL: return PadAction::PageUp;
-        case kPadR: return PadAction::PageDown;
+        case kPadL: return PadAction::WheelUp;   // KAG3 and most games open the backlog on wheel up
+        case kPadR: return PadAction::WheelDown;
         case kPadZL: return PadAction::Shift;
         case kPadPlus: return PadAction::Esc;   // the menu is L3 + R3 (kPadMenuCombo)
         case kPadMinus: return PadAction::Tab;

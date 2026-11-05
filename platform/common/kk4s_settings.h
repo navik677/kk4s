@@ -8,8 +8,9 @@
 namespace kk4s {
 
 // What a gamepad button does in a game (keys / mouse buttons KAG understands).
-enum class PadAction { None, Enter, RightClick, Ctrl, Space, PageUp, PageDown, Shift, Esc, Tab, Overlay, Count };
-// Overlay = open the kk4s in-game menu.
+enum class PadAction { None, Enter, RightClick, Ctrl, Space, PageUp, PageDown, WheelUp, WheelDown, Shift, Esc, Tab, Overlay, Count };
+// Overlay = open the kk4s in-game menu. WheelUp / WheelDown = one mouse wheel
+// notch (the backlog in KAG and most Kirikiri games), repeated while held.
 
 const char* PadActionId(PadAction a);              // "enter", "rclick", ...
 PadAction PadActionFromId(const std::string& id);  // None if unknown

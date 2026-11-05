@@ -11,9 +11,9 @@
 #              keyless .tpm encryption discovery
 #   io         engine I/O: TextStream encoding, AlphaMovie, Scripts.loadDataPack,
 #              layerEx* / layerExSave Layer methods, fstat.dll Storages methods,
-#              json.dll / scriptsEx.dll / windowEx.dll, mouse / wheel / touch
-#              input semantics, and the original KAG3 system scripts playing a
-#              scenario (tests/kag3, ~30 s)
+#              json.dll / scriptsEx.dll / windowEx.dll, mouse / wheel / touch /
+#              pad input semantics, and the original KAG3 system scripts
+#              playing a scenario and played with the pad (tests/kag3, ~60 s)
 #   decoders   PBD / PSB / CXDEC decoders vs their Python references (no engine)
 #
 # Engine groups boot a synthetic game headlessly (SDL_VIDEODRIVER=dummy) and
@@ -86,6 +86,7 @@ group_io() {
     run aspect       python3 tests/aspect/smoke.py "$EXE"
     run input        python3 tests/input/smoke.py "$EXE"
     run kag3         python3 tests/kag3/smoke.py "$EXE"
+    run kag3-interact python3 tests/kag3/interact_smoke.py "$EXE"
 }
 
 group_decoders() {

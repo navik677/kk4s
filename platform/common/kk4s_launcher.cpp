@@ -525,8 +525,10 @@ const char* const kLangCodes[] = {"auto", "uk", "en", "ru", "ja"};
 
 const char* ActionName(PadAction a) {
     static const i18n::Str names[] = {i18n::kActNone, i18n::kActEnter, i18n::kActRightClick, i18n::kActCtrl,
-                                      i18n::kActSpace, i18n::kActPageUp, i18n::kActPageDown, i18n::kActShift,
-                                      i18n::kActEsc, i18n::kActTab, i18n::kActOverlay};
+                                      i18n::kActSpace, i18n::kActPageUp, i18n::kActPageDown, i18n::kActWheelUp,
+                                      i18n::kActWheelDown, i18n::kActShift, i18n::kActEsc, i18n::kActTab,
+                                      i18n::kActOverlay};
+    static_assert(sizeof(names) / sizeof(names[0]) == (size_t)PadAction::Count, "one name per pad action");
     int i = (int)a;
     return i >= 0 && i < (int)PadAction::Count ? T(names[i]) : "";
 }

@@ -338,6 +338,7 @@ public:
 	// (Layer.cursorX/Y). SDL_GetMouseState gave window pixels, wrong as soon as the
 	// picture is scaled, and nothing useful for touch on the Switch.
 	virtual void GetCursorPos(tjs_int &x, tjs_int &y) override {
+		kk4sEnsureMousePos();
 		x = mouseLastX;
 		y = mouseLastY;
 	}
@@ -345,6 +346,8 @@ public:
 	// the arrow keys) is a mouse move for the game, as Windows' SetCursorPos makes
 	// one: the link under it lights up. The real mouse follows on the PC.
 	virtual void SetCursorPos(tjs_int x, tjs_int y) override {
+		kk4sEnsureMousePos();
+		kk4sMouseKnown = true;
 		if (x == mouseLastX && y == mouseLastY) return;
 		mouseLastX = x;
 		mouseLastY = y;
@@ -751,6 +754,7 @@ public:
 	// press buttons that react to onClick. `clicks` is SDL's click count.
 	// `click` = false lets a button go without clicking (menu opening over it).
 	void kk4sMouseButton(tTVPMouseButton btn, bool down, int clicks = 1, bool click = true) {
+		kk4sEnsureMousePos();
 		tjs_uint vk = btn == tTVPMouseButton::mbLeft ? VK_LBUTTON : btn == tTVPMouseButton::mbRight ? VK_RBUTTON : VK_MBUTTON;
 		bool was = kk4sKeyState[vk] & 1;
 		kk4sSetKeyState(vk, down);
@@ -776,21 +780,34 @@ public:
 	// kk4s: one notch of the mouse wheel is 120 (WHEEL_DELTA) on Windows; scripts
 	// divide by it (KAG3's history: delta \ 120), so SDL's 1 per notch did nothing.
 	void kk4sWheel(int notches) {
+		kk4sEnsureMousePos();
 		if (notches)
 			TVPPostInputEvent(new tTVPOnMouseWheelInputEvent(TJSNativeInstance, kk4sMouseShiftState(), notches * 120, mouseLastX, mouseLastY));
 	}
 	SDL_FingerID kk4sMouseFinger = -1; // the finger that acts as the mouse (-1: none)
 	bool kk4sHasMouseFinger = false;
+	// kk4s: until a touch, the mouse or a script puts the cursor somewhere, the
+	// pad's right click and wheel happen at the centre of the game screen, not
+	// in its top-left corner, where KAG3's history has its "previous page"
+	// button and many menus have one: B there pressed that button instead of
+	// closing the history. No move is sent, so nothing lights up before.
+	bool kk4sMouseKnown = false;
+	void kk4sEnsureMousePos() {
+		if (kk4sMouseKnown) return;
+		mouseLastX = curWindowW / 2;
+		mouseLastY = curWindowH / 2;
+	}
 	// Gamepad: D-pad / left stick = arrows; the other buttons do what the
 	// launcher's controls settings say (kk4s::Settings::pad). Defaults:
 	//   A = Enter (next / OK)         B = right click (menu / cancel / hide text)
 	//   X, ZR = Ctrl held (skip)      Y = Space
-	//   L = Page Up (backlog)         R = Page Down
+	//   L = wheel up (backlog)        R = wheel down (backlog forward / next)
 	//   ZL = Shift                    + = Esc, - = Tab
 	// L3 + R3 together open the kk4s menu (kk4sPadChange).
 	void kk4sPadPress(unsigned button, bool down) {
 		static int logged = 0; // diagnostics for the first presses
 		if (down && logged < 40) { ++logged; kk4s::Log("input: pad 0x%x -> game", button); }
+		kk4sPadRepeatTrack(button, down);
 		switch (button) {
 			case kk4s::kPadLeft: kk4sPostKey(VK_LEFT, down); return;
 			case kk4s::kPadUp: kk4sPostKey(VK_UP, down); return;
@@ -805,10 +822,85 @@ public:
 			case kk4s::PadAction::Space: kk4sPostKey(VK_SPACE, down); break;
 			case kk4s::PadAction::PageUp: kk4sPostKey(VK_PRIOR, down); break;
 			case kk4s::PadAction::PageDown: kk4sPostKey(VK_NEXT, down); break;
+			case kk4s::PadAction::WheelUp: if (down) kk4sWheel(1); break;
+			case kk4s::PadAction::WheelDown: if (down) kk4sWheel(-1); break;
 			case kk4s::PadAction::Shift: kk4sPostKey(VK_SHIFT, down); break;
 			case kk4s::PadAction::Esc: kk4sPostKey(VK_ESCAPE, down); break;
 			case kk4s::PadAction::Tab: kk4sPostKey(VK_TAB, down); break;
 			default: break;
+		}
+	}
+	// kk4s: gamepad key repeat, as Kirikiri's own pad input does (DInputMgn.cpp,
+	// tTVPKeyRepeatEmulator): after 500 ms the held D-pad keys repeat every 30 ms,
+	// all together, and of the other buttons the last one pressed does, until any
+	// of them is let go. Repeats are key downs with ssRepeat (KAG3: Enter held =
+	// fast forward, arrows held = move through a list); the wheel actions turn one
+	// notch every 100 ms. Ctrl, Shift, Esc, Tab, right click and the menu do not
+	// repeat. Only presses that went to the game repeat.
+	static constexpr unsigned kk4sCrossMask = kk4s::kPadLeft | kk4s::kPadUp | kk4s::kPadRight | kk4s::kPadDown;
+	unsigned kk4sPadGameHeld = 0;    // buttons whose press went to the game
+	unsigned kk4sPadLastTrigger = 0; // the last other button pressed, while held
+	Uint32 kk4sCrossSince = 0, kk4sTriggerSince = 0;
+	int kk4sCrossDone = 0, kk4sTriggerDone = 0;
+	void kk4sPadRepeatTrack(unsigned button, bool down) {
+		Uint32 now = SDL_GetTicks();
+		if (down) {
+			if (button & kk4sCrossMask) {
+				if (!(kk4sPadGameHeld & kk4sCrossMask)) { kk4sCrossSince = now; kk4sCrossDone = 0; }
+			} else {
+				kk4sPadLastTrigger = button;
+				kk4sTriggerSince = now;
+				kk4sTriggerDone = 0;
+			}
+			kk4sPadGameHeld |= button;
+		} else {
+			kk4sPadGameHeld &= ~button;
+			if (!(button & kk4sCrossMask)) kk4sPadLastTrigger = 0;
+		}
+	}
+	static int kk4sRepeatCount(Uint32 now, Uint32 since, int& done, int interval) {
+		int elapsed = (int)(now - since) - 500;
+		if (elapsed < 0) return 0;
+		int total = elapsed / interval, n = total - done;
+		done = total;
+		return n > 10 ? 10 : n; // TVP_REPEAT_LIMIT
+	}
+	void kk4sRepeatKey(tjs_uint vk) {
+		if (kk4sKeyState[vk] & 1) kk4sPostKey(vk, true); // still down: a repeat
+	}
+	void kk4sPadRepeatOne(unsigned bit) {
+		switch (bit) {
+			case kk4s::kPadLeft: kk4sRepeatKey(VK_LEFT); return;
+			case kk4s::kPadUp: kk4sRepeatKey(VK_UP); return;
+			case kk4s::kPadRight: kk4sRepeatKey(VK_RIGHT); return;
+			case kk4s::kPadDown: kk4sRepeatKey(VK_DOWN); return;
+		}
+		switch (kk4s::LiveSettings().PadFor(bit)) {
+			case kk4s::PadAction::Enter: kk4sRepeatKey(VK_RETURN); break;
+			case kk4s::PadAction::Space: kk4sRepeatKey(VK_SPACE); break;
+			case kk4s::PadAction::PageUp: kk4sRepeatKey(VK_PRIOR); break;
+			case kk4s::PadAction::PageDown: kk4sRepeatKey(VK_NEXT); break;
+			case kk4s::PadAction::WheelUp: kk4sWheel(1); break;
+			case kk4s::PadAction::WheelDown: kk4sWheel(-1); break;
+			default: break;
+		}
+	}
+	// Once per frame (sdlProcessEvents).
+	void kk4sPadRepeat() {
+		if (!kk4sPadGameHeld || isBeingDeleted || !window || !hasDrawn || !TJSNativeInstance ||
+			!TJSNativeInstance->CanDeliverEvents() || kk4s::overlay::IsOpen())
+			return;
+		Uint32 now = SDL_GetTicks();
+		if (kk4sPadGameHeld & kk4sCrossMask) {
+			for (int n = kk4sRepeatCount(now, kk4sCrossSince, kk4sCrossDone, 30); n > 0; --n)
+				for (unsigned bit = 1; bit <= kk4s::kPadLast; bit <<= 1)
+					if (bit & kk4sCrossMask & kk4sPadGameHeld) kk4sPadRepeatOne(bit);
+		}
+		if (kk4sPadLastTrigger && (kk4sPadGameHeld & kk4sPadLastTrigger)) {
+			kk4s::PadAction a = kk4s::LiveSettings().PadFor(kk4sPadLastTrigger);
+			bool wheel = a == kk4s::PadAction::WheelUp || a == kk4s::PadAction::WheelDown;
+			for (int n = kk4sRepeatCount(now, kk4sTriggerSince, kk4sTriggerDone, wheel ? 100 : 30); n > 0; --n)
+				kk4sPadRepeatOne(kk4sPadLastTrigger);
 		}
 	}
 	// One button changed (Switch: libnx, PC: SDL controller events).
@@ -838,6 +930,7 @@ public:
 		kk4sMouseButton(tTVPMouseButton::mbRight, false, 1, false);
 		kk4sMouseButton(tTVPMouseButton::mbMiddle, false, 1, false);
 		kk4sHasMouseFinger = false;
+		kk4sPadGameHeld = kk4sPadLastTrigger = 0;
 		std::string title = kk4s::GameDir();
 		while (!title.empty() && title.back() == '/') title.pop_back();
 		title = title.substr(title.find_last_of('/') + 1);
@@ -996,7 +1089,7 @@ public:
 					// The first finger down is the mouse until it lifts; others are ignored.
 					case SDL_FINGERDOWN: {
 						if (kk4sHasMouseFinger) break;
-						kk4sHasMouseFinger = true;
+						kk4sHasMouseFinger = kk4sMouseKnown = true;
 						kk4sMouseFinger = event.tfinger.fingerId;
 						kk4sToGame(event.tfinger.x, event.tfinger.y, mouseLastX, mouseLastY);
 						TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, kk4sMouseShiftState()));
@@ -1017,6 +1110,7 @@ public:
 						break;
 					}
 					case SDL_MOUSEMOTION: {
+						kk4sMouseKnown = true;
 						kk4sMouseToGame(event.motion.x, event.motion.y, mouseLastX, mouseLastY); // kk4s: window -> game
 						TVPPostInputEvent(new tTVPOnMouseMoveInputEvent(TJSNativeInstance, mouseLastX, mouseLastY, kk4sMouseShiftState()), TVP_EPT_DISCARDABLE);
 						break;
@@ -1039,7 +1133,8 @@ public:
 								break;
 						}
 						if (hasbtn) {
-								kk4sMouseToGame(event.button.x, event.button.y, mouseLastX, mouseLastY);
+							kk4sMouseKnown = true;
+							kk4sMouseToGame(event.button.x, event.button.y, mouseLastX, mouseLastY);
 							kk4sMouseButton(btn, true, event.button.clicks);
 						}
 						break;
@@ -1062,7 +1157,8 @@ public:
 								break;
 						}
 						if (hasbtn) {
-								kk4sMouseToGame(event.button.x, event.button.y, mouseLastX, mouseLastY);
+							kk4sMouseKnown = true;
+							kk4sMouseToGame(event.button.x, event.button.y, mouseLastX, mouseLastY);
 							kk4sMouseButton(btn, false);
 						}
 						break;
@@ -1400,6 +1496,7 @@ bool sdlProcessEvents() {
 		}
 	}
 	if (_currentWindowLayer) _currentWindowLayer->kk4sPadFrame(); // kk4s: Switch buttons
+	if (_currentWindowLayer) _currentWindowLayer->kk4sPadRepeat(); // kk4s: held pad buttons repeat
 	kk4sScriptTick(); // kk4s: KK4S_INPUT_SCRIPT (debugging)
 	Uint32 kk4sStart = SDL_GetTicks();
 	unsigned kk4sShownBefore = kk4sFramesShown;
