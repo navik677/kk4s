@@ -161,6 +161,8 @@ static int fmtint(tjs_char *buffer, size_t *currlen, size_t maxlen,
     intmax_t value, int base, int min, int max, int flags);
 static int fmtfp(tjs_char *buffer, size_t *currlen, size_t maxlen,
     LDOUBLE fvalue, int min, int max, int flags);
+static int kk4sfmtfloat(tjs_char *buffer, size_t *currlen, size_t maxlen,
+    double fvalue, tjs_char conv, int min, int max, int flags);
 
 static int
 dopr(tjs_char *buffer, size_t maxlen, const tjs_char *format, va_list args_in)
@@ -371,35 +373,22 @@ dopr(tjs_char *buffer, size_t maxlen, const tjs_char *format, va_list args_in)
 				    16, min, max, flags) == -1)
 					return -1;
 				break;
+			// kk4s: %f / %e / %g go to the C library. This portable code only
+			// knew %f and printed %e and %g as %f, so every real TJS turned into
+			// a string ("%.15lg" in TJSRealToString) had trailing zeros:
+			// 2.5 -> "2.500000000000000", 1e20 -> "100000000000000000000.0...".
 			case TJS_W('f'):
-				if (cflags == DP_C_LDOUBLE)
-					fvalue = va_arg (args, LDOUBLE);
-				else
-					fvalue = va_arg (args, double);
-				if (fmtfp(buffer, &currlen, maxlen, fvalue,
-				    min, max, flags) == -1)
-					return -1;
-				break;
+			case TJS_W('F'):
 			case TJS_W('E'):
-				flags |= DP_F_UP;
 			case TJS_W('e'):
-				if (cflags == DP_C_LDOUBLE)
-					fvalue = va_arg (args, LDOUBLE);
-				else
-					fvalue = va_arg (args, double);
-				if (fmtfp(buffer, &currlen, maxlen, fvalue,
-				    min, max, flags) == -1)
-					return -1;
-				break;
 			case TJS_W('G'):
-				flags |= DP_F_UP;
 			case TJS_W('g'):
 				if (cflags == DP_C_LDOUBLE)
 					fvalue = va_arg (args, LDOUBLE);
 				else
 					fvalue = va_arg (args, double);
-				if (fmtfp(buffer, &currlen, maxlen, fvalue,
-				    min, max, flags) == -1)
+				if (kk4sfmtfloat(buffer, &currlen, maxlen, (double)fvalue,
+				    ch, min, max, flags) == -1)
 					return -1;
 				break;
 			case TJS_W('c'):
@@ -692,6 +681,36 @@ static double my_modf(double x0, double *iptr)
 	return x - (*iptr);
 }
 
+
+// kk4s: one floating point conversion through the C library's snprintf, with
+// the same flags, width and precision; a decimal comma from a locale becomes '.'.
+static int
+kk4sfmtfloat(tjs_char *buffer, size_t *currlen, size_t maxlen,
+    double fvalue, tjs_char conv, int min, int max, int flags)
+{
+	char fmt[48];
+	char out[512];
+	int n = 0;
+	fmt[n++] = '%';
+	if (flags & DP_F_MINUS) fmt[n++] = '-';
+	if (flags & DP_F_PLUS) fmt[n++] = '+';
+	if (flags & DP_F_SPACE) fmt[n++] = ' ';
+	if (flags & DP_F_NUM) fmt[n++] = '#';
+	if (flags & DP_F_ZERO) fmt[n++] = '0';
+	if (min > 0) n += snprintf(fmt + n, sizeof(fmt) - n, "%d", min > 400 ? 400 : min);
+	if (max >= 0) n += snprintf(fmt + n, sizeof(fmt) - n, ".%d", max > 400 ? 400 : max);
+	fmt[n++] = (char)conv;
+	fmt[n] = 0;
+	int len = snprintf(out, sizeof(out), fmt, fvalue);
+	if (len < 0) return -1;
+	if (len >= (int)sizeof(out)) len = (int)sizeof(out) - 1;
+	for (int i = 0; i < len; i++) {
+		char c = out[i];
+		if (c == ',') c = '.';
+		DOPR_OUTCH(buffer, *currlen, maxlen, (tjs_char)(unsigned char)c);
+	}
+	return 0;
+}
 
 static int
 fmtfp (tjs_char *buffer, size_t *currlen, size_t maxlen,
