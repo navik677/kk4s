@@ -127,6 +127,17 @@ functions and the filter callback are `__stdcall`; `tTVPXP3ExtractionFilterInfo`
 functions the fake API lacks; the log names the function (`the plugin called X (not provided by kk4s)`),
 add it to `TpmPlugin::Win32`. Interpreter speed: ~35 M guest instructions/s on the dev PC.
 
+**Step 5: open small items.**
+- `e6d8e2c` + `8819c7b`: `tests/sprintf` (104 cases vs C printf) found three bugs in kk4s' own
+  `TJS_snprintf`: `#` flag ignored (`%#x` gave `ff`), values of 20+ digits lost a digit (`%u` of -1,
+  64-bit `%o`), `-INT64_MIN` UB. TJS' own rules stay as in Kirikiri 2 (checked in krkr2): real → string
+  is `%.15g` with `+0.0` / `-0.0` / `NaN` / `±Infinity`; the format parser takes one flag only.
+- `e352037`: ripple's vertical displacement **is there**; the earlier "no vertical displacement" note
+  was wrong (it is only strong near the vertical axis through the centre). `tests/extrans` now checks
+  the direction on 8 px stripes; with `yd` forced to 0 the test fails.
+- BGRA audit of the built-in plugins: no further problems; the list is in `docs/plugins.md`
+  ("Pixel order").
+
 **STOP POINT 2 (2026-11-05, user stopped the session; resolved in step 2 above).** Committed as work in progress and **not
 built**: `engine/source/plugins/layerExDraw/` — layerExDraw.dll without GDI+: vendored plutovg (MIT,
 `plutovg/UPSTREAM.txt`), `gdip_kk4s.h` (GDI+ enums with their real values, PointF / RectF / Matrix /

@@ -69,6 +69,14 @@ use the R/B offsets of `compat/kk4s_layerex.cpp` (`kR`/`kG`/`kB`/`kA`) and conve
 conversion themselves. Note that `setMainPixel` with a non-zero high byte means a *system colour*
 in Kirikiri, so set an ARGB pixel with `fillRect(x, y, 1, 1, argb)`.
 
+Audit of the built-in plugins for BGRA assumptions (2026-11-05): extrans (option colours converted),
+AlphaMovie, psdfile (RGBA layer order), layerExDraw (plutovg ARGB → RGBA bytes, `tests/layerexdraw`
+checks colours), layerEx* / layerExSave (`kR`/`kG`/`kB`), drawer.dll `drawLine` (swaps R/B) are
+converted. Order-independent and left as they are: layerExPerspective (AGG copies with the same
+format on both sides, per-channel filtering, transparent black border), filter.dll noise / blur /
+contrast / haze and slideopen (per channel or random), csvParser, varfile, saveStruct, KAGParserEx,
+dirlist, wutcwf, win32dialog, getSample (no pixels), fftgraph (a stub that draws nothing).
+
 How to add one: write a `Link...()` function (TJS shim string or native `tTJSDispatch` functions), add it to `kPlugins` in `compat/kk4s_plugins.cpp`, document it here. To see what a DLL registers, list its UTF-16 strings — they are the TJS names:
 
 ```bash
