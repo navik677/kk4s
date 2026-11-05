@@ -8,6 +8,12 @@ not the target. No per-game fixes, game files, keys or conversion; compatibility
 
 ## Where we are (2026-11-05)
 
+**Branches:** everything is merged into `main` (fast-forward, `c6649c7` at the time of writing, 46 commits
+after `49dfe56`): `cloud-session` (session 3), `research/emote-psb`, `research/emote-crossgame`,
+`feature/universal-emote-runtime`, `work/game-compat-patchtjs`. Work from here starts from `main`. The older
+"on `cloud-session`" remarks below describe where a change was made, not an unmerged state. Hardware: the
+Switch NRO of `main` built locally (29,259,173 bytes) but nothing after `49dfe56` ran on a console yet.
+
 ### Session 4 (PC, Windows) — Kirikiroid2 packs and Russian games; E-mote runtime started
 
 Branch `work/game-compat-patchtjs` (based on `feature/universal-emote-runtime`, which contains the
@@ -37,7 +43,7 @@ suite after these edits (Windows has no `python3`/bash setup here), Linux, Switc
 pack's stub of a plugin kk4s links itself are now decided by kk4s' built-in (fstat, krkrsteam); other
 Kirikiroid2 stubs (`Layer.*` of unsupported plugins) are still honoured as the pack defines them.
 
-### E-mote (branch `feature/universal-emote-runtime`, **not merged**)
+### E-mote (`compat/emote/`, merged into `main`)
 
 Universal E-mote runtime started in `compat/emote/` (design, evidence, limits: `docs/universal_emote_runtime.md`).
 Pure C++17 + zlib, built into CMake (desktop and Switch objects compile) but **not yet used by

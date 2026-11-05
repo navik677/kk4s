@@ -20,8 +20,9 @@ Last update: 2026-11-05.
 ## Branch `cloud-session` (2026-11-05, universal-runtime sprint)
 
 The sprint up to `49dfe56` is merged into `main` and ran on the Switch (games work; 4:3 note above).
-Session 3 on top of it (sanitizer fixes, layerExDraw, soft mode, `.tpm` interpreter, sprintf) is not
-merged and not run on hardware: **35/35** normal and ASan+UBSan, NRO builds. Earlier verification: the
+Session 3 on top of it (sanitizer fixes, layerExDraw, soft mode, `.tpm` interpreter, sprintf) is **merged
+into `main` too (2026-11-05, with the E-mote runtime and the PC game round)** but not run on hardware:
+**35/35** normal and ASan+UBSan at its last commit, NRO builds (the NRO of `main` also built locally). Earlier verification: the
 synthetic suite (`tools/run-tests.sh`, 25/25 normal; 24/24 ASan+UBSan before extrans) on the Linux build, and
 that the Switch NRO builds (devkitA64 docker image). Commit list and details: `docs/HANDOFF.md`.
 

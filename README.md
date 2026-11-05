@@ -125,7 +125,7 @@ bash tools/run-tests.sh                                                  # xp3 +
 ## Документація
 
 - [docs/launcher.md](docs/launcher.md) — лаунчер, обкладинки, налаштування, меню в грі
-- [docs/status.md](docs/status.md) — що працює і що ні (поточний спринт у гілці `cloud-session` — [docs/HANDOFF.md](docs/HANDOFF.md))
+- [docs/status.md](docs/status.md) — що працює і що ні (усі гілки влиті в `main`; журнал і наступні кроки — [docs/HANDOFF.md](docs/HANDOFF.md); E-mote — [docs/universal_emote_runtime.md](docs/universal_emote_runtime.md))
 - [docs/roadmap.md](docs/roadmap.md) — план
 - [docs/HANDOFF.md](docs/HANDOFF.md) — з чого почати розробнику
 - [docs/debugging.md](docs/debugging.md) — логи, краш-репорти, FTP
