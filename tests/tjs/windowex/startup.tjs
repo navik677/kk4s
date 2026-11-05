@@ -1,0 +1,51 @@
+// Contract test for the windowEx.dll replacement (compat/kk4s_plugins.cpp).
+Plugins.link("windowEx.dll");
+var failures = 0;
+function check(what, ok) { if (!ok) { Debug.message("windowEx FAIL " + what); failures++; } }
+
+// System: one monitor of screenWidth x screenHeight
+var sw = System.screenWidth, sh = System.screenHeight;
+var mi = System.getMonitorInfo();
+check("getMonitorInfo", mi.primary && mi.monitor.w == sw && mi.monitor.h == sh && mi.work.w == sw);
+check("getMonitorInfo(near, x, y)", System.getMonitorInfo(true, 10, 10).monitor.w == sw);
+var dm = System.getDisplayMonitors();
+check("getDisplayMonitors", dm.count == 1 && dm[0].monitor.h == sh);
+var dmi = System.getDisplayMonitors(-10, -10, 30, 40);
+check("getDisplayMonitors intersect", dmi.count == 1 && dmi[0].intersect.x == 0 && dmi[0].intersect.w == 20 && dmi[0].intersect.h == 30);
+check("getDisplayMonitors outside", System.getDisplayMonitors(sw + 10, 0, 5, 5).count == 0);
+check("getSystemMetrics(CXSCREEN)", System.getSystemMetrics("CXSCREEN") == sw);
+check("getSystemMetrics(SM_CYSCREEN)", System.getSystemMetrics("SM_CYSCREEN") == sh);
+check("getSystemMetrics(cmonitors)", System.getSystemMetrics("cmonitors") == 1);
+check("getSystemMetrics(cycaption)", System.getSystemMetrics("CYCAPTION") > 0);
+check("getSystemMetrics(unknown)", System.getSystemMetrics("NO_SUCH_METRIC") == 0);
+check("getDoubleClickTime", System.getDoubleClickTime() == 500);
+check("expandEnvString known", System.expandEnvString("%OS%") == "Windows_NT");
+check("expandEnvString unknown kept", System.expandEnvString("a%KK4S_NO_SUCH_VAR%b") == "a%KK4S_NO_SUCH_VAR%b");
+check("expandEnvString mixed", System.expandEnvString("x%OS%y%OS%") == "xWindows_NTyWindows_NT");
+var app = System.readEnvValue("APPDATA");
+check("readEnvValue(APPDATA) is the save folder", app !== void && Storages.getLocalName(System.dataPath).indexOf(app) == 0);
+check("readEnvValue(undefined)", System.readEnvValue("KK4S_NO_SUCH_VAR") === void);
+var cp = System.getCursorPos();
+check("getCursorPos", cp !== void && typeof cp.x == "Integer");
+check("breathe/isBreathing", typeof System.breathe == "Object" && System.isBreathing() == false);
+check("getAboutString", System.getAboutString() != "");
+check("clearGraphicCache", typeof System.clearGraphicCache == "Object");
+check("mapVirtualKey", System.mapVirtualKey(0x41, 2) == 0x41 && System.mapVirtualKey(0x10, 2) == 0);
+
+// Window members reach a window created after the link
+class TestWindow extends Window {
+    function TestWindow() { super.Window(); setInnerSize(320, 240); add(new Layer(this, null)); }
+}
+var w = new TestWindow();
+var r = w.getClientRect();
+check("getClientRect", r.w == w.innerWidth && r.h == w.innerHeight);
+check("getWindowRect", w.getWindowRect().w == w.width);
+w.maximize(); w.minimize(); w.showRestore(); w.bringTo("top"); w.setWindowIcon("x.ico", false);
+check("maximized stored", w.maximized == false);
+check("ncHitTest", w.ncHitTest(1, 1) == w.nchtClient && w.nchtCaption == 2 && w.nchtBottomRight == 17);
+check("registerExEvent", w.registerExEvent());
+check("acquireImeControl", w.acquireImeControl());
+check("MenuItem constants", MenuItem.biClose == 5);
+
+if (failures == 0) Debug.message("windowEx synthetic contract: PASS");
+else Debug.message("windowEx synthetic contract: " + failures + " failure(s)");

@@ -12,6 +12,7 @@
 extern bool TVPKAGParserExMode; // engine/source/core/utils/KAGParser.cpp
 
 #include "CharacterSet.h"
+#include "GraphicsLoaderIntf.h"
 #include "StorageIntf.h"
 #include "TextStream.h"
 #include "ScriptMgnIntf.h"
@@ -1414,10 +1415,180 @@ void InstallWindowMenuCompat() {
 
 static void LinkMenuDll() { InstallWindowMenuCompat(); }
 
-// windowEx.dll: extended window events. kk4s already delivers mouse/keyboard events
-// to Window subclasses, so registering only has to mark the window and report
-// success; games then set their own "exEventEnabled" flag and use the normal
-// handlers. Without the method KAGZ's custom.tjs stops at `kag.registerExEvent()`.
+// windowEx.dll (wamsoft/windowEx): Window / System / MenuItem / Pad extensions.
+// kk4s has one display and windows without OS decorations, so the plugin's
+// queries answer as Windows would for a single monitor of System.screenWidth x
+// screenHeight and a frameless window; icons, hot keys, IME, z-order and
+// message hooks have nothing to act on and succeed quietly. Events: kk4s already
+// delivers mouse/keyboard events to Window, so registerExEvent only reports
+// success (KAGZ's custom.tjs stops at `kag.registerExEvent()` without it).
+// %APPDATA%-style folders map to the game's save folder (System.dataPath), so a
+// game that builds its save path from them keeps writing outside the game folder.
+static const tjs_char* kWindowExShim = TJS_W(R"TJS(
+// ---- System
+global.kk4s_wx_monitor = function() {
+	var sw = System.screenWidth, sh = System.screenHeight;
+	return %[ name: "\\\\.\\DISPLAY1", primary: true,
+	          monitor: %[ x: 0, y: 0, w: sw, h: sh ], work: %[ x: 0, y: 0, w: sw, h: sh ] ];
+};
+if (typeof System.getMonitorInfo == "undefined")
+	System.getMonitorInfo = function(near, x, y, w, h) { return kk4s_wx_monitor(); };
+if (typeof System.getDisplayMonitors == "undefined")
+	System.getDisplayMonitors = function(x, y, w, h) {
+		var m = kk4s_wx_monitor();
+		if (x !== void && y !== void && w !== void && h !== void) {
+			var mw = m.monitor.w, mh = m.monitor.h;
+			var x1 = x > 0 ? x : 0, y1 = y > 0 ? y : 0;
+			var x2 = x + w < mw ? x + w : mw, y2 = y + h < mh ? y + h : mh;
+			if (x2 <= x1 || y2 <= y1) return [];
+			m.intersect = %[ x: x1, y: y1, w: x2 - x1, h: y2 - y1 ];
+		}
+		return [ m ];
+	};
+global.kk4s_wx_cursor_layer = function() {
+	var w = Window.mainWindow;
+	if (w === void || w === null || !isvalid w) return void;
+	return w.primaryLayer;
+};
+if (typeof System.getCursorPos == "undefined")
+	System.getCursorPos = function() {
+		var p = kk4s_wx_cursor_layer();
+		if (p === void || p === null) return %[ x: 0, y: 0 ];
+		return %[ x: Window.mainWindow.left + p.cursorX, y: Window.mainWindow.top + p.cursorY ];
+	};
+if (typeof System.setCursorPos == "undefined")
+	System.setCursorPos = function(x, y) {
+		var p = kk4s_wx_cursor_layer();
+		if (p !== void && p !== null) p.setCursorPos(x - Window.mainWindow.left, y - Window.mainWindow.top);
+	};
+if (typeof System.setClipCursor == "undefined") System.setClipCursor = function() { return true; };
+global.kk4s_wx_metrics = %[
+	cxborder: 1, cyborder: 1, cxedge: 2, cyedge: 2, cxfixedframe: 3, cyfixedframe: 3,
+	cxdlgframe: 3, cydlgframe: 3, cxsizeframe: 4, cysizeframe: 4, cxframe: 4, cyframe: 4,
+	cxpaddedborder: 4, cycaption: 23, cysmcaption: 23, cymenu: 20, cxvscroll: 17, cyhscroll: 17,
+	cyvscroll: 17, cxhscroll: 17, cxicon: 32, cyicon: 32, cxsmicon: 16, cysmicon: 16,
+	cxcursor: 32, cycursor: 32, cmousebuttons: 3, mousepresent: 1, mousewheelpresent: 1,
+	swapbutton: 0, cxdoubleclk: 4, cydoubleclk: 4, cxdrag: 4, cydrag: 4, cxmin: 136, cymin: 39,
+	cxmintrack: 136, cymintrack: 39, xvirtualscreen: 0, yvirtualscreen: 0, cmonitors: 1,
+	samedisplayformat: 1, remotesession: 0, tabletpc: 0, mediacenter: 0, digitizer: 0,
+	maximumtouches: 0, dbcsenabled: 1, immenabled: 1, cleanboot: 0, network: 1, slowmachine: 0,
+	mideastenabled: 0, penwindows: 0, debug: 0, showsounds: 0, menudropalignment: 0 ];
+if (typeof System.getSystemMetrics == "undefined")
+	System.getSystemMetrics = function(index) {
+		var k = ("" + index).toLowerCase();
+		if (k.substring(0, 3) == "sm_") k = k.substring(3);
+		var sw = System.screenWidth, sh = System.screenHeight;
+		if (k == "cxscreen" || k == "cxfullscreen" || k == "cxvirtualscreen" || k == "cxmaximized" || k == "cxmaxtrack") return sw;
+		if (k == "cyscreen" || k == "cyvirtualscreen" || k == "cymaximized" || k == "cymaxtrack") return sh;
+		if (k == "cyfullscreen") return sh;	// no caption above a full-screen client area here
+		var v = kk4s_wx_metrics[k];
+		return v === void ? 0 : v;
+	};
+if (typeof System.getDoubleClickTime == "undefined") System.getDoubleClickTime = function() { return 500; };
+global.kk4s_wx_folder = function() {
+	var p = Storages.getLocalName(System.dataPath);
+	while (p.length > 1 && (p.charAt(p.length - 1) == "/" || p.charAt(p.length - 1) == "\\")) p = p.substring(0, p.length - 1);
+	return p;
+};
+global.kk4s_wx_env = %[ os: "Windows_NT", username: "player", computername: "KK4S", userdomain: "KK4S" ];
+if (typeof System.readEnvValue == "undefined")
+	System.readEnvValue = function(name) {
+		var k = ("" + name).toLowerCase();
+		if (k == "appdata" || k == "localappdata" || k == "userprofile" || k == "homepath" || k == "temp" ||
+		    k == "tmp" || k == "allusersprofile" || k == "programdata" || k == "public")
+			return kk4s_wx_folder();
+		var v = System.kk4sGetEnv(name);
+		if (v !== void) return v;
+		return kk4s_wx_env[k];
+	};
+if (typeof System.expandEnvString == "undefined")
+	System.expandEnvString = function(text) {
+		var out = "", i = 0;
+		text = "" + text;
+		while (true) {
+			var a = text.indexOf("%", i);
+			if (a < 0) break;
+			var b = text.indexOf("%", a + 1);
+			if (b < 0) break;
+			var v = System.readEnvValue(text.substring(a + 1, b - a - 1));
+			if (v === void) {	// undefined names stay as they are, as on Windows
+				out += text.substring(i, b - i);
+				i = b;
+				continue;
+			}
+			out += text.substring(i, a - i) + v;
+			i = b + 1;
+		}
+		return out + text.substring(i);
+	};
+if (typeof System.setApplicationIcon == "undefined") System.setApplicationIcon = function() {};
+if (typeof System.setIconicPreview == "undefined") System.setIconicPreview = function() { return false; };
+if (typeof System.setDpiAwareness == "undefined") System.setDpiAwareness = function() { return void; };
+if (typeof System.findWindowEx == "undefined") System.findWindowEx = function() { return void; };
+if (typeof System.classLongPtr == "undefined") System.classLongPtr = function() { return void; };
+if (typeof System.loadCursor == "undefined") System.loadCursor = function() { return 0; };
+if (typeof System.mapVirtualKey == "undefined")
+	System.mapVirtualKey = function(code, type) {
+		if (type == 2) return ((code >= 0x30 && code <= 0x39) || (code >= 0x41 && code <= 0x5a)) ? code : 0;
+		return code;
+	};
+if (typeof System.breathe == "undefined") System.breathe = function() {};
+if (typeof System.isBreathing == "undefined") System.isBreathing = function() { return false; };
+if (typeof System.getAboutString == "undefined")
+	System.getAboutString = function() { return "kk4s (Kirikiri-compatible runtime)\n" + System.versionInformation; };
+if (typeof System.getCPUType == "undefined") System.getCPUType = function() { return System.platformName; };
+if (typeof Scripts.setEvalErrorLog == "undefined") Scripts.setEvalErrorLog = function(on) { return false; };
+
+// ---- Window (members reach instances created after the link, as with the DLL)
+Window.maximize = function() {} if typeof Window.maximize == "undefined";
+Window.minimize = function() {} if typeof Window.minimize == "undefined";
+Window.showRestore = function() {} if typeof Window.showRestore == "undefined";
+Window.resetWindowIcon = function() {} if typeof Window.resetWindowIcon == "undefined";
+Window.setWindowIcon = function(file, withapp) {} if typeof Window.setWindowIcon == "undefined";
+Window.setWindowCornerPreference = function() { return false; } if typeof Window.setWindowCornerPreference == "undefined";
+Window.getClientRect = function() { return %[ x: this.left, y: this.top, w: this.innerWidth, h: this.innerHeight ]; } if typeof Window.getClientRect == "undefined";
+Window.getWindowRect = function() { return %[ x: this.left, y: this.top, w: this.width, h: this.height ]; } if typeof Window.getWindowRect == "undefined";
+Window.getNormalRect = function(nofix) { return %[ x: this.left, y: this.top, w: this.width, h: this.height ]; } if typeof Window.getNormalRect == "undefined";
+Window.setClientRect = function(r) { this.setPos(r.x, r.y); this.setInnerSize(r.w, r.h); } if typeof Window.setClientRect == "undefined";
+Window.bringTo = function(win, activate) {} if typeof Window.bringTo == "undefined";
+Window.sendToBack = function() {} if typeof Window.sendToBack == "undefined";
+Window.acquireImeControl = function() { return true; } if typeof Window.acquireImeControl == "undefined";
+Window.resetImeContext = function() { return true; } if typeof Window.resetImeContext == "undefined";
+Window.focusMenuByKey = function() { return false; } if typeof Window.focusMenuByKey == "undefined";
+Window.setMessageHook = function() {} if typeof Window.setMessageHook == "undefined";
+Window.getNotificationNum = function() { return 0; } if typeof Window.getNotificationNum == "undefined";
+Window.getNotificationName = function() { return ""; } if typeof Window.getNotificationName == "undefined";
+Window.setOverlayBitmap = function() {} if typeof Window.setOverlayBitmap == "undefined";
+Window.ncHitTest = function(x, y) { return 1; } if typeof Window.ncHitTest == "undefined";	// nchtClient
+Window.registerHotKey = function() { return false; } if typeof Window.registerHotKey == "undefined";
+Window.registerDeviceChange = function() {} if typeof Window.registerDeviceChange == "undefined";
+
+// ---- MenuItem / Pad / Debug.console
+if (typeof MenuItem != "undefined") {
+	MenuItem.popupEx = function() { return void; } if typeof MenuItem.popupEx == "undefined";
+}
+if (typeof Pad != "undefined") {
+	Pad.registerExEvent = function() { return true; } if typeof Pad.registerExEvent == "undefined";
+}
+if (typeof Debug.console != "undefined" && Debug.console !== void) {
+	var c = Debug.console;
+	c.restoreMaximize = function() {} if typeof c.restoreMaximize == "undefined";
+	c.maximize = function() {} if typeof c.maximize == "undefined";
+	c.getRect = function() { return %[ x: 0, y: 0, w: 0, h: 0 ]; } if typeof c.getRect == "undefined";
+	c.setPos = function() {} if typeof c.setPos == "undefined";
+	c.getPlacement = function() { return %[]; } if typeof c.getPlacement == "undefined";
+	c.setPlacement = function() {} if typeof c.setPlacement == "undefined";
+	c.bringAfter = function() {} if typeof c.bringAfter == "undefined";
+}
+)TJS");
+
+static void EnsureClassMember(const tjs_char* cls, const tjs_char* name, const tTJSVariant& value) {
+    iTJSDispatch2* g = Global();
+    tTJSVariant v;
+    if (TJS_FAILED(g->PropGet(0, cls, nullptr, &v, g)) || v.Type() != tvtObject) return;
+    EnsureWindowMember(v.AsObjectNoAddRef(), name, value);
+}
+
 static void LinkWindowExDll() {
     iTJSDispatch2* g = Global();
     tTJSVariant v;
@@ -1431,6 +1602,50 @@ static void LinkWindowExDll() {
         if (r) *r = (tjs_int)1;
         return TJS_S_OK;
     });
+    // Properties with nothing behind them here: stored values (readable, settable).
+    tTJSVariant no(false);
+    for (const tjs_char* name : {TJS_W("maximized"), TJS_W("minimized"), TJS_W("enableNCMouseEvent")})
+        EnsureWindowMember(window, name, no);
+    static const struct { const tjs_char* name; tjs_int value; } kHit[] = {
+        {TJS_W("nchtError"), -2}, {TJS_W("nchtTransparent"), -1}, {TJS_W("nchtNoWhere"), 0},
+        {TJS_W("nchtClient"), 1}, {TJS_W("nchtCaption"), 2}, {TJS_W("nchtSysMenu"), 3},
+        {TJS_W("nchtSize"), 4}, {TJS_W("nchtGrowBox"), 4}, {TJS_W("nchtMenu"), 5},
+        {TJS_W("nchtHScroll"), 6}, {TJS_W("nchtVScroll"), 7}, {TJS_W("nchtMinButton"), 8},
+        {TJS_W("nchtReduce"), 8}, {TJS_W("nchtMaxButton"), 9}, {TJS_W("nchtZoom"), 9},
+        {TJS_W("nchtLeft"), 10}, {TJS_W("nchtRight"), 11}, {TJS_W("nchtTop"), 12},
+        {TJS_W("nchtTopLeft"), 13}, {TJS_W("nchtTopRight"), 14}, {TJS_W("nchtBottom"), 15},
+        {TJS_W("nchtBottomLeft"), 16}, {TJS_W("nchtBottomRight"), 17}, {TJS_W("nchtBorder"), 18}};
+    for (const auto& h : kHit) EnsureWindowMember(window, h.name, tTJSVariant(h.value));
+    // MenuItem: bitmaps / right-justify are stored; bi* are the HBMMENU_* ids.
+    tTJSVariant empty;
+    EnsureClassMember(TJS_W("MenuItem"), TJS_W("rightJustify"), no);
+    EnsureClassMember(TJS_W("MenuItem"), TJS_W("bmpChecked"), empty);
+    EnsureClassMember(TJS_W("MenuItem"), TJS_W("bmpUnchecked"), empty);
+    static const struct { const tjs_char* name; tjs_int value; } kBi[] = {
+        {TJS_W("biSystem"), 1}, {TJS_W("biRestore"), 2}, {TJS_W("biMinimize"), 3}, {TJS_W("biClose"), 5},
+        {TJS_W("biCloseDisabled"), 6}, {TJS_W("biMinimizeDisabled"), 7}, {TJS_W("biPopupClose"), 8},
+        {TJS_W("biPopupRestore"), 9}, {TJS_W("biPopupMaximize"), 10}, {TJS_W("biPopupMinimize"), 11}};
+    for (const auto& b : kBi) EnsureClassMember(TJS_W("MenuItem"), b.name, tTJSVariant(b.value));
+
+    tTJSVariant sv;
+    if (TJS_SUCCEEDED(g->PropGet(0, TJS_W("System"), nullptr, &sv, g)) && sv.Type() == tvtObject) {
+        iTJSDispatch2* sys = sv.AsObjectNoAddRef();
+        // kk4sGetEnv(name): the process environment (desktop); void if unset
+        DefineFunction(sys, TJS_W("kk4sGetEnv"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p) -> tjs_error {
+            if (n < 1) return TJS_E_BADPARAMCOUNT;
+            const char* e = getenv(Utf8(*p[0]).c_str());
+            if (r && e) {
+                tjs_string w;
+                *r = TVPUtf8ToUtf16(w, e) ? ttstr(w.c_str()) : ttstr(e);
+            }
+            return TJS_S_OK;
+        });
+        DefineFunction(sys, TJS_W("clearGraphicCache"), [](tTJSVariant*, tjs_int, tTJSVariant**) -> tjs_error {
+            TVPClearGraphicCache();
+            return TJS_S_OK;
+        });
+    }
+    RunTjsShim("windowEx.dll", kWindowExShim);
 }
 
 // KAGParserEx.dll replaces the KAG parser: the engine's own parser does the work; the one

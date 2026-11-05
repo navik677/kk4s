@@ -29,7 +29,12 @@ Status: **full** = same behaviour, **approx** = similar result, **stub** = does 
 | menu.dll | `Window.menu` + `MenuItem` | full: engine menu model (`MenuItemIntf.cpp`), items and hierarchy behave as in Kirikiri |
 | | `Window.exSystemMenu` | approx: stored per window and readable by KAG's listeners, but there is no OS menu bar to display it in |
 | windowEx.dll | `Window.registerExEvent` / `unregisterExEvent` | approx: kk4s already delivers mouse/keyboard events to `Window`, so this marks the window and returns true; no separate event mask |
-| | `Window.disableResize`, `Window.disableMove` | approx: declared and stored, so KAGZ's plain assignments inside its methods work; kk4s windows have no OS decorations to drag, so there is nothing to disable |
+| | `Window.disableResize`, `disableMove`, `maximized`, `minimized`, `enableNCMouseEvent` | stored values: there are no OS window decorations to act on |
+| | `Window.getClientRect` / `getWindowRect` / `getNormalRect` / `setClientRect` | full for a frameless window (client rect = window rect) |
+| | `Window.maximize`, `minimize`, `showRestore`, `bringTo`, `sendToBack`, `setWindowIcon`, `resetWindowIcon`, `setWindowCornerPreference`, `acquireImeControl`, `resetImeContext`, `focusMenuByKey`, `setMessageHook`, `getNotificationNum/Name`, `setOverlayBitmap`, `registerHotKey`, `registerDeviceChange`; `ncHitTest` (= `nchtClient`) and the `ncht*` constants | no-ops / fixed answers (nothing to act on) |
+| | `System.getMonitorInfo`, `getDisplayMonitors` (with `intersect`), `getSystemMetrics` (`SM_*` names, Windows 10 defaults for frames/icons, the screen for sizes, 0 for unknown), `getDoubleClickTime` (500) | as Windows with one monitor of `System.screenWidth` x `screenHeight` |
+| | `System.readEnvValue`, `expandEnvString` | APPDATA, LOCALAPPDATA, USERPROFILE, HOMEPATH, TEMP, TMP, ALLUSERSPROFILE, PROGRAMDATA, PUBLIC = the game's save folder (so saves built from them stay out of the game folder); OS = `Windows_NT`, USERNAME, COMPUTERNAME fixed; others from the process environment (desktop) or void; unknown `%NAME%` stays as is |
+| | `System.getCursorPos` / `setCursorPos`, `setClipCursor`, `breathe`, `isBreathing`, `clearGraphicCache`, `getAboutString`, `getCPUType`, `mapVirtualKey`, `setApplicationIcon`, `setIconicPreview`, `setDpiAwareness`, `findWindowEx`, `classLongPtr`, `loadCursor`; `Scripts.setEvalErrorLog`; `MenuItem.popupEx` + `bi*` / `rightJustify` / `bmpChecked` / `bmpUnchecked`; `Pad.registerExEvent`; `Debug.console` helpers | cursor through the main window's primary layer; the rest no-ops or fixed values |
 | emoteplayer.dll / motionplayer.dll | `Motion.ResourceManager` | full: storage lookup, PSB parse (`compat/psb`), byte-budget LRU cache, unload/clearCache |
 | | `Motion.Player` / `Motion.EmotePlayer` | partial: playback state machine (play/stop/skip/progress/time/playing, options, timelines list) is real; **E-mote rendering is not implemented** (`draw()` draws nothing, logged once per played motion), so emote animations appear static/absent. `MaskMode*`, `PlayFlag*`, `ShapeType*` are kk4s-internal values |
 | | `Motion.SeparateLayerAdaptor` | stub (binder adaptor does nothing) |
@@ -40,7 +45,7 @@ Status: **full** = same behaviour, **approx** = similar result, **stub** = does 
 | layerExRaster.dll | `Layer.copyRaster(src, maxh, lines, cycle, time)` | full (raster wave copy); `lines = 0` / `cycle = 0` are guarded instead of dividing by zero |
 
 Next candidates: KAGZ UI layer storages (`<name>%layer` passed to `Layer.loadImages`, NekoPara's next blocker at `title.ks:13`), emoteplayer / motionplayer (`Motion.ResourceManager` and friends, needed by KAGZ titles such as NekoPara before their scripts finish initialising), layerExDraw (GDI+ drawing API), layerExSave, layerExAlpha, real extrans transitions,
-kagexopt, shrinkCopy, layerExAreaAverage, minizip, win32ole, the rest of windowEx (System monitor/cursor helpers).
+kagexopt, shrinkCopy, layerExAreaAverage, minizip, win32ole.
 
 **Pixel order.** krkrs keeps layer pixels as RGBA bytes (uint32 `0xAABBGGRR`, the SDL texture is
 `ABGR8888`); Windows plugins address BGRA. Native replacements that touch `mainImageBuffer` must
