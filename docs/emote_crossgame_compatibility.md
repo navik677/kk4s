@@ -248,6 +248,7 @@ here; this is only the proposed boundary.
 * Empirical outputs: `work/audit_dll.json`, `work/env_scan.json`,
   `work/inspect_sample.json`, `work/revalidate_157.log` (gitignored).
 * Cross-game tests: 8, all passing.  NekoPara decoder tests: 35, all passing.
-* HEAD / commit hash / push status: recorded in the final response and by
-  `git log -1`; the branch is pushed to `origin/research/emote-crossgame`.
+* Cross-game audit commit: `cbdb190` (this file included).
+* Push: `origin/research/emote-crossgame` updated successfully; this
+  docs-only addendum is the branch tip and `git ls-remote` matches it.
 * No game DLL, PSB, XP3 or extracted resource is part of any commit.
