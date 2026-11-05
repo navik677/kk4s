@@ -32,7 +32,8 @@ jobs:
         if: success()
         shell: bash
         run: |
-          sudo apt-get install -y --no-install-recommends xvfb
+          # xvfb for the window; mingw builds the synthetic .tpm / x86 test DLLs (tests/tpm)
+          sudo apt-get install -y --no-install-recommends xvfb gcc-mingw-w64-i686
           export SDL_AUDIODRIVER=dummy KK4S_ROOT="$PWD/run-data"
           export ASAN_OPTIONS=detect_leaks=0
           timeout 15s xvfb-run -a ./out-desktop/kk4s tests/tjs/hello > smoke.log 2>&1 || code=$?

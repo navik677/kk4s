@@ -8,14 +8,16 @@
 # Groups:
 #   xp3        storage layer: project dir, overlay precedence, archive parsing,
 #              game-folder layouts (data/, data.exe, XP3 inside an exe),
-#              keyless .tpm encryption discovery
+#              keyless .tpm encryption discovery, the game's own .tpm filter
+#              in the x86 interpreter (needs i686-w64-mingw32-gcc, else skipped)
 #   io         engine I/O: TextStream encoding, AlphaMovie, Scripts.loadDataPack,
 #              layerEx* / layerExSave / layerExDraw Layer methods, fstat.dll Storages methods,
 #              json.dll / scriptsEx.dll / windowEx.dll, mouse / wheel / touch /
 #              pad input semantics, and the original KAG3 system scripts
 #              playing a scenario and played with the pad (tests/kag3, ~60 s)
 #   decoders   PBD / PSB / CXDEC decoders vs their Python references (no engine),
-#              the x86 interpreter vs native code (needs i686-w64-mingw32-gcc)
+#              the x86 interpreter vs native code and the .tpm loader on
+#              synthetic filter plugins (need i686-w64-mingw32-gcc)
 #
 # Engine groups boot a synthetic game headlessly (SDL_VIDEODRIVER=dummy) and
 # write their logs to $KK4S_TEST_WORK (default build-tests/). No game content is
@@ -71,6 +73,7 @@ group_xp3() {
     run xp3-index-cycle     python3 tests/xp3/index_cycle_smoke.py "$EXE"
     run xp3-layouts         python3 tests/xp3/layout_smoke.py "$EXE"
     run xp3-crypt           python3 tests/xp3/crypt_smoke.py "$EXE"
+    run xp3-tpm             python3 tests/tpm/smoke.py "$EXE"
 }
 
 group_io() {
@@ -131,6 +134,21 @@ group_decoders() {
             -Wl,--entry,_DllMain@12 -Wl,--image-base,0x40000000 -Wl,--dynamicbase -lgcc \
             && dlls+=("$WORK/ops-reloc.dll")
         run x86 "$WORK/x86_test" "${dlls[@]}"
+        local F=(-O2 -march=i686 -mno-mmx -mno-sse -shared -nostdlib -fno-asynchronous-unwind-tables
+                 -Wl,--entry,_DllMain@12)
+        if "$cxx" -std=c++17 -O2 -I compat tests/tpm/tpm_test.cpp compat/x86/x86emu.cpp compat/x86/pe32.cpp \
+                compat/x86/tpm_plugin.cpp -o "$WORK/tpm_test" &&
+            i686-w64-mingw32-gcc "${F[@]}" -Wl,--kill-at -o "$WORK/filter_xor.tpm" tests/tpm/src/filter_xor.c -lgcc &&
+            i686-w64-mingw32-gcc "${F[@]}" -Wl,--kill-at -DKK4S_TPM_CDECL -o "$WORK/filter_table.tpm" \
+                tests/tpm/src/filter_table.c -lkernel32 -lgcc &&
+            i686-w64-mingw32-gcc "${F[@]}" -o "$WORK/filter_add.tpm" tests/tpm/src/filter_add.c -lgcc &&
+            i686-w64-mingw32-gcc "${F[@]}" -Wl,--kill-at -o "$WORK/plugin_nofilter.tpm" \
+                tests/tpm/src/plugin_nofilter.c -lgcc; then
+            run tpm "$WORK/tpm_test" "$WORK"
+        else
+            echo "FAIL tpm (test plugins did not build)"
+            failed=$((failed + 1))
+        fi
     else
         echo "SKIP x86 (no i686-w64-mingw32-gcc, or the test did not build)"
     fi

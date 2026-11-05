@@ -27,7 +27,7 @@ EXPORT uint32_t op_arith(uint32_t a, uint32_t b) {
     r += (uint32_t)((int32_t)a >> (b & 31));
     uint32_t s = b & 31;
     r ^= (a << s) | (a >> ((32 - s) & 31));
-    r += (uint16_t)a * (uint16_t)b;
+    r += (uint32_t)(uint16_t)a * (uint16_t)b;
     r ^= (uint32_t)((int16_t)a * (int16_t)(b >> 16));
     return r;
 }
