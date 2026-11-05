@@ -49,4 +49,9 @@ expect("var read", lines.join("|"), "abc|def");
 expect("var write type", typeof vfdata.out, "Octet");
 expect("var write back", [].load("var://./vfdata/out").join("|"), "one|two");
 
+// addFont.dll: void for a missing file, 0 when nothing was registered
+Plugins.link("addFont.dll");
+expect("addFont missing", System.addFont("no-such-font.ttf", true), void);
+expect("addFont not a font", System.addFont("startup.tjs"), 0);
+
 Debug.message(fails ? "CSVVAR: " + fails + " failure(s)" : "CSVVAR PASS");

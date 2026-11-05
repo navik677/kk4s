@@ -25,6 +25,7 @@ Status: **full** = same behaviour, **approx** = similar result, **stub** = does 
 | drawer.dll | `drawLine`, `drawAALine`, `drawAATriangle` | approx (no anti-aliasing, triangle outline) |
 | slideopen.dll | `initSlideOpen` / `drawSlideOpen` / `finishSlideOpen` | approx (cross-fade) |
 | firespark.dll | `*FireSpark` particles | stub |
+| addFont.dll | `System.addFont(storage, extract)` | kk4s table: wraps the engine's (Kirikiri Z style, returns face names) with the DLL's return values: void = cannot open, 0 = nothing registered, else the number of fonts |
 | KAGParserEx.dll | extended `KAGParser` (multi-line tags, `taglist`, `[pmacro]` / `paramMacros`, `[emb escape=false]`, macro `*` keeping earlier parameters, `hasLabel`) | **engine** (`engine/source/plugins/KAGParserEx/`): the upstream parser in its own namespace replaces the global `KAGParser` on link, as the plugin does (only `taglist` was emulated before) |
 | csvParser.dll / varfile.dll | `CSVParser` class / `var://` storage over octet variables | engine internal plugins (from Kirikiroid2), audited against wamsoft: varfile had lost the write-back on close (writing to `var://` did nothing) — fixed; csvParser's `readmode` string is a TextStream mode again |
 | saveStruct.dll | `saveStruct2`, `toStructString`, `Scripts.toStructString`, `save2`, `sso*` options | **engine internal plugin**, current wamsoft contract (was an old copy that wrote raw UTF-16 and returned an unterminated string); files are UTF-8 in both modes (Windows used the ANSI code page for `utf = false`) |

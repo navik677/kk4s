@@ -1723,6 +1723,23 @@ if (typeof Scripts.safeEvalStorage == "undefined")
 )TJS"));
 }
 
+// addFont.dll: System.addFont(storage, extract = false) returns void when the
+// file cannot be opened, 0 when no font was registered, else the number of
+// fonts. The engine's System.addFont follows Kirikiri Z and returns the face
+// names, so the linked DLL wraps it with the DLL's return values.
+static void LinkAddFontDll() {
+    RunTjsShim("addFont.dll", TJS_W(R"TJS(
+if (typeof System.kk4sAddFontFaces == "undefined") {
+	System.kk4sAddFontFaces = System.addFont;
+	System.addFont = function(storage, extract = false) {
+		if (!Storages.isExistentStorage(storage)) return void;
+		var faces = global.System.kk4sAddFontFaces(storage);
+		return faces === void ? 0 : faces.count;
+	};
+}
+)TJS"));
+}
+
 // The engine already does what these DLLs did (ogg decoding, video).
 static void ProvidedByEngine() {}
 
@@ -1750,6 +1767,7 @@ static const PluginEntry kPlugins[] = {
     {"shrinkcopy.dll", LinkShrinkCopyDll},
     {"layerexareaaverage.dll", LinkLayerExAreaAverageDll},
     {"json.dll", LinkJsonDll},
+    {"addfont.dll", LinkAddFontDll},
     {"scriptsex.dll", LinkScriptsExDll},
     {"windowex.dll", LinkWindowExDll},
     {"menu.dll", LinkMenuDll},
