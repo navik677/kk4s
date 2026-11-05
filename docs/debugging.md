@@ -79,7 +79,9 @@ relative.
   game then reports `Member "<name>" does not exist`, the member usually belongs to that plugin's
   API: ATRI's `generateWhiteNoise` belongs to `LayerExAffineSourceNoise`, and NekoPara's
   `<storage>@<piece>%layer` to `multiimage.dll`. Implement the plugin contract, not a game-specific
-  stub. (`fillAlpha` / `clipAlphaRect` are already provided by the PackinOne shim, `compat/kk4s_layerfx.cpp`.)
+  stub. (`layerExBtoA` / `layerExImage` / `layerExRaster`, incl. `fillAlpha`, `clipAlphaRect` and
+  `generateWhiteNoise`, are native in `compat/kk4s_layerex.cpp`; each method logs
+  `compat: Layer.<name> first call, N argument(s)` once.)
 - An exception dump now names invalidated objects in the registers:
   `tjs: invalid object in register %1: 0x... (the TJS global object)` / `(not the global object)`.
   "The object is already invalidated" alone did not say which object it was. The later FSN Switch

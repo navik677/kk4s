@@ -39,6 +39,7 @@ the tail of its own log.
 | `xp3/index_cycle_smoke.py` | xp3 | a self-referential index chain is rejected instead of looping forever | engine |
 | `textstream/smoke.py` | io | TextStream encoding detection (ASCII, Shift_JIS, UTF-8/BOM, GBK, malformed, truncated) and mixed sequential reads | engine |
 | `alphamovie/smoke.py` | io | AlphaMovie AJPM zlib-alpha decode | engine |
+| `layerex/smoke.py` | io | every layerExBtoA / layerExImage / layerExRaster method on synthetic pixels (values from the wamsoft sources), clip rects, `ltAddAlpha`, province helpers, and the engine colour round-trip (`fillRect` / `setMainPixel` / `getMainPixel`) | engine |
 | `pbd/loaddatapack_smoke.py` | io | `Scripts.loadDataPack` returns real TJS Array/Dictionary trees and rejects an invalid pack | engine |
 | `pbd/run_tests.py` | decoders | `compat/pbd` against a Python encoder: all value types, all six crypt modes, dictionary LZ4, truncation/corruption | `pbd_dump` |
 | `psb/run_tests.py` | decoders | `compat/psb` against `tools/psb_ref.py`: every value type, the name trie, resources, `mdf` wrapping, corruption | `psb_dump` |

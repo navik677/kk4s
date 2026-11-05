@@ -30,10 +30,20 @@ Status: **full** = same behaviour, **approx** = similar result, **stub** = does 
 | emoteplayer.dll / motionplayer.dll | `Motion.ResourceManager` | full: storage lookup, PSB parse (`compat/psb`), byte-budget LRU cache, unload/clearCache |
 | | `Motion.Player` / `Motion.EmotePlayer` | partial: playback state machine (play/stop/skip/progress/time/playing, options, timelines list) is real; **E-mote rendering is not implemented** (`draw()` draws nothing, logged once per played motion), so emote animations appear static/absent. `MaskMode*`, `PlayFlag*`, `ShapeType*` are kk4s-internal values |
 | | `Motion.SeparateLayerAdaptor` | stub (binder adaptor does nothing) |
-| PackinOne.dll | `Layer.fillAlpha(alpha = 255)`, `Layer.clipAlphaRect(x, y, w, h, alpha = 255)` | full for the pixel semantics: fill the layer with `alpha`, or set it inside the rectangle and 0 outside, then update the layer; the argument count the game actually passes is logged on first use |
+| PackinOne.dll | the layerEx plugins below, bundled into one DLL | links layerExBtoA + layerExImage + layerExRaster (`compat/kk4s_layerex.cpp`) |
+| layerExBtoA.dll | `Layer.copyRightBlueToLeftAlpha`, `copyBottomBlueToTopAlpha`, `fillAlpha()`, `copyAlphaToProvince(threshold, matched = 1, otherwise = 0)`, `clipAlphaRect(dleft, dtop, src, sleft, stop, swidth, sheight, clear)` (incl. `ltAddAlpha` layers), `overwrapRect(..., threshold = 1)`, `fillByProvince(index, color)`, `fillToProvince(color, index, threshold = 64)` | full: argument lists, clip-rect rules and pixel maths of the wamsoft sources. Differences: a layer without an image is logged and skipped instead of throwing; `overwrapRect` also calls `update()` (the DLL forgets it) |
+| layerExImage.dll | `Layer.light`, `colorize`, `modulate`, `noise`, `generateWhiteNoise`, `gaussianBlur(radius = 1)` | full: CxImage-derived maths of the original, on the clip rect; noise uses a fixed-seed generator instead of the CRT `rand()` |
+| layerExRaster.dll | `Layer.copyRaster(src, maxh, lines, cycle, time)` | full (raster wave copy); `lines = 0` / `cycle = 0` are guarded instead of dividing by zero |
 
-Next candidates: KAGZ UI layer storages (`<name>%layer` passed to `Layer.loadImages`, NekoPara's next blocker at `title.ks:13`), emoteplayer / motionplayer (`Motion.ResourceManager` and friends, needed by KAGZ titles such as NekoPara before their scripts finish initialising), layerExDraw / layerExImage / layerExRaster / layerExBtoA (ATRI's affine/PSD scene needs `Layer.fillAlpha` and `KAGLayer.clipAlphaRect`), `LayerExAffineSourceNoise.generateWhiteNoise`, layerExDraw / layerExImage / layerExRaster / layerExBtoA (the remaining affine/PSD primitives; alpha fill/clip is now in the PackinOne shim), layerExAlpha, real extrans transitions,
+Next candidates: KAGZ UI layer storages (`<name>%layer` passed to `Layer.loadImages`, NekoPara's next blocker at `title.ks:13`), emoteplayer / motionplayer (`Motion.ResourceManager` and friends, needed by KAGZ titles such as NekoPara before their scripts finish initialising), layerExDraw (GDI+ drawing API), layerExSave, layerExAlpha, real extrans transitions,
 kagexopt, menu, fstat, scriptsEx.
+
+**Pixel order.** krkrs keeps layer pixels as RGBA bytes (uint32 `0xAABBGGRR`, the SDL texture is
+`ABGR8888`); Windows plugins address BGRA. Native replacements that touch `mainImageBuffer` must
+use the R/B offsets of `compat/kk4s_layerex.cpp` (`kR`/`kG`/`kB`/`kA`) and convert TJS colours
+(`0xAARRGGBB`) with the engine's `TVP_REVRGB`. `fillRect` / `setMainPixel` / `getMainPixel` do this
+conversion themselves. Note that `setMainPixel` with a non-zero high byte means a *system colour*
+in Kirikiri, so set an ARGB pixel with `fillRect(x, y, 1, 1, argb)`.
 
 How to add one: write a `Link...()` function (TJS shim string or native `tTJSDispatch` functions), add it to `kPlugins` in `compat/kk4s_plugins.cpp`, document it here. To see what a DLL registers, list its UTF-16 strings — they are the TJS names:
 

@@ -17,5 +17,6 @@
 | zlib | linked | zlib |
 | Oniguruma | linked (built from source if not in portlibs) | BSD-2 |
 | AlphaMovie plugin (T.Imoto, wamsoft/AlphaMovie) | `engine/source/plugins/AlphaMovie.cpp` | same as Kirikiri, see `engine/LICENSE` |
+| layerExBtoA / layerExImage / layerExRaster contracts (Go Watanabe, wamsoft) | reimplemented in `compat/kk4s_layerex.cpp` | same as Kirikiri, see `engine/LICENSE`; layerExImage's colour and blur maths come from CxImage (Davide Pizzolato, zlib-style license) |
 
 Fonts: none bundled yet. M6 will add a free CJK font (Noto Sans CJK, SIL OFL 1.1).

@@ -10,6 +10,17 @@ Last update: 2026-11-05.
   at `title.ks:13`. Cause: KAGZ UI pseudo-storage `window@help__config%layer` reaches `Layer.loadImages`
   (`kaglayer.tjs:69`). The fix must be the generic `<storage>@<piece>%layer` handling, not a NekoPara patch.
 
+## Branch `cloud-session` (2026-11-05, desktop only)
+
+Not merged, not run on hardware, no real game available in that session: only the synthetic suite
+(`tools/run-tests.sh`, 13/13) was run.
+
+- layerExBtoA / layerExImage / layerExRaster are native (`compat/kk4s_layerex.cpp`); PackinOne links
+  them. Expected effect on ATRI: `generateWhiteNoise` no longer throws, `clipAlphaRect` now really
+  clips affine layers (before it silently did nothing).
+- `Layer.getMainPixel` returns `0xRRGGBB` (was R/B swapped); AlphaMovie frames and `drawLine` are
+  no longer R/B swapped.
+
 ## Builds (CI, every push to main)
 
 | Target | State | Where to get it |

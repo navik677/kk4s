@@ -8,6 +8,20 @@ not the target. No per-game fixes, game files, keys or conversion; compatibility
 
 ## Where we are (2026-11-05)
 
+### Branch `cloud-session` (cloud session, not merged, not hardware-tested)
+
+Work continues on `cloud-session`; `main` is untouched. Commit by commit:
+- `compat/kk4s_layerex.cpp`: native **layerExBtoA / layerExImage / layerExRaster** with the real
+  wamsoft contracts; `PackinOne.dll` links all three. The old PackinOne shim had a guessed
+  `clipAlphaRect(x, y, w, h)`; ATRI calls the real 8-argument form (see `handoff-native-cx.md`),
+  so the old shim threw inside and did nothing. `generateWhiteNoise` now draws.
+- Engine pixel order: krkrs stores RGBA bytes. `Layer.getMainPixel` returned R/B swapped
+  (fixed in `LayerIntf.cpp`), AlphaMovie copied BGRA frames as is (red/blue swapped in alpha
+  movies, fixed), `drawLine` colour fixed. See "Pixel order" in `docs/plugins.md`.
+- `tests/layerex` (io group). `tools/run-tests.sh`: 13/13 on the Linux desktop build.
+Retest before merging: FSN (Russian patch, `project dir: .../data.xp3>`), ATRI (affine noise /
+clipped affine layers now draw; check that colours of AlphaMovie overlays look right), NekoPara.
+
 Merged locally: `compat/tinyfilter-2026-11-04` was fast-forwarded into `main` (HEAD `721b62a`, code
 from `9f229bb`). **Not pushed:** the `gh` token has no `workflow` scope, and these commits touch
 `.github/workflows/desktop.yml`. Fix: `gh auth refresh -h github.com -s workflow`, then `git push`.
@@ -224,6 +238,8 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 
 ## Gotchas learned the hard way
 
+- krkrs layer pixels are **RGBA bytes** (uint32 `0xAABBGGRR`), not Kirikiri's BGRA. Native code on
+  `mainImageBuffer` must swap R/B (`kR`/`kB` in `compat/kk4s_layerex.cpp`, `TVP_REVRGB`).
 - Many engine files use **CRLF**; edit them with Python preserving `\r\n` (or Edit), check with
   `file` and `git diff --stat`.
 - TJS is not thread-safe: never run TJS off the main thread.
@@ -241,10 +257,9 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 
 ## Next steps (universal engine; ATRI is one test fixture)
 
-1. Implement the remaining generic plugin APIs named by the logs: `LayerExAffineSourceNoise`
-   (`generateWhiteNoise`, 6 exceptions per 6.5-min ATRI run), the still-ignored `layerExImage.dll` /
-   `layerExRaster.dll` / `layerExBtoA.dll` members, and the KAGZ UI pseudo-storage
-   `<storage>@<piece>%layer` that stops NekoPara at `title.ks:13`. Do not special-case a game;
+1. Implement the remaining generic plugin APIs named by the logs: the KAGZ UI pseudo-storage
+   `<storage>@<piece>%layer` that stops NekoPara at `title.ks:13`, and `layerExDraw.dll`
+   (layerExBtoA / layerExImage / layerExRaster are done on `cloud-session`). Do not special-case a game;
    implement the plugin contracts (see `docs/plugins.md`), add focused fixtures/tests, then retest
    ATRI, NekoPara and FSN.
 2. Implement the real generic `TextRenderBase` behavior (the API surface exists but `textrender.dll`
