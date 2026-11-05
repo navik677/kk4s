@@ -114,15 +114,16 @@ require it, since only the reader's region bounds matter for decryption.
 
 ### Verified on real data
 
-The key was checked against four PSBs from `emote.xp3` and two `dx_` PSBs from
-`emotewin.xp3`. All six decrypt into a valid PSB: the name trie parses, string
-indices resolve, the chunk arrays are consistent, and the root object exposes
-keys such as `id`, `label`, `metadata`, `object`, `screenSize`, `source`,
-`spec`, `stereovisionProfile` (some files also have `easing`). For the sample
-above the report is 298 names, 555 strings, 80 resources.
+The key was checked against **every PSB in the local NekoPara Vol.1 archives**:
+79 from `emote.xp3`, 39 `dx_` from `emotewin.xp3` and 39 `dxlow_` from
+`emotewin_low.xp3` (157 in total). All decrypt into valid PSBs, and re-encryption
+reproduces the stored bytes exactly. See `docs/emote_psb_validation.md` for the
+full archive-wide results (`validate_archives.py`).
 
-Re-encrypting the decrypted region with the same routine reproduces the stored
-bytes exactly; the test suite asserts this for the local samples.
+Root objects expose keys such as `id`, `label`, `metadata`, `object`,
+`screenSize`, `source`, `spec`, `stereovisionProfile` (some files also have
+`easing`). For the sample above the report is 298 names, 555 strings,
+80 resources.
 
 ---
 
@@ -164,11 +165,9 @@ from `info.name`.
   seeds but uses `time()` (import `[0x1006F020]`, call `0x1005B368`, divided by
   10,000,000) as the fourth word. This is a runtime RNG, not the PSB cipher;
   it was not investigated further.
-* **`dx_` archive layer.** The same TinyFilter formula and `adlr` semantics are
-  expected, but the source archives were not mounted during the final write-up,
-  so the `adler32(unwrapped) == adlr` equality was only re-checked on
-  `emote.xp3` samples. The dx samples themselves decrypt and re-encrypt
-  correctly.
+* **`dx_` archive layer verified.** `adler32(unfiltered) == adlr` and the
+  `TinyFilterKey(adlr)` formula hold for all 39 `dx_` and all 39 `dxlow_` files
+  (157/157 PSB overall), see `docs/emote_psb_validation.md`.
 * **PSB versions.** Only version 2 was observed. The reader's destructor
   branches on versions 0/2/3/4, and the tool accepts 2/3/4 with the same
   layout; version 0/1 and any nonzero `encrypt` flag are rejected rather than
@@ -224,7 +223,7 @@ Other tools in the same directory (session aids, no game data):
 python3 research/emote-psb/test_emote_psb.py -v
 ```
 
-29 tests:
+29 unit tests plus an archive-wide validator:
 
 * keystream vector (`8d3badf5a06d5f32...`) and one word per four bytes;
 * cipher involution, region-only changes, bounds checks;
@@ -239,6 +238,10 @@ python3 research/emote-psb/test_emote_psb.py -v
   `work/` (gitignored) must decrypt, report non-empty names/strings/root, and
   re-encrypt to the exact stored bytes.
 
+`validate_archives.py` reads all 157 PSB from the three local archives and
+checks Adler-32, TinyFilter, structure and round-trip (see
+`docs/emote_psb_validation.md`).
+
 `research/emote-psb/work/` (extracted game data) is ignored by `.gitignore` and
 is not part of any commit.
 
@@ -246,7 +249,8 @@ is not part of any commit.
 
 ## 6. Where the investigation stopped
 
-Solved for NekoPara Vol.1 x86 E-mote 3.0. Not done, by design: no game file was
-patched or repacked, no PSB support was added to kk4s, and E-mote rendering was
-out of scope. The remaining uncertainty is the portability of the fixed key to
-other E-mote builds and the unverified `dx_` archive-hash equality noted above.
+Solved for NekoPara Vol.1 x86 E-mote 3.0 and validated against all 157 local
+PSB. Not done, by design: no game file was patched or repacked, no PSB support
+was added to kk4s, and E-mote rendering was out of scope. The remaining
+uncertainty is the portability of the fixed key to other E-mote builds
+(`docs/emote_psb_validation.md` has a concrete verification plan).

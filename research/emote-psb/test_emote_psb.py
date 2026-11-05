@@ -392,6 +392,63 @@ class CliTests(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("integer", err)
 
+    def test_wrong_key_creates_no_output(self):
+        dst = os.path.join(self.dir, "out.psb")
+        rc, _, err = self.run_main(["decrypt", self.src, "-o", dst,
+                                    "--key", str(E.DEFAULT_KEY ^ 1)])
+        self.assertEqual(rc, 1)
+        self.assertTrue(err.startswith("error:"), err)
+        self.assertFalse(os.path.exists(dst))
+        self.assertEqual(sorted(os.listdir(self.dir)), ["in.psb"])
+
+    def test_rerun_on_decrypted_file_fails_cleanly(self):
+        dst = os.path.join(self.dir, "out.psb")
+        self.assertEqual(self.run_main(["decrypt", self.src, "-o", dst])[0], 0)
+        again = os.path.join(self.dir, "again.psb")
+        rc, _, err = self.run_main(["decrypt", dst, "-o", again])
+        self.assertEqual(rc, 1)
+        self.assertTrue(err.startswith("error:"), err)
+        self.assertFalse(os.path.exists(again))
+        with open(dst, "rb") as f:
+            self.assertEqual(f.read(), self.plain)
+
+    def test_hardlink_to_input_refused(self):
+        link = os.path.join(self.dir, "link.psb")
+        os.link(self.src, link)
+        rc, _, err = self.run_main(["decrypt", self.src, "-o", link, "--force"])
+        self.assertEqual(rc, 1)
+        self.assertIn("input", err)
+        with open(self.src, "rb") as f:
+            self.assertEqual(f.read(), self.stored)
+        self.assertEqual(os.stat(link).st_ino, os.stat(self.src).st_ino)
+
+    def test_symlink_to_input_refused(self):
+        link = os.path.join(self.dir, "link.psb")
+        os.symlink(self.src, link)
+        rc, _, err = self.run_main(["decrypt", self.src, "-o", link, "--force"])
+        self.assertEqual(rc, 1)
+        self.assertIn("input", err)
+        self.assertTrue(os.path.islink(link))
+        with open(self.src, "rb") as f:
+            self.assertEqual(f.read(), self.stored)
+
+    def test_atomic_write_leaves_no_temp(self):
+        rc, _, err = self.run_main(["decrypt", self.src, "-o", os.path.join(self.dir, "out.psb")])
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(sorted(os.listdir(self.dir)), ["in.psb", "out.psb"])
+
+    def test_corrupt_ciphertext_rejected(self):
+        bad = bytearray(self.stored)
+        bad[self.h.off_names] ^= 0xFF  # first name-trie byte, inside the region
+        src = os.path.join(self.dir, "bad.psb")
+        with open(src, "wb") as f:
+            f.write(bad)
+        dst = os.path.join(self.dir, "out.psb")
+        rc, _, err = self.run_main(["decrypt", src, "-o", dst])
+        self.assertEqual(rc, 1)
+        self.assertTrue(err.startswith("error:"), err)
+        self.assertFalse(os.path.exists(dst))
+
 
 @unittest.skipUnless(os.path.isdir(os.path.join(HERE, "work", "samples")),
                      "no locally extracted game samples")
