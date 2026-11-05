@@ -86,6 +86,7 @@ group_io() {
     run layersave    python3 tests/layersave/smoke.py "$EXE"
     run json         python3 tests/json/smoke.py "$EXE"
     run savestruct   python3 tests/savestruct/smoke.py "$EXE"
+    run sprintf      python3 tests/sprintf/smoke.py "$EXE"
     run csvvar       python3 tests/csvvar/smoke.py "$EXE"
     run kagparserex  python3 tests/kagparserex/smoke.py "$EXE"
     run psdfile      python3 tests/psdfile/smoke.py "$EXE"
