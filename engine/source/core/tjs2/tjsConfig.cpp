@@ -239,9 +239,10 @@ tjs_int TJS_stricmp(const tjs_char *s1, const tjs_char *s2)
 //---------------------------------------------------------------------------
 void TJS_strcpy_maxlen(tjs_char *d, const tjs_char *s, size_t len)
 {
+	// kk4s: check the limit before reading s[len] (one past a buffer that is
+	// not NUL-terminated, e.g. XP3 eliF names)
 	tjs_char ch;
-	len++;
-	while((ch=*s)!=0 && --len) *(d++) = ch, s++;
+	while(len > 0 && (ch=*s)!=0) *(d++) = ch, s++, len--;
 	*d = 0;
 }
 //---------------------------------------------------------------------------

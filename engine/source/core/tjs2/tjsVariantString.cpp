@@ -41,8 +41,9 @@ tjs_int TJSGetShorterStrLen(const tjs_char *str, tjs_int max)
 	// select shorter length over strlen(str) and max
 	if(!str) return 0;
 	const tjs_char *p = str;
-	max++;
-	while(*p && --max) p++;
+	// kk4s: check the limit before reading: "max++; while(*p && --max)" read
+	// str[max], one past a buffer that is not NUL-terminated (XP3 eliF names)
+	while(max > 0 && *p) { p++; max--; }
 	return (tjs_int)(p - str);
 }
 //---------------------------------------------------------------------------
