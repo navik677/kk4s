@@ -442,9 +442,9 @@ public:
 
 	TJS_CONST_METHOD_DEF(tjs_int, GetLen, ())
 	{
-#ifdef __CODEGUARD__
-		if(!Ptr) return 0; // tTJSVariantString::GetLength can return zero if 'this' is NULL
-#endif
+		// kk4s: always check (was __CODEGUARD__ only). An empty string has Ptr == NULL,
+		// and calling GetLength() through it relied on undefined behaviour.
+		if(!Ptr) return 0;
 		return Ptr->GetLength();
 	}
 

@@ -557,10 +557,17 @@ fmtint(tjs_char *buffer, size_t *currlen, size_t maxlen,
   
 	if (flags & DP_F_UP) caps = 1; /* Should characters be upper case? */
 
+	/* kk4s: pick the digit table first and index it with a plain variable.
+	   GCC 13.3 with -fsanitize=undefined miscompiled the original
+	   "(caps ? "..." : "...")[uvalue % base]" (the digit came out as '0', or
+	   the division faulted), which crashed every ASan/UBSan run at its first
+	   log line. */
+	static const tjs_char digits_upper[] = TJS_W("0123456789ABCDEF");
+	static const tjs_char digits_lower[] = TJS_W("0123456789abcdef");
+	const tjs_char *digits = caps ? digits_upper : digits_lower;
 	do {
-		convert[place++] =
-			(caps? TJS_W("0123456789ABCDEF"):TJS_W("0123456789abcdef"))
-			[uvalue % (unsigned)base  ];
+		unsigned digit = (unsigned)(uvalue % (unsigned)base);
+		convert[place++] = digits[digit];
 		uvalue = (uvalue / (unsigned)base );
 	} while(uvalue && (place < 20));
 	if (place == 20) place--;

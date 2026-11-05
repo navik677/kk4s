@@ -155,8 +155,9 @@ void* tTVPBitmapBitsAlloc::Alloc( tjs_uint size, tjs_uint width, tjs_uint height
 	// fill memory allocation record
 	record->alloc_ptr = (void *)ptrorg;
 	record->size = size;
-	record->sentinel_backup1 = rand() + (rand() << 16);
-	record->sentinel_backup2 = rand() + (rand() << 16);
+	// kk4s: unsigned arithmetic; rand() << 16 overflowed int (undefined behaviour)
+	record->sentinel_backup1 = (tjs_uint32)rand() + ((tjs_uint32)rand() << 16);
+	record->sentinel_backup2 = (tjs_uint32)rand() + ((tjs_uint32)rand() << 16);
 
 	// set sentinel
 	*(tjs_uint32*)(ptr - sizeof(tjs_uint32)) = ~record->sentinel_backup1;

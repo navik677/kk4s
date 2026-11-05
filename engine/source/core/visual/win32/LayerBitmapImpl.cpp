@@ -417,7 +417,7 @@ tTVPBitmap::~tTVPBitmap()
 {
 	tTVPBitmapBitsAlloc::Free(Bits);
 	delete BitmapInfo;
-	if( Palette ) delete Palette;
+	if( Palette ) delete [] Palette; // kk4s: allocated with new[] (8bpp images); was delete
 }
 //---------------------------------------------------------------------------
 tTVPBitmap::tTVPBitmap(const tTVPBitmap & r)
