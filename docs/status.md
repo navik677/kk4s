@@ -35,6 +35,8 @@ that the Switch NRO builds (devkitA64 docker image). Commit list and details: `d
 | Input | Windows input rules: `onClick` left-button only, double click, wheel notch 120, button state in mouse shifts / `getKeyState(VK_LBUTTON)`, `cursorX/Y` in game coordinates, `setCursorPos` → mouse move | `tests/input` |
 | Input | pad L / R = wheel (opens and scrolls the KAG3 backlog; Page Up never did), held buttons repeat like Kirikiri's pad input, pad right click at the screen centre until touched | `tests/input`, `tests/kag3/interact_smoke.py`; not tried on hardware |
 | Plugins | extrans.dll transitions for real (wave, mosaic, turn, rotate*, ripple), engine internal plugin | `tests/extrans` half-way screenshots; ripple's picture unverified; not seen on hardware |
+| Plugins | layerExDraw.dll (GDI+ drawing over vendored plutovg): shapes, pens, brushes, gradients, paths, text, images, transforms | `tests/layerexdraw` (GCC + clang ASan/UBSan); NRO builds; not seen in a real game or on hardware |
+| Engine | sanitizer run 2026-11-05: csvParser stream release, TLG5/TLG6 unaligned loads and negative shifts, psd:// pixel alignment, FreeType `FontInfo` ODR clash, ncbind null offset | whole suite 30/30 under ASan+UBSan (halt on error) |
 
 Expected effect on ATRI (unverified): `generateWhiteNoise` no longer throws, `clipAlphaRect` really
 clips affine layers (before it silently did nothing).

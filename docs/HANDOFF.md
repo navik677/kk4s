@@ -84,7 +84,24 @@ Open question noticed on the way, not changed: `TVPTLG5DecompressSlide_c`'s fast
 overlaps the write position (`mpos < r < mpos + mlen`). Our encoder's round trips pass; whether real TLG5
 files contain such matches is unchecked (compare with krkrz's `tvpgl.c` before touching it).
 
-**STOP POINT 2 (2026-11-05, user stopped the session).** Committed as work in progress and **not
+**Step 2: layerExDraw.dll is built** (resolves stop point 2 below). The `free(): invalid pointer` was
+not ncbind's hook nor `DrawInfo` copies: `LayerExDraw.cpp` declared `std::string kk4s::GameDir()` by
+hand, the real one returns `const std::string&`; the return type is not in the mangled name, so it linked
+and the caller destroyed a string that was never built (GCC: double free in `ensureFonts`). Under clang
+it happened to survive and showed two more bugs: a global `FontInfo` in both FreeType.cpp and the plugin
+(ODR: one inline destructor for both, SEGV at exit) and ncbind's `p-1` on a null parameter array.
+
+| Commit | What | Verified by |
+|---|---|---|
+| `059c781` | FreeType.cpp's `FontInfo` → `tTVPFTFontInfo` (ODR clash with layerExDraw's TJS-bound `FontInfo`) | `tests/layerexdraw` under ASan |
+| `c3d6a04` | ncbind `paramsFunctorWithInstance`: no `p-1` when a property get has no parameters | UBSan |
+| `7f08c37` | layerExDraw.dll in the build (`CMakeLists.txt`, `PLUTOVG_BUILD_STATIC`), real kk4s headers instead of hand-written declarations, plutovg reads fonts without `mmap` on the Switch, `tests/layerexdraw` in `run-tests.sh` | **30/30** GCC, **30/30** clang ASan+UBSan; NRO builds |
+
+Lesson: never re-declare kk4s functions by hand in engine/plugin code; include `kk4s_platform.h` /
+`kk4s_internal.h`. Unverified: layerExDraw output in a real game and on the Switch (fonts are indexed on
+the first `GdiPlus.Font`: every font file is read once — with big CJK `.ttc` files on the SD that may be slow).
+
+**STOP POINT 2 (2026-11-05, user stopped the session; resolved in step 2 above).** Committed as work in progress and **not
 built**: `engine/source/plugins/layerExDraw/` — layerExDraw.dll without GDI+: vendored plutovg (MIT,
 `plutovg/UPSTREAM.txt`), `gdip_kk4s.h` (GDI+ enums with their real values, PointF / RectF / Matrix /
 Image / GraphicsPath), `LayerExDraw.hpp/.cpp` (fonts from kk4s' font files + addPrivateFont, solid /
@@ -446,8 +463,8 @@ Touch and mouse must keep mapping through whatever rectangle is shown (`kk4sGame
 Then, in order:
 
 1. Implement the remaining generic plugin APIs named by the logs: the KAGZ UI pseudo-storage
-   `<storage>@<piece>%layer` that stops NekoPara at `title.ks:13`, and `layerExDraw.dll`
-   (layerExBtoA / layerExImage / layerExRaster are done on `cloud-session`). Do not special-case a game;
+   `<storage>@<piece>%layer` that stops NekoPara at `title.ks:13` (layerExDraw and the layerEx*
+   family are done on `cloud-session`). Do not special-case a game;
    implement the plugin contracts (see `docs/plugins.md`), add focused fixtures/tests, then retest
    ATRI, NekoPara and FSN.
 2. Implement the real generic `TextRenderBase` behavior (the API surface exists but `textrender.dll`
