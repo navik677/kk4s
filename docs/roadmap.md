@@ -8,7 +8,7 @@ Full requirements: [original-prompt.md](original-prompt.md). Risk = chance of a 
 | M1 | Runs real games on hardware; PC viewer (Linux + Windows); aspect-correct scaling | **done** — letterboxing + touch/mouse mapping on `cloud-session` (`tests/aspect`), not yet seen on hardware | medium |
 | M2 | Storage: case-insensitive lookup, save redirect, overlay dir over xp3, memory-bounded caches | **partly** — lookup + saves done, overlay dir todo | medium |
 | M3 | Game detection by hash + `profiles/<game_id>.json`; diagnostic report for unknown games | todo | low |
-| M4 | Plugin shim: wuvorbis, krmovie, layerEx*, extrans, stubs for the rest | **partly** — layerExBtoA / layerExImage / layerExRaster / layerExSave (and PackinOne, which bundles them), fstat, json, scriptsEx, windowEx, shrinkCopy, layerExAreaAverage, menu, Motion model done; next by the 2026-11-05 plan: extrans (real transitions), layerExDraw, psdfile, saveStruct, varfile, csvParser, KAGParserEx, addFont; KAGZ `%layer` storage open (see [plugins.md](plugins.md)). No universal Windows-DLL runtime | **high** |
+| M4 | Plugin shim: wuvorbis, krmovie, layerEx*, extrans, stubs for the rest | **partly** — layerExBtoA / layerExImage / layerExRaster / layerExSave (and PackinOne, which bundles them), fstat, json, scriptsEx, windowEx, shrinkCopy, layerExAreaAverage, menu, Motion model done; extrans done (`tests/extrans`); next by the 2026-11-05 plan: layerExDraw, psdfile, saveStruct, varfile, csvParser, KAGParserEx, addFont; KAGZ `%layer` storage open (see [plugins.md](plugins.md)). No universal Windows-DLL runtime | **high** |
 | M5 | Decryption: Kirikiroid2 `xp3filter.tjs` (done), CXDEC schemes + scheme-free TinyFilter (done, validated per archive), keyless `.tpm` families discovered by adlr (done on `cloud-session`), the game's own `.tpm` filter run in a small x86 interpreter with a fake `tp_stub` (next after M4's plugin list) | **partly** | medium |
 | M6 | Core compat (System/Window/Layer/...), TJS conformance tests, profile hooks, CJK/Cyrillic fonts | **partly** — fonts done | high |
 | M7 | Video (FFmpeg, alpha movies), audio semantics | todo (audio works, video untested) | high |
@@ -25,7 +25,7 @@ Full requirements: [original-prompt.md](original-prompt.md). Risk = chance of a 
 | Input differed from Windows Kirikiri: right/middle releases sent `onClick`, wheel delta 1 instead of 120, no button state in shifts / `getKeyState(VK_LBUTTON)`, `cursorX/Y` in window pixels, pad L = Page Up (no KAG3 backlog), no pad key repeat | every game (backlogs, buttons, drags, sliders) | **done** (`82bee15`, `cd79ed5`) |
 | A 640x480 game is stretched to the 16:9 screen (no aspect-correct scaling) | every 4:3 game | **done** (setting "Keep aspect ratio", default on) |
 | Native members of built-in classes that krkrs lacks compared with krkrz / krkr2 | any game calling them | **diffed** (`tools/native-api.py`, `docs/api-coverage.md`); fstat / windowEx / inputString sets done, the rest listed there |
-| extrans transitions are cross-fades | KAG3 games using `[trans method=wave|mosaic|turn|rotate*]` | todo |
+| extrans transitions are cross-fades | KAG3 games using `[trans method=wave|mosaic|turn|rotate*]` | **done** (krkrz extrans ported into the engine, `tests/extrans`; ripple's picture unverified) |
 | layerExDraw (GDI+ drawing) ignored | games drawing UI or text effects with it | todo |
 | MIDI BGM, `.tft` pre-rendered fonts, ERI images, `.sli` loop files — not yet checked | older Kirikiri 2 titles | investigate |
 

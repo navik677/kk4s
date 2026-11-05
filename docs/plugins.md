@@ -25,7 +25,7 @@ Status: **full** = same behaviour, **approx** = similar result, **stub** = does 
 | drawer.dll | `drawLine`, `drawAALine`, `drawAATriangle` | approx (no anti-aliasing, triangle outline) |
 | slideopen.dll | `initSlideOpen` / `drawSlideOpen` / `finishSlideOpen` | approx (cross-fade) |
 | firespark.dll | `*FireSpark` particles | stub |
-| extrans.dll | transitions wave, ripple, mosaic, turn, rotate* | approx: engine falls back to crossfade (logged once per name) |
+| extrans.dll | transitions wave, mosaic, turn, rotatezoom, rotatevanish, rotateswap, ripple | **engine internal plugin** (`engine/source/plugins/extrans/`, krkrz extrans ported: scan lines read from krkrs' software textures, option colours converted to RGBA order, the turn table computed at start-up, ripple's `char` casts made signed for ARM). `tests/extrans` checks each picture half-way except ripple's (unverified). Unknown names still fall back to crossfade |
 | menu.dll | `Window.menu` + `MenuItem` | full: engine menu model (`MenuItemIntf.cpp`), items and hierarchy behave as in Kirikiri |
 | | `Window.exSystemMenu` | approx: stored per window and readable by KAG's listeners, but there is no OS menu bar to display it in |
 | windowEx.dll | `Window.registerExEvent` / `unregisterExEvent` | approx: kk4s already delivers mouse/keyboard events to `Window`, so this marks the window and returns true; no separate event mask |
@@ -46,7 +46,7 @@ Status: **full** = same behaviour, **approx** = similar result, **stub** = does 
 | layerExAreaAverage.dll | `Layer.stretchCopyAA(...)` | area average as shrinkCopy (also when enlarging) |
 | layerExRaster.dll | `Layer.copyRaster(src, maxh, lines, cycle, time)` | full (raster wave copy); `lines = 0` / `cycle = 0` are guarded instead of dividing by zero |
 
-Next candidates: KAGZ UI layer storages (`<name>%layer` passed to `Layer.loadImages`, NekoPara's next blocker at `title.ks:13`), emoteplayer / motionplayer (`Motion.ResourceManager` and friends, needed by KAGZ titles such as NekoPara before their scripts finish initialising), layerExDraw (GDI+ drawing API), layerExSave, layerExAlpha, real extrans transitions,
+Next candidates: KAGZ UI layer storages (`<name>%layer` passed to `Layer.loadImages`, NekoPara's next blocker at `title.ks:13`), emoteplayer / motionplayer (`Motion.ResourceManager` and friends, needed by KAGZ titles such as NekoPara before their scripts finish initialising), layerExDraw (GDI+ drawing API), layerExSave, layerExAlpha, 
 kagexopt, minizip, win32ole.
 
 **Pixel order.** krkrs keeps layer pixels as RGBA bytes (uint32 `0xAABBGGRR`, the SDL texture is

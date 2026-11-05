@@ -45,9 +45,31 @@ session); "tested" below means the synthetic suite on the Linux desktop build un
 | `82bee15` | **Input follows Kirikiri's Windows rules** (krkrz `TVPWindow.cpp` / `WindowForm.cpp`): `onClick` only for the left button, at the press point, before `onMouseUp` (pad B used to "click" anything reacting to `onClick`); double click → `onDoubleClick`; a wheel notch is **120** (KAG3's history does `delta \ 120`, so it never scrolled); `ssLeft`/`ssRight`/`ssMiddle` in mouse shifts and `System.getKeyState(VK_LBUTTON…)`; `Layer.cursorX/Y` in game coordinates (were window pixels / 0,0 on touch); `setCursorPos` makes a mouse move (KAG3 arrow-key link highlight) | `tests/input` |
 | `cd79ed5` | **Pad**: L / R = wheel up / down by default (KAG3 opens its backlog on wheel up, R or Shift+Up — never Page Up, so L did nothing); held buttons repeat like krkr2's pad input (`DInputMgn.cpp`: 500 ms, then 30 ms; wheel 100 ms); the pad's right click / wheel happen at the screen centre until a touch places the cursor (B hit KAG3's "previous page" button at 0,0) | `tests/input`, `tests/kag3/interact_smoke.py` |
 
-Test state at `cd79ed5`: `bash tools/run-tests.sh` → **24/24** on the normal desktop build and on the
-ASan+UBSan build (the input and KAG3 tests also with `UBSAN_OPTIONS=halt_on_error=1`);
-`tools/build-switch.sh` in `devkitpro/devkita64` builds `out/kk4s.nro`.
+| `02dfe4d` | docs for the input commits and the user's plugin-by-class plan | — |
+| `b644084` | **extrans.dll as an engine internal plugin** (`engine/source/plugins/extrans/`): krkrz's wave, mosaic, turn, rotatezoom, rotatevanish, rotateswap, ripple instead of cross-fades; scan lines from krkrs' software textures, `bgcolor` RGB → RGBA order, turn table computed (identical to the generated 422 KB file), ripple `(char)` → `(signed char)` (ARM64 `char` is unsigned: out-of-bounds reads) | `tests/extrans` (half-way screenshots; ripple only finishes) |
+
+Test state at `b644084`: `bash tools/run-tests.sh` → **25/25** on the normal desktop build. The
+ASan+UBSan build was 24/24 at `cd79ed5` (input and KAG3 tests also with
+`UBSAN_OPTIONS=halt_on_error=1`); extrans has **not** been run under ASan yet.
+
+**STOP POINT (2026-11-05, budget ran out).** Last commit `b644084` + this docs commit. Nothing is
+half-done in the working tree. Open threads, in this order:
+1. *Unverified:* ripple's picture. Half-way through white → black with 8 px stripes, the frame
+   looked exactly like a cross-fade (no displacement) on the desktop build; it finishes and does
+   not fall back. Check `Process` actually runs its displacement path (temporary log in
+   `StartProcess`/`Process` needs `#include "DebugIntf.h"` for `TVPAddLog`), compare with a krkr2
+   screenshot if possible. Also unverified: the extrans pictures on the Switch, extrans under ASan.
+2. Plan step 1 (native plugin contracts), remaining: **saveStruct** is the old version (no
+   `ssoIndent`/`ssoConst`/`ssoSort`/`ssoHidden` globals, no `Scripts.toStructString`, no hidden
+   members; upstream `wamsoft/saveStruct` `Main.cpp` uses json's `Writer.hpp`) → upgrade;
+   csvParser / varfile already exist as engine internal plugins (`engine/source/plugins/`) → audit
+   against `wamsoft/csvParser`, `wamsoft/varfile`; KAGParserEx is a mode flag
+   (`TVPKAGParserExMode`) → audit against `wamsoft/KAGParserEx`; `System.addFont` exists
+   (`SystemIntf.cpp`) → check addFont.dll's `(storage, extract)` signature and return values;
+   then psdfile (PSD class) and layerExDraw (GDI+ drawing), the two big ones.
+3. Plan step 2: x86 mini-interpreter for `.tpm` filters (fake `tp_stub`, adlr-verified).
+4. Plan step 3: optional "soft mode" for missing members of unknown plugins (switch only).
+Tasks for these exist in the session list as #12–#17.
 
 **What was learned about Kirikiri / krkrs internals** (kept in the docs named):
 - krkrs stores 32bpp layer images as RGBA bytes; Kirikiri and every Windows plugin assume BGRA.

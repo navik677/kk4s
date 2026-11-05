@@ -13,7 +13,7 @@ Last update: 2026-11-05.
 ## Branch `cloud-session` (2026-11-05, universal-runtime sprint)
 
 Not merged, not run on hardware, no real game available in the cloud session. Verified: the
-synthetic suite (`tools/run-tests.sh`, 24/24) on the normal **and** the ASan+UBSan Linux build, and
+synthetic suite (`tools/run-tests.sh`, 25/25 normal; 24/24 ASan+UBSan before extrans) on the Linux build, and
 that the Switch NRO builds (devkitA64 docker image). Commit list and details: `docs/HANDOFF.md`.
 
 | Area | Change | Level |
@@ -31,6 +31,7 @@ that the Switch NRO builds (devkitA64 docker image). Commit list and details: `d
 | Screen | aspect-correct scaling (letterbox, default on) with touch/mouse mapped through it | `tests/aspect`; not seen on hardware |
 | Input | Windows input rules: `onClick` left-button only, double click, wheel notch 120, button state in mouse shifts / `getKeyState(VK_LBUTTON)`, `cursorX/Y` in game coordinates, `setCursorPos` → mouse move | `tests/input` |
 | Input | pad L / R = wheel (opens and scrolls the KAG3 backlog; Page Up never did), held buttons repeat like Kirikiri's pad input, pad right click at the screen centre until touched | `tests/input`, `tests/kag3/interact_smoke.py`; not tried on hardware |
+| Plugins | extrans.dll transitions for real (wave, mosaic, turn, rotate*, ripple), engine internal plugin | `tests/extrans` half-way screenshots; ripple's picture unverified; not seen on hardware |
 
 Expected effect on ATRI (unverified): `generateWhiteNoise` no longer throws, `clipAlphaRect` really
 clips affine layers (before it silently did nothing).
@@ -227,7 +228,7 @@ this harness (the same taps do open FSN's menu), so the long run proves stabilit
 - The audio format converter is not flushed at end of stream: the last ~20 ms of a short sound
   (or the tail of a resampled voice) can be dropped. The 8-bit `mute.wav` is silent, so it no
   longer clicks, but short non-silent sounds at a different rate can still be cut slightly early.
-- Some plugin replacements are approximations or stubs (extrans transitions fall back to crossfade,
+- Some plugin replacements are approximations or stubs (unknown transition names fall back to crossfade,
   `firespark` / lens effects missing).
 - `.tpm` decryption plugins (e.g. `cxdec.tpm`) are not run: encrypted games need an `xp3filter.tjs`.
 - Universal runtime is the goal; ATRI is only the PC Steam-repack test fixture, not a product target.
