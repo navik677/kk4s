@@ -304,8 +304,10 @@ public:
 			delete pStream;
 		} else {
 			iTJSTextReadStream *pStream = TVPCreateTextStreamForRead(filename, modestr ? modestr : TJS_W(""));
-			pStream->Read(text, 0);
-			delete pStream;
+			// kk4s: the interface has no virtual destructor; Destruct() frees the
+			// real stream (plain delete was a new/delete type mismatch under ASan).
+			try { pStream->Read(text, 0); } catch (...) { pStream->Destruct(); throw; }
+			pStream->Destruct();
 		}
 		file = new IFileStr(text);
 		lineNo = 0;
