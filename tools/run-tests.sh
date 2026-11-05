@@ -88,6 +88,7 @@ group_io() {
     run layerexdraw  python3 tests/layerexdraw/smoke.py "$EXE"
     run windowex     python3 tests/windowex/smoke.py "$EXE"
     run natives      python3 tests/natives/smoke.py "$EXE"
+    run softmode     python3 tests/softmode/smoke.py "$EXE"
     run aspect       python3 tests/aspect/smoke.py "$EXE"
     run extrans      python3 tests/extrans/smoke.py "$EXE"
     run input        python3 tests/input/smoke.py "$EXE"

@@ -1,0 +1,35 @@
+// Soft mode for members of ignored plugins (compat/kk4s_softmode.cpp).
+// tests/softmode/smoke.py runs this twice: soft_mode=0 and soft_mode=1 in
+// settings.ini. "SOFT ..." lines are compared by the test.
+var soft = false;
+function attempt(what, fn) {
+    try { var r = fn(); Debug.message("SOFT " + what + " ok " + (typeof r)); }
+    catch (e) { Debug.message("SOFT " + what + " threw"); }
+}
+class W extends Window {
+    function W() { super.Window(); setInnerSize(64, 64); add(new Layer(this, null)); }
+}
+class MyLayer extends Layer {
+    function MyLayer(win, par) { super.Layer(win, par); }
+}
+class Plain { function Plain() {} }
+var w = new W();
+var lay = new MyLayer(w, w.primaryLayer);
+var plain = new Plain();
+
+// before any ignored plugin: always an error
+attempt("before.System.call", function() { return System.kk4sNoSuchMember(1); });
+
+Plugins.link("kk4s-test-no-such-plugin.dll"); // ignored: kk4s has no replacement
+
+attempt("System.call", function() { return System.kk4sNoSuchMember(1, "x"); });
+attempt("System.get", function() { return System.kk4sNoSuchProp; });
+attempt("Layer.call", function() { return lay.kk4sNoSuchMethod(1, 2, 3); });
+attempt("Layer.get", function() { return lay.kk4sNoSuchProp; });
+attempt("Layer.result", function() { var v = lay.kk4sNoSuchMethod(); return v === void ? "void" : v; });
+attempt("Plain.call", function() { return plain.kk4sNoSuchMethod(); });
+attempt("Plain.get", function() { return plain.kk4sNoSuchProp; });
+attempt("global.call", function() { return kk4sNoSuchGlobalFunction(); });
+attempt("Layer.existing", function() { return lay.width; });
+Debug.message("SOFT done");
+System.exit();
