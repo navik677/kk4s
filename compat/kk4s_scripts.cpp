@@ -21,6 +21,7 @@
 #include "tjsArray.h"
 #include "tjsDictionary.h"
 #include "tjsObject.h"
+#include "md5.h"
 
 #include <cstdlib>
 #include <functional>
@@ -105,8 +106,14 @@ tTJSVariant Clone(const tTJSVariant& v, int depth) {
 
 // Structural equality: Dictionary/Array trees are compared member by member, everything else
 // by type and value (strings, numbers, octets); other objects must be the same object.
-bool EqualStruct(const tTJSVariant& a, const tTJSVariant& b, int depth) {
-    if (a.Type() != tvtObject || b.Type() != tvtObject) return a.Type() != tvtObject && b.Type() != tvtObject && a.DiscernCompare(b);
+// `loose` (equalStructNumericLoose) also treats an Integer and a Real of the same value as equal.
+bool EqualStruct(const tTJSVariant& a, const tTJSVariant& b, int depth, bool loose = false) {
+    if (a.Type() != tvtObject || b.Type() != tvtObject) {
+        if (a.Type() == tvtObject || b.Type() == tvtObject) return false;
+        if (loose && (a.Type() == tvtInteger || a.Type() == tvtReal) && (b.Type() == tvtInteger || b.Type() == tvtReal))
+            return a.NormalCompare(b);
+        return a.DiscernCompare(b);
+    }
     iTJSDispatch2* oa = a.AsObjectNoAddRef();
     iTJSDispatch2* ob = b.AsObjectNoAddRef();
     if (oa == ob) return true;
@@ -121,7 +128,7 @@ bool EqualStruct(const tTJSVariant& a, const tTJSVariant& b, int depth) {
             tTJSVariant ea, eb;
             oa->PropGetByNum(0, i, &ea, oa);
             ob->PropGetByNum(0, i, &eb, ob);
-            if (!EqualStruct(ea, eb, depth + 1)) return false;
+            if (!EqualStruct(ea, eb, depth + 1, loose)) return false;
         }
         return true;
     }
@@ -134,7 +141,7 @@ bool EqualStruct(const tTJSVariant& a, const tTJSVariant& b, int depth) {
         for (auto& kv : ma) {
             tTJSVariant other;
             if (TJS_FAILED(ob->PropGet(TJS_MEMBERMUSTEXIST, kv.first.c_str(), nullptr, &other, ob))) return false;
-            if (!EqualStruct(kv.second, other, depth + 1)) return false;
+            if (!EqualStruct(kv.second, other, depth + 1, loose)) return false;
         }
         return true;
     }
@@ -311,6 +318,63 @@ void InstallScriptsCompat() {
         if (r) *r = (tjs_int)(EqualStruct(*p[0], *p[1], 0) ? 1 : 0);
         return TJS_S_OK;
     });
+
+    Define(scripts, TJS_W("equalStructNumericLoose"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2*) -> tjs_error {
+        if (n < 2) return TJS_E_BADPARAMCOUNT;
+        if (r) *r = (tjs_int)(EqualStruct(*p[0], *p[1], 0, true) ? 1 : 0);
+        return TJS_S_OK;
+    });
+
+    // scriptsEx.dll rest: rehash (the engine's hash tables need no rehashing), MD5 of an
+    // octet, flag-driven member access and the pf* flags (TJS_MEMBERENSURE and friends).
+    Define(scripts, TJS_W("rehash"), [](tTJSVariant*, tjs_int, tTJSVariant**, iTJSDispatch2*) -> tjs_error {
+        return TJS_S_OK;
+    });
+    Define(scripts, TJS_W("getMD5HashString"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2*) -> tjs_error {
+        if (n < 1) return TJS_E_BADPARAMCOUNT;
+        tTJSVariantOctet* o = p[0]->AsOctetNoAddRef();
+        md5_state_t st;
+        md5_init(&st);
+        if (o) md5_append(&st, o->GetData(), (int)o->GetLength());
+        md5_byte_t d[16];
+        md5_finish(&st, d);
+        static const char* hex = "0123456789abcdef";
+        tjs_char out[33];
+        for (int i = 0; i < 16; ++i) { out[i * 2] = hex[d[i] >> 4]; out[i * 2 + 1] = hex[d[i] & 15]; }
+        out[32] = 0;
+        if (r) *r = ttstr(out);
+        return TJS_S_OK;
+    });
+    Define(scripts, TJS_W("propSet"), [](tTJSVariant*, tjs_int n, tTJSVariant** p, iTJSDispatch2*) -> tjs_error {
+        if (n < 3) return TJS_E_BADPARAMCOUNT;
+        tTJSVariantClosure c = p[0]->AsObjectClosureNoAddRef();
+        tjs_uint32 flag = n > 3 ? (tjs_uint32)(tjs_int)p[3]->AsInteger() : TJS_MEMBERENSURE;
+        if (p[1]->Type() == tvtInteger)
+            return c.Object->PropSetByNum(flag, (tjs_int)p[1]->AsInteger(), p[2], c.ObjThis ? c.ObjThis : c.Object);
+        ttstr name = *p[1];
+        return c.Object->PropSet(flag, name.c_str(), nullptr, p[2], c.ObjThis ? c.ObjThis : c.Object);
+    });
+    Define(scripts, TJS_W("propGet"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2*) -> tjs_error {
+        if (n < 2) return TJS_E_BADPARAMCOUNT;
+        tTJSVariantClosure c = p[0]->AsObjectClosureNoAddRef();
+        tjs_uint32 flag = n > 2 ? (tjs_uint32)(tjs_int)p[2]->AsInteger() : TJS_MEMBERMUSTEXIST;
+        if (p[1]->Type() == tvtInteger)
+            return c.Object->PropGetByNum(flag, (tjs_int)p[1]->AsInteger(), r, c.ObjThis ? c.ObjThis : c.Object);
+        ttstr name = *p[1];
+        return c.Object->PropGet(flag, name.c_str(), nullptr, r, c.ObjThis ? c.ObjThis : c.Object);
+    });
+    {
+        struct { const tjs_char* name; tjs_int value; } flags[] = {
+            {TJS_W("pfMemberEnsure"), TJS_MEMBERENSURE}, {TJS_W("pfMemberMustExist"), TJS_MEMBERMUSTEXIST},
+            {TJS_W("pfIgnoreProp"), TJS_IGNOREPROP}, {TJS_W("pfHiddenMember"), TJS_HIDDENMEMBER},
+            {TJS_W("pfStaticMember"), TJS_STATICMEMBER}};
+        for (auto& f : flags) {
+            tTJSVariant existing;
+            if (TJS_SUCCEEDED(scripts->PropGet(0, f.name, nullptr, &existing, scripts)) && existing.Type() != tvtVoid) continue;
+            tTJSVariant v(f.value);
+            scripts->PropSet(TJS_MEMBERENSURE, f.name, nullptr, &v, scripts);
+        }
+    }
 
     Define(scripts, TJS_W("clone"), [](tTJSVariant* r, tjs_int n, tTJSVariant** p, iTJSDispatch2*) -> tjs_error {
         if (n < 1) return TJS_E_BADPARAMCOUNT;

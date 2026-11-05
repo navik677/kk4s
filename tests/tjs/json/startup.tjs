@@ -1,0 +1,54 @@
+// Contract test for json.dll and scriptsEx.dll (compat/kk4s_json.cpp, kk4s_scripts.cpp).
+Plugins.link("json.dll");
+Plugins.link("scriptsEx.dll");
+var failures = 0;
+function check(what, ok) { if (!ok) { Debug.message("json FAIL " + what); failures++; } }
+
+// the DLL's lenient reader
+var text = "# comment\n{ \"a\": 1, 'b' => [1, 2.5, \"x\\ty\", true, false, null], // line comment\n /* c */ \"c\" = { \"d\": -3 }; \"e\": \"\\u3042\\x41\" }";
+var o = Scripts.evalJSON(text);
+check("dict", o instanceof "Dictionary");
+check("int", o.a === 1);
+check("array", o.b instanceof "Array" && o.b.count == 6);
+check("real", typeof o.b[1] == "Real" && o.b[1] == 2.5);
+check("escape", o.b[2] == "x\ty");
+check("true/false", o.b[3] == 1 && o.b[4] == 0);
+check("null", o.b[5] === void);
+check("nested with =", o.c.d == -3);
+check("\\u and \\x escapes", o.e == "あA");
+var threw = false;
+try { Scripts.evalJSON("{ \"a\": 1 "); } catch (e) { threw = true; }
+check("parse error throws", threw);
+threw = false;
+try { Scripts.evalJSON("{ a: 1 }"); } catch (e) { threw = true; }	// unquoted keys are not accepted by the DLL either
+check("unquoted keys throw", threw);
+check("parse error throws", threw);
+
+// writer: DLL layout (1-space indent, CRLF by default, LF with newline=1)
+var s = Scripts.toJSONString(%[ k: [1, "q\""] ], 1);
+check("toJSONString layout (" + s + ")", s == "{\n \"k\":[\n  1,\n  \"q\\\"\"\n ]\n}");
+check("toJSONString CRLF", Scripts.toJSONString([1], 0) == "[\r\n 1\r\n]");
+
+// saveJSON / evalJSONStorage round trip below System.dataPath
+var file = System.dataPath + "probe.json";
+Scripts.saveJSON(file, %[ name: "あ", list: [1, 2, 3] ], true);
+var back = Scripts.evalJSONStorage(file, true);
+check("round trip", back.name == "あ" && back.list.count == 3 && back.list[2] == 3);
+
+// scriptsEx
+check("equalStructNumericLoose", Scripts.equalStructNumericLoose(%[ a: [1, 2] ], %[ a: [1.0, 2] ]));
+check("equalStruct is strict", !Scripts.equalStruct(%[ a: 1 ], %[ a: 1.0 ]));
+check("rehash", typeof Scripts.rehash == "Object");
+var oct = <% 61 62 63 %>;
+check("getMD5HashString(octet)", Scripts.getMD5HashString(oct) == "900150983cd24fb0d6963f7d28e17f72");
+var d = %[];
+Scripts.propSet(d, "x", 5);
+check("propSet/propGet", Scripts.propGet(d, "x") == 5);
+check("pf flags", Scripts.pfMemberEnsure == 0x200 && Scripts.pfHiddenMember == 0x1000);
+threw = false;
+try { Scripts.propGet(d, "missing"); } catch (e) { threw = true; }
+check("propGet must exist", threw);
+check("safeEvalStorage", typeof Scripts.safeEvalStorage == "Object");
+
+if (failures == 0) Debug.message("json synthetic contract: PASS");
+else Debug.message("json synthetic contract: " + failures + " failure(s)");

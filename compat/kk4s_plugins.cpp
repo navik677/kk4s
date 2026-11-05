@@ -1381,6 +1381,9 @@ void LinkLayerExImageDll();
 void LinkLayerExRasterDll();
 void LinkLayerExSaveDll();
 
+// compat/kk4s_json.cpp
+void LinkJsonDll();
+
 // menu.dll: the Win32 menu bar. The engine already has MenuItem and Window.menu
 // (engine/source/core/visual/MenuItemIntf.cpp), so items added by KAGZ work; the
 // one member menu.dll adds that scripts rely on is Window.exSystemMenu, which KAGZ
@@ -1434,6 +1437,17 @@ static void LinkWindowExDll() {
 // visible difference games rely on is "taglist" in tag elements (KAGParser.cpp).
 static void LinkKAGParserExDll() { ::TVPKAGParserExMode = true; }
 
+// scriptsEx.dll: most of it is installed for every game (kk4s_scripts.cpp,
+// InstallScriptsCompat); the link adds safeEvalStorage, which only reads data.
+static void LinkScriptsExDll() {
+    RunTjsShim("scriptsEx.dll", TJS_W(R"TJS(
+if (typeof Scripts.safeEvalStorage == "undefined")
+	Scripts.safeEvalStorage = function(storage, mode = "", context = void) {
+		return context === void ? Scripts.evalStorage(storage, mode) : Scripts.evalStorage(storage, mode, context);
+	};
+)TJS"));
+}
+
 // The engine already does what these DLLs did (ogg decoding, video).
 static void ProvidedByEngine() {}
 
@@ -1458,6 +1472,8 @@ static const PluginEntry kPlugins[] = {
     {"layereximage.dll", LinkLayerExImageDll},
     {"layerexraster.dll", LinkLayerExRasterDll},
     {"layerexsave.dll", LinkLayerExSaveDll},
+    {"json.dll", LinkJsonDll},
+    {"scriptsex.dll", LinkScriptsExDll},
     {"windowex.dll", LinkWindowExDll},
     {"menu.dll", LinkMenuDll},
     {"emoteplayer.dll", LinkEmotePlayerDll},
