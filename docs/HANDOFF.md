@@ -52,7 +52,20 @@ Test state at `b644084`: `bash tools/run-tests.sh` → **25/25** on the normal d
 ASan+UBSan build was 24/24 at `cd79ed5` (input and KAG3 tests also with
 `UBSAN_OPTIONS=halt_on_error=1`); extrans has **not** been run under ASan yet.
 
-**STOP POINT (2026-11-05, budget ran out).** Last commit `b644084` + this docs commit. Nothing is
+| `d7b1d0e` | `tests/extrans`: ripple's displacement checked on a 16 px checkerboard (+ cross-fade control) | `tests/extrans` |
+| `f992aa6` | **TJS real → string like Kirikiri 2**: krkrs' `TJS_snprintf` printed `%g`/`%e` as `%f` (`2.5` → `"2.500000000000000"` in every real-to-string conversion) | `tests/savestruct` |
+| `836a911` | saveStruct.dll current wamsoft contract (`sso*`, `Scripts.toStructString`, …; the old copy wrote raw UTF-16 / unterminated strings) | `tests/savestruct` |
+| `667cc1b` | varfile.dll writes back to its variable again (Kirikiroid2 port lost it); csvParser read modes | `tests/csvvar` |
+| `17d4c2f` | **KAGParserEx.dll is the real extended parser** (multi-line tags, `[pmacro]`, `emb escape=false`, macro `*`, `hasLabel`; only `taglist` was emulated) | `tests/kagparserex` |
+| `ebd5f92` | addFont.dll return values (void / 0 / count) over the native `System.addFont` | `tests/csvvar` |
+| `a9cdcaa` | **psdfile.dll**: wamsoft psdfile glue + vendored psdparse (MIT), RGBA layer order, packed BMP header for `psd://` | `tests/psdfile` |
+| `476353c` | psdparse builds for the Switch (no mmap in libnx) | Switch NRO builds |
+
+Test state at `476353c`: 29/29 on the normal desktop build; the Switch NRO builds. ASan was last run
+at `cd79ed5` (24/24) — everything after that (extrans, saveStruct, KAGParserEx, psdfile) has not been
+under ASan yet.
+
+**Earlier stop point (2026-11-05, kept for history).** Last commit `b644084` + this docs commit. Nothing is
 half-done in the working tree. Open threads, in this order:
 1. *Partly verified:* ripple. From a 16 px checkerboard, ~30% of the half-way samples lie on the
    wrong colour (displacement works; `tests/extrans` checks it against a cross-fade control), but
@@ -60,14 +73,13 @@ half-done in the working tree. Open threads, in this order:
    missing. Look at the y part of the drift map / `TVPRippleTransform_*` arguments (temporary
    logs need `#include "DebugIntf.h"` for `TVPAddLog`); compare with a krkr2 screenshot if
    possible. Also unverified: the extrans pictures on the Switch, extrans under ASan.
-2. Plan step 1 (native plugin contracts), remaining: **saveStruct** is the old version (no
-   `ssoIndent`/`ssoConst`/`ssoSort`/`ssoHidden` globals, no `Scripts.toStructString`, no hidden
-   members; upstream `wamsoft/saveStruct` `Main.cpp` uses json's `Writer.hpp`) → upgrade;
-   csvParser / varfile already exist as engine internal plugins (`engine/source/plugins/`) → audit
-   against `wamsoft/csvParser`, `wamsoft/varfile`; KAGParserEx is a mode flag
-   (`TVPKAGParserExMode`) → audit against `wamsoft/KAGParserEx`; `System.addFont` exists
-   (`SystemIntf.cpp`) → check addFont.dll's `(storage, extract)` signature and return values;
-   then psdfile (PSD class) and layerExDraw (GDI+ drawing), the two big ones.
+2. Plan step 1 (native plugin contracts): saveStruct, csvParser, varfile, KAGParserEx, addFont,
+   psdfile **done** (see the table). Remaining: **layerExDraw** (GDI+ drawing). Plan: vendor
+   plutovg (MIT, sammycage/plutovg: paths, strokes with joins/caps/dashes, gradients, textures,
+   matrices, glyph paths, a font cache that finds faces by family name) and write the GDI+-shaped
+   classes `main.cpp` binds (PointF, RectF, Matrix, Image, Path, FontInfo, Appearance) over it;
+   draw into a premultiplied scratch surface and composite onto the layer (straight alpha,
+   RGBA). Fonts: `kk4s::SystemFontFiles()` + game fonts + `addPrivateFont`.
 3. Plan step 2: x86 mini-interpreter for `.tpm` filters (fake `tp_stub`, adlr-verified).
 4. Plan step 3: optional "soft mode" for missing members of unknown plugins (switch only).
 Tasks for these exist in the session list as #12–#17.
