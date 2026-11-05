@@ -187,6 +187,15 @@ folder (happened once, cleaned up).
 - Rendering: FreeMote's viewer calls the game's own emotedriver.dll; there is no open E-mote renderer.
   Plan: first a static pose (each layer's default frame, no mesh deformation), then variables / timelines.
 
+**Universal E-mote runtime (2026-11-05, branch `feature/universal-emote-runtime`).** New module
+`compat/emote/` (pure C++17 + zlib, in CMake for desktop and Switch, not yet used by `Motion.*`): PSB core
+on top of `compat/psb`, evidence-based cipher profiles (the NekoPara key lives only in
+`profiles/nekopara_vol1.cpp`), normalized Value and character models, an adapter keyed to the in-data
+markers `version 3.03` + `metadata.format "emote"` + `spec krkr|win`, animation runtime (variables, tweens,
+timelines), active-frame scene evaluation and a renderer contract. Real data: 157/157 NekoPara PSB load end to
+end, 0 unresolved references. Not done: drawing, deformation, `RL`/`DXT5` pixels, `Motion.*` wiring. Design,
+evidence and limits: `docs/universal_emote_runtime.md`.
+
 **STOP POINT 2 (2026-11-05, user stopped the session; resolved in step 2 above).** Committed as work in progress and **not
 built**: `engine/source/plugins/layerExDraw/` — layerExDraw.dll without GDI+: vendored plutovg (MIT,
 `plutovg/UPSTREAM.txt`), `gdip_kk4s.h` (GDI+ enums with their real values, PointF / RectF / Matrix /
