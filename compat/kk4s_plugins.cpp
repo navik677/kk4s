@@ -930,24 +930,25 @@ static void LinkTextRenderDll() {
         function drawCh(layer, x, y, ch) {
             if (ch === void || ch.text === void) return false;
             var f = layer.font;
-            var oldHeight = void, oldBold = void, oldItalic = void;
+            var oldHeight = void, oldBold = void, oldItalic = void, oldFace = void;
             if (f !== void) {
-                oldHeight = f.height; oldBold = f.bold; oldItalic = f.italic;
+                oldHeight = f.height; oldBold = f.bold; oldItalic = f.italic; oldFace = f.face;
                 f.height = ch.size;
                 if (ch.bold !== void) f.bold = ch.bold;
                 if (ch.italic !== void) f.italic = ch.italic;
+                if (ch.face !== void && ch.face != "" && f.face != ch.face) f.face = ch.face;
             }
             var color = getTextColor(ch);
             if (color === void) color = 0xFFFFFF;
             try {
                 if (ch.graph !== void && ch.graph != "") {
                     kk4sDrawGraph(layer, x, y, ch);
-                } else if (ch.edge !== void) {
+                } else if (ch.edge) {
                     layer.drawText(x + ch.x, y + ch.y, ch.text, color, 255, antialiased,
-                        edgeEmphasis, ch.edge, edgeExtent, 0, 0);
-                } else if (ch.shadow !== void) {
+                        edgeEmphasis, ch.edgeColor & 0xffffff, edgeExtent, 0, 0);
+                } else if (ch.shadow) {
                     layer.drawText(x + ch.x, y + ch.y, ch.text, color, 255, antialiased,
-                        255, ch.shadow, shadowWidth, shadowOffsetX, shadowOffsetY);
+                        255, ch.shadowColor & 0xffffff, shadowWidth, shadowOffsetX, shadowOffsetY);
                 } else {
                     layer.drawText(x + ch.x, y + ch.y, ch.text, color, 255, antialiased);
                 }
@@ -959,10 +960,10 @@ static void LinkTextRenderDll() {
                     }
                 }
             } catch (e) {
-                if (f !== void) { f.height = oldHeight; f.bold = oldBold; f.italic = oldItalic; }
+                if (f !== void) { f.height = oldHeight; f.bold = oldBold; f.italic = oldItalic; if (f.face != oldFace) f.face = oldFace; }
                 throw e;
             }
-            if (f !== void) { f.height = oldHeight; f.bold = oldBold; f.italic = oldItalic; }
+            if (f !== void) { f.height = oldHeight; f.bold = oldBold; f.italic = oldItalic; if (f.face != oldFace) f.face = oldFace; }
             return true;
         }
         function drawRuby(layer, ox, oy, ch, ruby) {
@@ -1097,10 +1098,12 @@ static void LinkTextRenderDll() {
         function _kk4sMeasure(state, text, size) {
             var f = font;
             if (f === void || typeof f.getTextWidth != "Object") return size * text.length;
-            var oldHeight = f.height, oldBold = f.bold, oldItalic = f.italic;
+            var oldHeight = f.height, oldBold = f.bold, oldItalic = f.italic, oldFace = f.face;
             f.height = size; f.bold = state.bold; f.italic = state.italic;
+            if (state.face != "" && f.face != state.face) f.face = state.face;
             var measured = f.getTextWidth(text);
             f.height = oldHeight; f.bold = oldBold; f.italic = oldItalic;
+            if (f.face != oldFace) f.face = oldFace;
             return int(measured);
         }
         function _kk4sAlignLine(state) {
@@ -1174,8 +1177,9 @@ static void LinkTextRenderDll() {
             item.x = state.x; item.y = state.vertical ? state.y : state.y - state.currentSize;
             item.text = ch; item.cw = cw; item.size = state.currentSize; item.link = "";
             item.color = state.color; item.bold = state.bold; item.italic = state.italic;
-            if (state.edge) item.edge = state.edgeColor;
-            if (state.shadow) item.shadow = state.shadowColor;
+            item.face = state.face;
+            item.edge = state.edge; item.edgeColor = state.edgeColor;
+            item.shadow = state.shadow; item.shadowColor = state.shadowColor;
             if (state.pendingRuby != "") {
                 var rubyStart = int(state.pendingRubyIndex * state.pendingRuby.length / state.pendingRubyCount);
                 var rubyEnd = int((state.pendingRubyIndex + 1) * state.pendingRuby.length / state.pendingRubyCount);
@@ -1219,9 +1223,9 @@ static void LinkTextRenderDll() {
             var item = new Dictionary();
             item.x = state.x; item.y = state.vertical ? state.y : state.y - gh;
             item.graph = name; item.text = ""; item.cw = cw; item.size = gh; item.link = "";
-            item.color = state.color;
-            if (state.edge) item.edge = state.edgeColor;
-            if (state.shadow) item.shadow = state.shadowColor;
+            item.color = state.color; item.face = state.face;
+            item.edge = state.edge; item.edgeColor = state.edgeColor;
+            item.shadow = state.shadow; item.shadowColor = state.shadowColor;
             state.chars.add(item);
             if (state.vertical) state.y += cw + state.pitch;
             else state.x += cw + state.pitch;
@@ -1259,6 +1263,10 @@ static void LinkTextRenderDll() {
             state.maxRight = 0; state.maxBottom = 0; state.kinsokuCount = 0;
             state.over = false; state.pendingRuby = ""; state.pendingRubyIndex = 0; state.pendingRubyCount = 0;
             state.textBase = base !== void ? base : global;
+            state.defaultFace = defaultFace == "user" ? userFace : defaultFace;
+            if ((state.defaultFace === void || state.defaultFace == "") && font !== void) state.defaultFace = font.face;
+            if (state.defaultFace === void) state.defaultFace = "";
+            state.face = state.defaultFace;
             if (state.vertical && state.width > 0) state.x = state.width - state.currentSize;
 
             var i = 0;
@@ -1276,8 +1284,13 @@ static void LinkTextRenderDll() {
                     if (esc == "i") { state.indent = state.vertical ? state.y : state.x; continue; }
                     if (esc == "r") { state.indent = 0; continue; }
                     if (esc == "t") ch = "\t";
-                    else if (esc == "\\") ch = "\\";
-                    else continue;
+                    else if (esc == "w") { // advance by one space
+                        var sw = this._kk4sMeasure(state, " ", state.currentSize);
+                        if (state.vertical) state.y += sw; else state.x += sw;
+                        continue;
+                    }
+                    else if (esc == "k" || esc == "x") continue; // key wait (no timing here) / nul
+                    else ch = esc; // kk4s: "\<char>" escapes a special character (was dropped)
                 } else if (ch == "[") {
                     var ruby = "";
                     while (i < text.length) { var rc = text.charAt(i++); if (rc == "]") break; ruby += rc; }
@@ -1307,15 +1320,41 @@ static void LinkTextRenderDll() {
                     }
                     if (graphName != "" && !this._kk4sEmitGraph(state, graphName)) break;
                     continue;
+                } else if (ch == "#") {
+                    // kk4s: "#rrggbb;" (or aarrggbb) text colour, as in textrender.tjs' list
+                    var hex = "";
+                    while (i < text.length) { var hc = text.charAt(i++); if (hc == ";") break; hex += hc; }
+                    if (hex != "") state.color = int(+("0x" + hex));
+                    continue;
                 } else if (ch == "%") {
                     if (i >= text.length) continue;
                     var cmd = text.charAt(i++);
-                    if (cmd == "b") state.bold = true;
-                    else if (cmd == "i") state.italic = true;
+                    // kk4s: commands with an argument up to ';' (textrender.tjs header):
+                    // %fface; %pN; %dN; %wN; %DN; / %D$label; and %N; (size in percent)
+                    var arg = "";
+                    if (cmd == "f" || cmd == "p" || cmd == "d" || cmd == "w" || cmd == "D" ||
+                        "0123456789".indexOf(cmd) >= 0) {
+                        if ("0123456789".indexOf(cmd) >= 0) arg = cmd;
+                        while (i < text.length) { var ac = text.charAt(i++); if (ac == ";") break; arg += ac; }
+                    }
+                    // %bX %iX %sX %eX: X = 0 off, 1 on, anything else the default
+                    var onoff = void;
+                    if (cmd == "b" || cmd == "i" || cmd == "s" || cmd == "e") onoff = i < text.length ? text.charAt(i++) : "";
+                    if (cmd == "f") {
+                        state.face = arg != "" ? arg : state.defaultFace;
+                        this.onFontChange(%[face:state.face, bold:state.bold, italic:state.italic]);
+                    }
+                    else if (cmd == "b") { state.bold = onoff == "1" ? true : onoff == "0" ? false : !!defaultBold; this.onFontChange(%[face:state.face, bold:state.bold, italic:state.italic]); }
+                    else if (cmd == "i") { state.italic = onoff == "1" ? true : onoff == "0" ? false : !!defaultItalic; this.onFontChange(%[face:state.face, bold:state.bold, italic:state.italic]); }
+                    else if (cmd == "s") state.shadow = onoff == "1" ? true : onoff == "0" ? false : !!defaultShadow;
+                    else if (cmd == "e") state.edge = onoff == "1" ? true : onoff == "0" ? false : !!defaultEdge;
+                    else if (cmd == "B") state.currentSize = int(defaultSize * 3 / 2); // approximation
+                    else if (cmd == "S") state.currentSize = int(defaultSize * 3 / 4); // approximation
+                    else if (cmd == "p") state.pitch = int(arg);
+                    else if (cmd == "d" || cmd == "w" || cmd == "D") { } // display timing: not modelled
                     else if (cmd == "n") { state.bold = false; state.italic = false; }
-                    else if (cmd == "s") state.shadow = true;
-                    else if (cmd == "e") state.edge = true;
                     else if (cmd == "r") {
+                        state.face = state.defaultFace;
                         state.bold = !!defaultBold; state.italic = !!defaultItalic;
                         state.shadow = !!defaultShadow; state.edge = !!defaultEdge;
                         state.shadowColor = defaultShadowColor !== void ? defaultShadowColor : 0;
@@ -1324,13 +1363,13 @@ static void LinkTextRenderDll() {
                         state.rubyOffset = defaultRubyOffset !== void ? int(defaultRubyOffset) : -2;
                         state.color = defaultChColor !== void ? defaultChColor : 0xFFFFFF;
                         state.currentSize = defaultSize;
+                        this.onFontChange(%[face:state.face, bold:state.bold, italic:state.italic]);
                     } else if (cmd == "C") state.align = 0;
                     else if (cmd == "R") state.align = 1;
                     else if (cmd == "L") state.align = -1;
                     else if ("0123456789".indexOf(cmd) >= 0) {
-                        var digits = cmd;
-                        while (i < text.length && "0123456789".indexOf(text.charAt(i)) >= 0) digits += text.charAt(i++);
-                        state.currentSize = int(digits);
+                        // kk4s: a percentage of the default size (was taken as pixels)
+                        state.currentSize = int(defaultSize * int(arg) / 100);
                         if (state.currentSize <= 0) state.currentSize = defaultSize;
                     }
                     continue;

@@ -29,7 +29,7 @@ if (renderer.getTextColor(chars[0]) != 0x00FF00)
 renderer.clearLinkColor();
 
 class ProbeFont {
-    var height = 10, bold = false, italic = false;
+    var height = 10, bold = false, italic = false, face = "DefaultFace";
     function ProbeFont() {}
     function getTextWidth(text) { return height * text.length + (text == "A" ? 2 : 0); }
 }
@@ -38,11 +38,36 @@ var measureFont = new ProbeFont();
 renderer.setFont(measureFont);
 renderer.setRenderSize(25, 32);
 renderer.clear();
-TextRenderBase.render("%bA%rB", 1, 0, 0, 0);
+// %bX takes an argument (0 off, 1 on, else default), as textrender.tjs documents
+TextRenderBase.render("%b1A%rB", 1, 0, 0, 0);
 var styled = renderer.getCharacters(0, 0);
 if (styled.count != 2 || styled[0].cw != 12 || styled[1].x != 12 || !styled[0].bold || styled[1].bold)
     throw new Exception("TextRenderBase font measurement/style parsing is wrong");
 
+// inline commands from KAGZ textrender.tjs' header (a wide area: no line breaks)
+renderer.setRenderSize(400, 64);
+renderer.clear();
+TextRenderBase.render("%fOther;A%f;B", 1, 0, 0, 0);
+var faced = renderer.getCharacters(0, 0);
+if (faced.count != 2 || faced[0].face != "Other" || faced[1].face != "DefaultFace" || faced[0].text != "A")
+    throw new Exception("TextRenderBase %f face switching is wrong: " + faced.count + " " + faced[0].face + " " + faced[1].face);
+renderer.clear();
+TextRenderBase.render("%150;A%r#ff0000;B", 1, 0, 0, 0);
+var sized = renderer.getCharacters(0, 0);
+if (sized.count != 2 || sized[0].size != 15 || sized[1].size != 10 || sized[1].color != 0xff0000)
+    throw new Exception("TextRenderBase %N; size percent / #colour; is wrong");
+renderer.clear();
+TextRenderBase.render("\\%A%e1B%e0C", 1, 0, 0, 0);
+var esc = renderer.getCharacters(0, 0);
+if (esc.count != 4 || esc[0].text != "%" || esc[1].text != "A" || !esc[2].edge || esc[3].edge || esc[2].edgeColor === void)
+    throw new Exception("TextRenderBase escapes / %eX are wrong: " + esc.count);
+renderer.clear();
+TextRenderBase.render("%p3;AB%w50;%d80;%D100;C", 1, 0, 0, 0);
+var pitched = renderer.getCharacters(0, 0);
+if (pitched.count != 3 || pitched[1].x != pitched[0].cw + 3 || pitched[2].text != "C")
+    throw new Exception("TextRenderBase %pN; / timing commands are wrong: " + pitched.count + " " + (pitched.count > 1 ? pitched[0].cw + "/" + pitched[1].x : "") + " " + (pitched.count ? pitched[pitched.count-1].text : ""));
+
+renderer.setRenderSize(25, 32);
 renderer.setFont(void);
 renderer.clear();
 TextRenderBase.render("[ruby]X", 1, 0, 0, 0);

@@ -74,6 +74,7 @@ group_xp3() {
     run xp3-layouts         python3 tests/xp3/layout_smoke.py "$EXE"
     run xp3-crypt           python3 tests/xp3/crypt_smoke.py "$EXE"
     run xp3-tpm             python3 tests/tpm/smoke.py "$EXE"
+    run xp3-constadlr       python3 tests/xp3/constadlr_smoke.py "$EXE"
 }
 
 group_io() {
@@ -87,6 +88,7 @@ group_io() {
     run json         python3 tests/json/smoke.py "$EXE"
     run savestruct   python3 tests/savestruct/smoke.py "$EXE"
     run sprintf      python3 tests/sprintf/smoke.py "$EXE"
+    run textrender   python3 tests/textrender/smoke.py "$EXE"
     run csvvar       python3 tests/csvvar/smoke.py "$EXE"
     run kagparserex  python3 tests/kagparserex/smoke.py "$EXE"
     run psdfile      python3 tests/psdfile/smoke.py "$EXE"
