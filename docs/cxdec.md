@@ -68,7 +68,9 @@ same function as `tiny_key()`. It takes no per-game data, so it needs no scheme
 file: the runtime treats it as another candidate filter and binds it only when
 adler32 of the decrypted sample entries equals their `adlr` (same ≥80 % rule as
 for schemes). NekoPara Vol. 1's `data.xp3` and `patch.xp3` use it; the formula
-was verified against 938 of their entries.
+was verified against 938 of their entries. (2026-11-05: the `patch.xp3` of the copy here has one constant adlr,
+`0x689792e4`, on every entry; adler32 cannot confirm anything there, so such archives are confirmed by the
+file formats the samples decrypt to — `compat/kk4s_cx.cpp`, `tests/xp3/constadlr_smoke.py`.)
 
 ### Layer 2 — where schemes come from
 

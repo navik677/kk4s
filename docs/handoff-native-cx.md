@@ -4,7 +4,7 @@
 > `clipAlphaRect` ending ATRI at `start.ks:25` — is fixed by `9f229bb`: the `PackinOne.dll` shim
 > supplies both members, and ATRI's opening now runs (6.5-min desktop run, clean quit). Remaining
 > generic gaps are `LayerExAffineSourceNoise.generateWhiteNoise` and the KAGZ
-> `<storage>@<piece>%layer` pseudo-storage that stops NekoPara at `title.ks:13`. Everything below is
+> `<storage>@<piece>%layer` "pseudo-storage" that stops NekoPara at `title.ks:13` (2026-11-05: wrong — a file in `patch.xp3`, whose constant adlr kept it unbound; fixed in `1cd7bb3`). Everything below is
 > the evidence trail from 2026-11-02; current results are in `docs/status.md` (rounds 1–3).
 
 Updated 2026-11-02. The CXDEC implementation was merged and pushed to `main`; current PC work adds

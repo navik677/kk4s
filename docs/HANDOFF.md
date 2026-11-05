@@ -21,7 +21,7 @@ with a real game. Next, in this order:
 2. A real game's `.tpm` through the interpreter: its log names any missing Win32 / tp_stub function
    (`tpm: ... (not provided by kk4s)`); add those to `compat/x86/tpm_plugin.cpp`.
 3. Aspect: 16:9 by stretch or an upscaler + a launcher switch original 4:3 / 16:9 (user, 2026-11-05).
-4. KAGZ `<storage>@<piece>%layer` (NekoPara `title.ks:13`), plugins by real logs, soft mode on a real game.
+4. NekoPara on the Switch (title / new game work on the PC since `7c3f2ea`); E-mote drawing; plugins by real logs.
 5. Open question noted in step 1: TLG5's fast path for overlapping LZSS matches (compare with krkrz).
 
 
@@ -153,6 +153,20 @@ add it to `TpmPlugin::Win32`. Interpreter speed: ~35 M guest instructions/s on t
 - BGRA audit of the built-in plugins: no further problems; the list is in `docs/plugins.md`
   ("Pixel order").
 
+**NekoPara Vol. 1 on the PC viewer (2026-11-05, after stop point 3).** The title stopped at `title.ks:13`
+on `Layer.loadImages("window@help__config%layer")`. Not a pseudo-storage: the archives' `eliF` tables list
+`window@help__config%layer.png` in `patch.xp3`, which kk4s had not bound — all 222 entries carry adlr
+`0x689792e4`, a constant, so no filter could be confirmed by adler32 although TinyFilter (key `0xAA` for that
+adlr) decrypts it to PNG / PSB. Fixes, all generic: `1cd7bb3` (constant adlr → confirm by file signatures),
+`730c6bf` (PSB chunk offset past the end, 01_01.ks.scn), `1f9dbb6` (textrender inline commands per KAGZ's
+`textrender.tjs` header; `%fSourceHanSansCN-M;` was printed), `7828998` (two one-past reads in TJS string
+helpers, found by the new test under ASan). Result: title, new game, the first scenes with the Russian patch,
+A advances text. Seen only on the PC (headless screenshots). Also learned: `nekopara_vol1.tpm` is not an XP3
+extraction filter; it registers an `iTVPStorageMedia`. The interpreter gets through its DllMain and most of
+V2Link (`7c3f2ea`) but does not host storage media; NekoPara does not need it. Test state: **37/37** normal and
+ASan+UBSan; the NRO builds. Never write probe output with a relative `file://./` path: it lands in the game
+folder (happened once, cleaned up).
+
 **STOP POINT 2 (2026-11-05, user stopped the session; resolved in step 2 above).** Committed as work in progress and **not
 built**: `engine/source/plugins/layerExDraw/` — layerExDraw.dll without GDI+: vendored plutovg (MIT,
 `plutovg/UPSTREAM.txt`), `gdip_kk4s.h` (GDI+ enums with their real values, PointF / RectF / Matrix /
@@ -251,7 +265,7 @@ Windows-DLL runtime (x86-32 on ARM64 + tp_stub ABI + Win32 is Wine/box86 territo
 4. (Windows PC only, low priority) a 32-bit build that loads the real DLLs.
 Smaller items still open: KAGEX / KAGZ fixtures if a redistributable copy is found; legacy formats
 to check (`.sli` loops, `.tft` fonts, MIDI, ERI); `Font.registerFontFile` and other krkrz members
-in `docs/api-coverage.md`; KAGZ `%layer` storages (needs NekoPara's scripts to verify).
+in `docs/api-coverage.md`.
 
 Reference sources used in the cloud session (fetch again when needed, never commit game data):
 `git clone --depth 1 https://github.com/krkrz/krkrz` (krkrz engine), `https://github.com/krkrz/krkr2`
@@ -515,7 +529,7 @@ Touch and mouse must keep mapping through whatever rectangle is shown (`kk4sGame
 Then, in order:
 
 1. Implement the remaining generic plugin APIs named by the logs: the KAGZ UI pseudo-storage
-   `<storage>@<piece>%layer` that stops NekoPara at `title.ks:13` (layerExDraw and the layerEx*
+   (the NekoPara `%layer` blocker was a file in an unbound archive, fixed in `1cd7bb3`; layerExDraw and the layerEx*
    family are done on `cloud-session`). Do not special-case a game;
    implement the plugin contracts (see `docs/plugins.md`), add focused fixtures/tests, then retest
    ATRI, NekoPara and FSN.

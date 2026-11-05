@@ -87,8 +87,10 @@ the centre of the game picture.
   Use it to see which `.pbd` (TJS/ns0 / TJS/4s0) packs a game loads while entering a scene.
 - `compat: plugin not available, ignored: <dll>` names a plugin kk4s does not implement. When the
   game then reports `Member "<name>" does not exist`, the member usually belongs to that plugin's
-  API: ATRI's `generateWhiteNoise` belongs to `LayerExAffineSourceNoise`, and NekoPara's
-  `<storage>@<piece>%layer` to `multiimage.dll`. Implement the plugin contract, not a game-specific
+  API: ATRI's `generateWhiteNoise` belongs to `LayerExAffineSourceNoise`. (NekoPara's
+  `window@help__config%layer` turned out to be a plain file name in an archive kk4s had not bound,
+  not a plugin storage: check `Storages.isExistentStorage` and the archives' name tables first —
+  `eliF` records list them.) Implement the plugin contract, not a game-specific
   stub. (`layerExBtoA` / `layerExImage` / `layerExRaster`, incl. `fillAlpha`, `clipAlphaRect` and
   `generateWhiteNoise`, are native in `compat/kk4s_layerex.cpp`; each method logs
   `compat: Layer.<name> first call, N argument(s)` once.)

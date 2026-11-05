@@ -9,9 +9,13 @@ Last update: 2026-11-05.
 - **Aspect (user-reported 2026-11-05):** Fate/FSN and Tsukihime now show **4:3 with black bars** on the 16:9 screen
   after `806395c` (letterbox, default on). Before it they filled 16:9. The user wants 16:9 for these titles.
   Planned: a 16:9 stretch or an upscaler, plus a switch between original 4:3 and 16:9 (see `docs/roadmap.md`).
-- **NekoPara Vol. 1: not working, not solved.** The scripts start (CXDEC decrypts), the title screen fails
-  at `title.ks:13`. Cause: KAGZ UI pseudo-storage `window@help__config%layer` reaches `Layer.loadImages`
-  (`kaglayer.tjs:69`). The fix must be the generic `<storage>@<piece>%layer` handling, not a NekoPara patch.
+- **NekoPara Vol. 1 (PC viewer, 2026-11-05, `cloud-session`): title screen, new game and the first scenes
+  with the Russian patch work; A advances the text.** Three generic fixes got it there: `patch.xp3` (all entries
+  share one constant adlr) is bound by file signatures (`1cd7bb3`), a PSB scenario with its chunk offset past
+  the end loads (`730c6bf`), textrender's `%fface;` and friends follow KAGZ's command list (`1f9dbb6`). Earlier
+  notes blamed a "`<storage>@<piece>%layer` pseudo-storage": wrong, it is a plain file name in `patch.xp3`. Not
+  yet seen on the Switch; E-mote characters are not drawn (`draw()` is a stub), the font `Source Han Sans CN
+  Medium` falls back to Noto Sans CJK.
 
 ## Branch `cloud-session` (2026-11-05, universal-runtime sprint)
 
@@ -89,7 +93,7 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
 | Tsukihime + Plus-Disc | own font (`umineko.ttf`) |
 | The Makings of a Lady – Purity Yours to Defile | `xp3filter.tjs` (`b.xor(0,l,h)`); existing saves from the game folder are migrated |
 | ATRI -My Dear Moments- (Steam release, original folder) | User-confirmed: runs on Switch (2026-11-05); `TinyFilter`/CXDEC bind 6 archives, PackinOne layers work. Affine-noise effects (`generateWhiteNoise`) are not drawn yet (round 3) |
-| NekoPara Vol. 1 | **Not working, unresolved.** CXDEC decrypts and the scripts start; the title UI stops at `title.ks:13` on the KAGZ UI pseudo-storage `window@help__config%layer` (round 2–3 below) |
+| NekoPara Vol. 1 | **Not working, unresolved.** CXDEC decrypts and the scripts start; the title UI stops at `title.ks:13` on the KAGZ UI pseudo-storage `window@help__config%layer` (round 2–3 below) | (Corrected 2026-11-05: `window@help__config%layer` is a plain file name, `window@help__config%layer.png` in `patch.xp3`; the archive was not bound because all its entries share one constant adlr. Fixed in `1cd7bb3`.)
 
 ## Compatibility matrix (CXDEC, 2026-11-04)
 
@@ -124,7 +128,7 @@ NekoPara stops after 4.2 s in the title UI (RSS 157 MB), FSN runs 75.7 s with 0 
 (RSS 180 MB), ATRI runs 76.0 s with its 2 known exceptions (RSS 275 MB). Audio was not verified
 (`SDL_AUDIODRIVER=dummy`).
 
-Why the title UI fails: `uipsd/window.csv` maps `help_config` to `window@help__config%layer`. That is
+(Corrected 2026-11-05: `window@help__config%layer` is a plain file name, `window@help__config%layer.png` in `patch.xp3`; the archive was not bound because all its entries share one constant adlr. Fixed in `1cd7bb3`.) Old analysis, kept for history: `uipsd/window.csv` maps `help_config` to `window@help__config%layer`. That is
 KAGZ's UI pseudo-storage (`<storage>@<piece>%layer`), resolved on Windows by the multi-image plugin
 (`multiimage.dll`, present in the game folder); kk4s hands the whole string to `Layer.loadImages`,
 which tries to decode it as an image and reports `Image Load Error /Invalid image`.
