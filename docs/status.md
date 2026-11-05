@@ -6,6 +6,9 @@ Last update: 2026-11-05.
 
 - **ATRI -My Dear Moments-** (Steam release, original folder): runs on the console.
 - Other tested games (Sharin, Tsukihime, The Makings of a Lady, FSN): work; **Fate/FSN is not broken**.
+- **Aspect (user-reported 2026-11-05):** Fate/FSN and Tsukihime now show **4:3 with black bars** on the 16:9 screen
+  after `806395c` (letterbox, default on). Before it they filled 16:9. The user wants 16:9 for these titles.
+  Planned: a 16:9 stretch or an upscaler, plus a switch between original 4:3 and 16:9 (see `docs/roadmap.md`).
 - **NekoPara Vol. 1: not working, not solved.** The scripts start (CXDEC decrypts), the title screen fails
   at `title.ks:13`. Cause: KAGZ UI pseudo-storage `window@help__config%layer` reaches `Layer.loadImages`
   (`kaglayer.tjs:69`). The fix must be the generic `<storage>@<piece>%layer` handling, not a NekoPara patch.
@@ -28,7 +31,7 @@ that the Switch NRO builds (devkitA64 docker image). Commit list and details: `d
 | Tests | **original KAG3 system scripts** play a scenario end to end, incl. save at a label and load back (`tests/kag3`) | normal + ASan |
 | Plugins | Kirikiri Z / 2 native members (fstat + windowEx sets, `System.inputString`, `Debug.visible`, language) without `Plugins.link`; shrinkCopy, layerExAreaAverage | synthetic tests |
 | Archives | keyless `.tpm` encryption discovered per archive and verified by adlr (12 families + fitted XOR formulas) | 18 synthetic schemes + 2 controls; no real encrypted game checked |
-| Screen | aspect-correct scaling (letterbox, default on) with touch/mouse mapped through it | `tests/aspect`; not seen on hardware |
+| Screen | aspect-correct scaling (letterbox, default on) with touch/mouse mapped through it | `tests/aspect`; on hardware 2026-11-05: Fate/FSN and Tsukihime show 4:3 with bars, not wanted for them; no 16:9 option yet |
 | Input | Windows input rules: `onClick` left-button only, double click, wheel notch 120, button state in mouse shifts / `getKeyState(VK_LBUTTON)`, `cursorX/Y` in game coordinates, `setCursorPos` → mouse move | `tests/input` |
 | Input | pad L / R = wheel (opens and scrolls the KAG3 backlog; Page Up never did), held buttons repeat like Kirikiri's pad input, pad right click at the screen centre until touched | `tests/input`, `tests/kag3/interact_smoke.py`; not tried on hardware |
 | Plugins | extrans.dll transitions for real (wave, mosaic, turn, rotate*, ripple), engine internal plugin | `tests/extrans` half-way screenshots; ripple's picture unverified; not seen on hardware |
@@ -249,7 +252,9 @@ this harness (the same taps do open FSN's menu), so the long run proves stabilit
 - XP3 script filters are **not thread-safe**. `8d4bef4` routes filtered game graphics/touchimages
   through synchronous main-thread loading. User-confirmed: Fate/FSN now plays through to the end and
   other tested games work well. This hardware regression is mandatory for further filter changes.
-- The game picture is stretched to the whole screen (no aspect-correct scaling / letterbox yet).
+- The game picture is letterboxed to its own 4:3 (default since `806395c`). Fate/FSN and Tsukihime look 4:3
+  with bars on the 16:9 screen and the user wants 16:9 for them. Missing: a 16:9 stretch or upscaler, and a
+  switch between original 4:3 and 16:9.
 - Overlay folder and per-game profiles (M2/M3) are not implemented.
 - Album (applet) mode memory limits not tested; docked ↔ handheld switching not tested.
 - Windows build: 16-bit `wchar_t` differs from Switch/Linux.

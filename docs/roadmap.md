@@ -5,7 +5,7 @@ Full requirements: [original-prompt.md](original-prompt.md). Risk = chance of a 
 | # | Milestone | Status | Risk |
 |---|---|---|---|
 | M0 | Repo structure, CI build of `kk4s.nro`, launcher, log | **done** | low |
-| M1 | Runs real games on hardware; PC viewer (Linux + Windows); aspect-correct scaling | **done** — letterboxing + touch/mouse mapping on `cloud-session` (`tests/aspect`), not yet seen on hardware | medium |
+| M1 | Runs real games on hardware; PC viewer (Linux + Windows); aspect-correct scaling | **partly** — games run on hardware; letterboxing + touch/mouse mapping (`tests/aspect`) works, but Fate/FSN and Tsukihime come out 4:3 with bars (user wants 16:9); 16:9 options below | medium |
 | M2 | Storage: case-insensitive lookup, save redirect, overlay dir over xp3, memory-bounded caches | **partly** — lookup + saves done, overlay dir todo | medium |
 | M3 | Game detection by hash + `profiles/<game_id>.json`; diagnostic report for unknown games | todo | low |
 | M4 | Plugin shim: wuvorbis, krmovie, layerEx*, extrans, stubs for the rest | **partly** — layerExBtoA / layerExImage / layerExRaster / layerExSave (and PackinOne, which bundles them), fstat, json, scriptsEx, windowEx, shrinkCopy, layerExAreaAverage, menu, Motion model done; extrans done (`tests/extrans`); next by the 2026-11-05 plan: layerExDraw, psdfile, saveStruct, varfile, csvParser, KAGParserEx, addFont; KAGZ `%layer` storage open (see [plugins.md](plugins.md)). No universal Windows-DLL runtime | **high** |
@@ -23,7 +23,7 @@ Full requirements: [original-prompt.md](original-prompt.md). Risk = chance of a 
 | Encrypted XP3 without `xp3filter.tjs`: only CXDEC / TinyFilter are recognised | many doujin and older commercial games with simple XOR `.tpm` filters | **done for keyless families** (`compat/kk4s_xp3crypt.cpp`, 18 synthetic schemes); keyed schemes (seed/table) and adlr-after-encryption schemes still need a helper file |
 | No end-to-end test of the KAG3 / KAGEX / KAGZ system scripts | every KAG game (YesNoDialog `showModal`, message layers, save/load) | KAG3: **done** (`tests/kag3`: found a window UAF; save + load; `interact_smoke.py`: history, hide, auto, skip with the pad); KAGEX / KAGZ: todo |
 | Input differed from Windows Kirikiri: right/middle releases sent `onClick`, wheel delta 1 instead of 120, no button state in shifts / `getKeyState(VK_LBUTTON)`, `cursorX/Y` in window pixels, pad L = Page Up (no KAG3 backlog), no pad key repeat | every game (backlogs, buttons, drags, sliders) | **done** (`82bee15`, `cd79ed5`) |
-| A 640x480 game is stretched to the 16:9 screen (no aspect-correct scaling) | every 4:3 game | **done** (setting "Keep aspect ratio", default on) |
+| A 4:3 game is stretched to the 16:9 screen (old) or letterboxed (now) | every 4:3 game; Fate/FSN and Tsukihime on hardware (2026-11-05) show 4:3 with bars, the user wants 16:9 | **partly** (setting "Keep aspect ratio", default on). Planned: (a) 16:9 stretch or upscaler for the picture, (b) a launcher switch: original 4:3 / 16:9 |
 | Native members of built-in classes that krkrs lacks compared with krkrz / krkr2 | any game calling them | **diffed** (`tools/native-api.py`, `docs/api-coverage.md`); fstat / windowEx / inputString sets done, the rest listed there |
 | extrans transitions are cross-fades | KAG3 games using `[trans method=wave|mosaic|turn|rotate*]` | **done** (krkrz extrans ported into the engine, `tests/extrans`; ripple's picture unverified) |
 | layerExDraw (GDI+ drawing) ignored | games drawing UI or text effects with it | todo |

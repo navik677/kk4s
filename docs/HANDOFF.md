@@ -38,7 +38,7 @@ session); "tested" below means the synthetic suite on the Linux desktop build un
 | `1b0aa6c` | `tools/native-api.py`: lists / diffs the native members of built-in classes between source trees | used for `docs/api-coverage.md` |
 | `34ce2f3` | Kirikiri Z / Kirikiri 2 native members for every game: the fstat + windowEx sets (native in krkrz, so KAGZ calls them without `Plugins.link`), `System.inputString` (Switch keyboard), `Debug.visible`, language properties | `tests/natives` |
 | `0dc90b1` | **Keyless `.tpm` encryption discovery** for plain-named archives (`compat/kk4s_xp3crypt.cpp`): 12 GARbro families + fitted "one XOR byte per entry = f(adlr)" formulas, bound only when adlr verifies | `tests/xp3/crypt_smoke.py` (18 schemes + 2 controls) |
-| `806395c` | **Aspect-correct scaling** (letterbox, default on, launcher setting) with touch/mouse mapped through the picture rect; the PC mouse was unscaled before | `tests/aspect`; KAG3 screenshot |
+| `806395c` | **Aspect-correct scaling** (letterbox, default on, launcher setting) with touch/mouse mapped through the picture rect; the PC mouse was unscaled before | `tests/aspect`; KAG3 screenshot. **Hardware 2026-11-05:** games run, but Fate/FSN and Tsukihime show 4:3 with bars where they used to fill 16:9 (user wants 16:9) — see Next steps |
 | `f484e94` | docs for the API diff, natives, xp3 crypt and aspect commits | — |
 | `396b6af` | `tests/kag3`: `[save]` at a save-point label and `[load]` back, `f.*` restored | `tests/kag3` |
 | `b6ec74b` | shrinkCopy.dll (`shrinkCopy`, `shrinkCopyFast`) and layerExAreaAverage.dll (`stretchCopyAA`), area-average resampling | `tests/layerex` |
@@ -404,6 +404,14 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 - The user wants code reviewed before CI, not trial-and-error pushes.
 
 ## Next steps (universal engine; ATRI is one test fixture)
+
+**Aspect, first (user report 2026-11-05):** Fate/FSN and Tsukihime now show 4:3 with black bars on the
+16:9 screen (from `806395c`); before that they filled 16:9. Wanted: (a) a 16:9 picture for them by stretch
+or an upscaler, and (b) a switch between original 4:3 and 16:9 (launcher setting, `settings.ini`).
+Touch and mouse must keep mapping through whatever rectangle is shown (`kk4sGameRect` / `kk4sToGame`,
+`tests/aspect`). Not committed yet; the code is unchanged in this step.
+
+Then, in order:
 
 1. Implement the remaining generic plugin APIs named by the logs: the KAGZ UI pseudo-storage
    `<storage>@<piece>%layer` that stops NekoPara at `title.ks:13`, and `layerExDraw.dll`

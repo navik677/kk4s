@@ -29,3 +29,6 @@ dist/
 smoke.log
 game/
 games/
+
+# Local log collection (may contain game text; never commit)
+/kk4s-logs/
