@@ -109,6 +109,24 @@ of one (the native classes are collected from the global object at startup). Lau
 uk/en/ru/ja text naming the risk. `tests/softmode` runs both settings. **31/31** GCC and ASan+UBSan; NRO
 builds. Not tried on a real game: whether it gets any stuck game further is unknown.
 
+**Step 4: the game's own `.tpm` in an x86 interpreter** (user's plan step 2).
+
+| Commit | What | Verified by |
+|---|---|---|
+| `c9f9999` | `compat/x86`: IA-32 interpreter (integer set, string ops, x87 control words only, cpuid without SSE, page-table memory, TIB, bump heap, host functions with cdecl / stdcall / guessed conventions) + PE32 loader (sections, relocations, imports, exports incl. `_name@N` / `name@N`) | `tests/tpm/x86_test.cpp`: `ops.c` at -O0/-O2/-Os + a relocated build, 12400/12400 calls each equal to native, also under clang ASan+UBSan with leak checks |
+| `05a3f6a` | host table as a deque (a host function adding hosts reallocated the vector under itself) | ASan on `tests/tpm` |
+| `1fd70ff` | `compat/x86/tpm_plugin`: fake Win32 (list in the file), fake `iTVPFunctionExporter` (both names APIs; convention guessed, then cdecl, then stdcall, each on a fresh machine), filter capture, `tTVPXP3ExtractionFilterInfo` pack(4) in 64 KiB pieces, `DetectXorModel` | `tests/tpm/tpm_test.cpp` |
+| `30bfd6c` | `compat/kk4s_tpm.cpp` + `XP3Archive.cpp`: game `*.tpm` and `plugin/*.tpm` loaded once, bound by adlr before the keyless families; XOR filters natively from a cached 4 KiB keystream per file (2048 files max), others interpreted under a mutex | `tests/tpm/smoke.py` through the engine |
+| `a4b0309` | synthetic filter plugins + tests, `run-tests.sh`, CI installs `gcc-mingw-w64-i686` | **34/34** GCC and clang ASan+UBSan; NRO builds |
+
+Source of the ABI facts (krkr2, read from a temporary clone, nothing copied): `TJS_INTF_METHOD` is
+`__stdcall` in 2.23's tp_stub and `__cdecl` since TJS2 2.4.14 / Kirikiri 2.25 beta 1; tp_stub's imported
+functions and the filter callback are `__stdcall`; `tTVPXP3ExtractionFilterInfo` is `#pragma pack(4)`
+(SizeOfSelf, Offset u64, Buffer, BufferSize, FileHash = 24 bytes). **Not verified on a real game's `.tpm`**
+(none available here): real plugins are MSVC builds with a static CRT whose DllMain may call Win32
+functions the fake API lacks; the log names the function (`the plugin called X (not provided by kk4s)`),
+add it to `TpmPlugin::Win32`. Interpreter speed: ~35 M guest instructions/s on the dev PC.
+
 **STOP POINT 2 (2026-11-05, user stopped the session; resolved in step 2 above).** Committed as work in progress and **not
 built**: `engine/source/plugins/layerExDraw/` — layerExDraw.dll without GDI+: vendored plutovg (MIT,
 `plutovg/UPSTREAM.txt`), `gdip_kk4s.h` (GDI+ enums with their real values, PointF / RectF / Matrix /

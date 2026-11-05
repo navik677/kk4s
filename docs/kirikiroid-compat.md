@@ -52,6 +52,22 @@ game are not included (no game keys in the repository); those still need an `xp3
 CX scheme. Schemes whose `adlr` is computed after encryption cannot be verified this way and are
 not detected. Plain archives cost three small reads. Tested by `tests/xp3/crypt_smoke.py`.
 
+**The game's own `.tpm`, run in an x86 interpreter** (`compat/kk4s_tpm.cpp`, `compat/x86/`). Before the
+keyless families, kk4s loads every `*.tpm` in the game folder and `plugin/` into a small IA-32
+interpreter (integer instructions, no SSE / x87 maths, a fake `iTVPFunctionExporter` for both the
+stdcall and the cdecl tp_stub generations, a minimal fake Win32 API), runs `DllMain` and `V2Link`, and
+captures the callback the plugin passes to `TVPSetXP3ArchiveExtractionFilter`. That filter is bound
+only when it makes (nearly) all sample entries match their `adlr`; the key never leaves the game's
+file. If the filter turns out to be a XOR whose keystream repeats with a short period after the first
+2 KiB (checked on the samples and at offsets up to 2 GiB), each file's 4 KiB keystream prefix is computed
+once by the interpreter and the rest is native; otherwise every read runs in the interpreter (slow:
+about 35 million guest instructions per second on the dev PC, the Switch is unmeasured). The log says
+`tpm: <plugin> sets an XP3 filter (...)`, `tpm: <archive> uses <plugin> (...)`, or why a plugin was not
+used (`V2Link did not set an XP3 extraction filter`, `the plugin called <function> (not provided by
+kk4s)`, ...). Not handled: plugins that read their key from another file, need threads, SEH, SSE or
+x87 maths, or check the exe; CXDEC plugins go through the CX path instead. Tested with synthetic
+plugins only (`tests/tpm`), never with a real game's `.tpm`.
+
 ## Not supported yet
 
 - Running a Windows `.tpm` plugin is not supported; its decryption is reimplemented natively instead.
