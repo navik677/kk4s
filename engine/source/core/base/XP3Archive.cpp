@@ -20,6 +20,7 @@
 #include "kk4s_compat.h" // kk4s
 #include "kk4s_platform.h" // kk4s
 #include "kk4s_cx.h" // kk4s
+#include "kk4s_xp3crypt.h" // kk4s
 #include "cxdec/cxdec.h" // kk4s
 #include <SDL.h> // kk4s: SDL_GetTicks
 
@@ -625,8 +626,68 @@ tTVPXP3Archive::tTVPXP3Archive(const ttstr & name) : tTVPArchive(name)
 	delete st;
 
 	if(Kk4sHashedNames) Kk4sBindCx(); // kk4s: CXDEC, only for hashed-name archives
+	else if(!TVPXP3ArchiveExtractionFilter) Kk4sBindSimple(); // kk4s: keyless .tpm schemes
 
 	TVPAddLog( TVPFormatMessage( TVPInfoDoneWithContains, ttstr(Count), ttstr(segmentcount) ) );
+}
+//---------------------------------------------------------------------------
+// kk4s: read one entry's raw bytes (decompressed, still encrypted).
+bool tTVPXP3Archive::Kk4sReadRaw(tTJSBinaryStream *st, const tArchiveItem &item, std::vector<tjs_uint8> &raw)
+{
+	raw.clear();
+	bool ok = true;
+	for(size_t g = 0; g < item.Segments.size() && ok; g++)
+	{
+		const tTVPXP3ArchiveSegment &seg = item.Segments[g];
+		std::vector<tjs_uint8> packed((size_t)seg.ArcSize);
+		st->SetPosition(seg.Start);
+		if(!packed.empty()) st->ReadBuffer(&packed[0], (tjs_uint)packed.size());
+		if(seg.IsCompressed)
+		{
+			std::vector<tjs_uint8> un((size_t)seg.OrgSize);
+			uLongf dl = (uLongf)seg.OrgSize;
+			ok = !un.empty() && !packed.empty() &&
+				uncompress(&un[0], &dl, &packed[0], (uLong)packed.size()) == Z_OK &&
+				dl == seg.OrgSize;
+			raw.insert(raw.end(), un.begin(), un.end());
+		}
+		else
+		{
+			raw.insert(raw.end(), packed.begin(), packed.end());
+		}
+	}
+	return ok && raw.size() == item.OrgSize;
+}
+//---------------------------------------------------------------------------
+// kk4s: an archive with plain names and no script filter. If its small entries
+// do not match their adlr as they are, try the keyless .tpm schemes
+// (compat/kk4s_xp3crypt.h). A plain archive is recognised after three entries
+// that match, so ordinary games only pay for reading three small files.
+void tTVPXP3Archive::Kk4sBindSimple()
+{
+	std::vector<kk4s::compat::CxSample> samples;
+	int plain = 0;
+	tTJSBinaryStream *st = NULL;
+	try
+	{
+		st = TVPCreateStream(Name);
+		for(size_t i = 0; i < ItemVector.size() && samples.size() < 8 && plain < 3; i++)
+		{
+			const tArchiveItem &item = ItemVector[i];
+			if(item.OrgSize < 16 || item.OrgSize > (64u << 10) || item.FileHash == 0) continue;
+			kk4s::compat::CxSample s;
+			s.adlr = item.FileHash;
+			if(!Kk4sReadRaw(st, item, s.raw)) continue;
+			if((tjs_uint32)adler32(1, &s.raw[0], (uInt)s.raw.size()) == s.adlr) plain++;
+			samples.push_back(s);
+		}
+	}
+	catch(...)
+	{
+	}
+	delete st;
+	if(plain >= 3 || samples.size() < 2) return;
+	Kk4sCx = kk4s::compat::BindSimpleCrypt(Name.AsNarrowStdString(), samples);
 }
 //---------------------------------------------------------------------------
 // kk4s: pick sample entries, read their raw (still encrypted) bytes and let
@@ -644,28 +705,7 @@ void tTVPXP3Archive::Kk4sBindCx()
 			if(item.OrgSize < 16 || item.OrgSize > (256u << 10)) continue;
 			kk4s::compat::CxSample s;
 			s.adlr = item.FileHash;
-			bool ok = true;
-			for(size_t g = 0; g < item.Segments.size() && ok; g++)
-			{
-				const tTVPXP3ArchiveSegment &seg = item.Segments[g];
-				std::vector<tjs_uint8> packed((size_t)seg.ArcSize);
-				st->SetPosition(seg.Start);
-				if(!packed.empty()) st->ReadBuffer(&packed[0], (tjs_uint)packed.size());
-				if(seg.IsCompressed)
-				{
-					std::vector<tjs_uint8> un((size_t)seg.OrgSize);
-					uLongf dl = (uLongf)seg.OrgSize;
-					ok = !un.empty() && !packed.empty() &&
-						uncompress(&un[0], &dl, &packed[0], (uLong)packed.size()) == Z_OK &&
-						dl == seg.OrgSize;
-					s.raw.insert(s.raw.end(), un.begin(), un.end());
-				}
-				else
-				{
-					s.raw.insert(s.raw.end(), packed.begin(), packed.end());
-				}
-			}
-			if(ok && s.raw.size() == item.OrgSize) samples.push_back(s);
+			if(Kk4sReadRaw(st, item, s.raw)) samples.push_back(s);
 		}
 	}
 	catch(...)

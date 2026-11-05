@@ -34,6 +34,7 @@ the tail of its own log.
 |---|---|---|---|
 | `xp3/precedence_smoke.py` | xp3 | project dir is `<game>/data.xp3>` when `startup.tjs` is inside the archive; the current dir wins over auto paths, including overlays mounted by absolute path (`System.exePath + "patch.xp3>"`, which is how FSN mounts); the **last mounted** archive wins for a shared name; `removeAutoPath` + re-add flips the order; an overlay does not hide base-only files | engine |
 | `xp3/layout_smoke.py` | xp3 | game-folder layouts besides `startup.tjs`/`data.xp3`: `data/` folder, XP3 appended to `Game.exe` (synthetic PE), `data.exe` beside a bigger exe without archive, an archive 6 MiB past the image (full scan); `--list-games` lists exactly the game folders | engine |
+| `xp3/crypt_smoke.py` | xp3 | keyless XP3 encryption discovery: 18 synthetic archives, one per family / fitted XOR formula (`compat/kk4s_xp3crypt.cpp`), each encrypted by the inverse of its decryptor with the plain-data adlr, must run their startup.tjs; a plain archive must get no scheme; an unknown scheme must be reported and not bound | engine |
 | `xp3/elif_smoke.py` | xp3 | XP3v2 `eliF` filename mapping | engine |
 | `xp3/empty_entry_smoke.py` | xp3 | a zero-byte entry with an empty `segm` chunk opens, reads, seeks and rejects a seek past the end | engine |
 | `xp3/malformed_index_smoke.py` | xp3 | a corrupt index is rejected instead of looping or reading out of bounds | engine |

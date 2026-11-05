@@ -17,6 +17,7 @@
 | zlib | linked | zlib |
 | Oniguruma | linked (built from source if not in portlibs) | BSD-2 |
 | AlphaMovie plugin (T.Imoto, wamsoft/AlphaMovie) | `engine/source/plugins/AlphaMovie.cpp` | same as Kirikiri, see `engine/LICENSE` |
+| XP3 crypt family definitions (morkt, GARbro `ArcFormats/KiriKiri/CryptAlgorithms.cs`) | reimplemented in `compat/kk4s_xp3crypt.cpp` (keyless families only, no game keys) | MIT |
 | KAG3 template system scripts (W.Dee), test fixture only | `tests/kag3/template/` | Kirikiri license or GPL-2 (dual), see `tests/kag3/template/README.md` |
 | layerExBtoA / layerExImage / layerExRaster contracts (Go Watanabe, wamsoft) | reimplemented in `compat/kk4s_layerex.cpp` | same as Kirikiri, see `engine/LICENSE`; layerExImage's colour and blur maths come from CxImage (Davide Pizzolato, zlib-style license) |
 

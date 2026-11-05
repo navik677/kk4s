@@ -7,7 +7,8 @@
 #
 # Groups:
 #   xp3        storage layer: project dir, overlay precedence, archive parsing,
-#              game-folder layouts (data/, data.exe, XP3 inside an exe)
+#              game-folder layouts (data/, data.exe, XP3 inside an exe),
+#              keyless .tpm encryption discovery
 #   io         engine I/O: TextStream encoding, AlphaMovie, Scripts.loadDataPack,
 #              layerEx* / layerExSave Layer methods, fstat.dll Storages methods,
 #              json.dll / scriptsEx.dll / windowEx.dll, and the original
@@ -67,6 +68,7 @@ group_xp3() {
     run xp3-malformed-index python3 tests/xp3/malformed_index_smoke.py "$EXE"
     run xp3-index-cycle     python3 tests/xp3/index_cycle_smoke.py "$EXE"
     run xp3-layouts         python3 tests/xp3/layout_smoke.py "$EXE"
+    run xp3-crypt           python3 tests/xp3/crypt_smoke.py "$EXE"
 }
 
 group_io() {

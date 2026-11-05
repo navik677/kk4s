@@ -36,6 +36,22 @@ on the main thread) is read and decrypted completely at once (`XP3Archive.cpp`, 
 decoder threads then read memory. If the filter is ever called on another thread, the log says
 `compat: xp3 filter script called on a background thread (unsafe)`.
 
+## Encrypted archives without any helper file
+
+Many games ship a `.tpm` plugin whose decryption is a small keyless function of each entry's
+`adlr` hash and offset. kk4s recognises these without an `xp3filter.tjs`
+(`compat/kk4s_xp3crypt.cpp`): when an archive with plain names has no script filter, a few small
+entries are checked; if they do not match their `adlr` as stored, the known families are tried
+(FlyingShine, Seiten, Okiba, Dieselmine, Damegane, Nephrite, Exa, HighRunning, Hibiki, PinPoint,
+PuCa, TinyFilter) and then "one XOR byte per entry": the byte of each sample is recovered against its
+adlr and a formula of the adlr is fitted (a constant; `((adlr >> s) + a) ^ c`; `(adlr >> s1) ^
+(adlr >> s2) ^ c`; optionally the first 5 bytes left plain). A scheme is bound only when it explains
+(nearly) all samples. The log says `xp3crypt: <archive> uses <scheme>`, or that the archive looks
+encrypted but no simple scheme fits. Schemes that need a table or secret constant of one particular
+game are not included (no game keys in the repository); those still need an `xp3filter.tjs` or a
+CX scheme. Schemes whose `adlr` is computed after encryption cannot be verified this way and are
+not detected. Plain archives cost three small reads. Tested by `tests/xp3/crypt_smoke.py`.
+
 ## Not supported yet
 
 - Running a Windows `.tpm` plugin is not supported; its decryption is reimplemented natively instead.

@@ -117,6 +117,8 @@ class tTVPXP3Archive : public tTVPArchive
 	bool Kk4sHashedNames;
 	kk4s::compat::ContentDecoder* Kk4sCx;
 	void Kk4sBindCx();
+	void Kk4sBindSimple(); // kk4s: keyless .tpm schemes for archives with plain names
+	static bool Kk4sReadRaw(tTJSBinaryStream *st, const tArchiveItem &item, std::vector<tjs_uint8> &raw);
 public:
 	tTVPXP3Archive(const ttstr & name);
 	~tTVPXP3Archive();
