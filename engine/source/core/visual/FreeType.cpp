@@ -67,7 +67,9 @@ void TVPUninitializeFreeFont() {
  * filename はアーカイブやassetから追加された時に保持される
  * つまり、システムフォントとアーカイブ/assetのフォントは別物扱いされる
  */
-struct FontInfo {
+// kk4s: was FontInfo, which layerExDraw.dll's FontInfo class (bound to TJS by
+// that name) also defines: the linker merged their inline destructors (ODR).
+struct tTVPFTFontInfo {
 	tjs_string	facename;
 	std::string	path;		// 
 	tjs_string	filename;
@@ -77,7 +79,7 @@ struct FontInfo {
 	tjs_uint	style_flags;
 	tjs_uint	face_flags;
 	tjs_uint	enc_flags;
-	FontInfo() : index( 0 ), num_glyphs( 0 ), style_flags( 0 ), face_flags( 0 ), enc_flags( 0 ) {}
+	tTVPFTFontInfo() : index( 0 ), num_glyphs( 0 ), style_flags( 0 ), face_flags( 0 ), enc_flags( 0 ) {}
 };
 enum TVPEncodingFlags {
 	TVP_ENC_SJIS			= 0x01 << 0,
@@ -110,12 +112,12 @@ struct FaceKey {
 	}
 };
 class tTVPFreeTypeFaceList {
-	std::vector<FontInfo*>	faces_;
-	std::vector<FontInfo*>	systemfaces_;
-	std::map<FaceKey,FontInfo*>	systemfont_;
+	std::vector<tTVPFTFontInfo*>	faces_;
+	std::vector<tTVPFTFontInfo*>	systemfaces_;
+	std::map<FaceKey,tTVPFTFontInfo*>	systemfont_;
 
 private:
-	static bool CheckFaceFlag( FontInfo& face, tjs_uint flag );
+	static bool CheckFaceFlag( tTVPFTFontInfo& face, tjs_uint flag );
 
 public:
 	~tTVPFreeTypeFaceList();
@@ -149,7 +151,7 @@ private:
 public:
 	tGenericFreeTypeFace(const ttstr &fontname, tjs_uint32 options);
 	tGenericFreeTypeFace(const std::string& path, const ttstr &fontname, tjs_uint32 index );
-	tGenericFreeTypeFace(const ttstr &filename, std::vector<FontInfo*>& fonst, std::vector<tjs_string>* faces );
+	tGenericFreeTypeFace(const ttstr &filename, std::vector<tTVPFTFontInfo*>& fonst, std::vector<tjs_string>* faces );
 	virtual ~tGenericFreeTypeFace();
 
 	virtual FT_Face GetFTFace() const;
@@ -197,7 +199,7 @@ void TVPGetSystemFontListFromFreeType( std::vector<tjs_string>& faces ) {
 	FreeTypeFaceList->GetSystemFontList( faces );
 }
 //---------------------------------------------------------------------------
-static void TVPLoadFont( FT_Open_Args& arg, std::vector<FontInfo*>& fonts, std::map<FaceKey,FontInfo*>* fontmap, std::vector<tjs_string>* faces, const std::string* path, const tjs_string* filename ) {
+static void TVPLoadFont( FT_Open_Args& arg, std::vector<tTVPFTFontInfo*>& fonts, std::map<FaceKey,tTVPFTFontInfo*>* fontmap, std::vector<tjs_string>* faces, const std::string* path, const tjs_string* filename ) {
 	FT_Face face = nullptr;
 	tjs_uint face_num = 1;
 	for( tjs_uint f = 0; f < face_num; f++ ) {
@@ -205,7 +207,7 @@ static void TVPLoadFont( FT_Open_Args& arg, std::vector<FontInfo*>& fonts, std::
 		if( err == 0 ) {
 			face_num = face->num_faces;
 			std::string familyname(face->family_name);
-			FontInfo* info = new FontInfo();
+			tTVPFTFontInfo* info = new tTVPFTFontInfo();
 			fonts.push_back( info );
 			tjs_string wname;
 			TVPEncodeUTF8ToUTF16( wname, familyname );
@@ -213,7 +215,7 @@ static void TVPLoadFont( FT_Open_Args& arg, std::vector<FontInfo*>& fonts, std::
 			if( fontmap ) {
 				tjs_uint styleflag = (face->style_flags&FT_STYLE_FLAG_ITALIC) ? TVP_TF_ITALIC : 0;
 				styleflag |= (face->style_flags&FT_STYLE_FLAG_BOLD ) ? TVP_TF_BOLD : 0;
-				fontmap->insert( std::map<FaceKey, FontInfo*>::value_type( FaceKey(wname,styleflag), info ) );
+				fontmap->insert( std::map<FaceKey, tTVPFTFontInfo*>::value_type( FaceKey(wname,styleflag), info ) );
 			}
 			info->facename = wname;
 			if( path ) info->path = *path;
@@ -323,17 +325,17 @@ tBaseFreeTypeFace* tTVPFreeTypeFaceList::GetFace( const tjs_string& facename, tj
 		// まずはスタイル指定で検索する
 		tjs_uint styleflag = options&TVP_TF_ITALIC ? FT_STYLE_FLAG_ITALIC : 0;
 		styleflag |= options&TVP_TF_BOLD ? FT_STYLE_FLAG_BOLD : 0;
-		auto f = std::find_if( faces_.begin(), faces_.end(), [facename, styleflag]( const FontInfo* x ) {
+		auto f = std::find_if( faces_.begin(), faces_.end(), [facename, styleflag]( const tTVPFTFontInfo* x ) {
 			return ( x->facename == facename && ( x->style_flags&( FT_STYLE_FLAG_ITALIC | FT_STYLE_FLAG_BOLD ) ) == styleflag );
 		} );
 		if( f != faces_.end() ) {
-			FontInfo* font = *f;
+			tTVPFTFontInfo* font = *f;
 			return new tGenericFreeTypeFace( ttstr( font->filename ), TVP_FACE_OPTIONS_FACE_INDEX( font->index ) );
 		}
 		// スタイル気にせず検索する
-		f = std::find_if( faces_.begin(), faces_.end(), [facename]( const FontInfo* x ) { return ( x->facename == facename ); } );
+		f = std::find_if( faces_.begin(), faces_.end(), [facename]( const tTVPFTFontInfo* x ) { return ( x->facename == facename ); } );
 		if( f != faces_.end() ) {
-			FontInfo* font = *f;
+			tTVPFTFontInfo* font = *f;
 			return new tGenericFreeTypeFace( ttstr( font->filename ), TVP_FACE_OPTIONS_FACE_INDEX( font->index ) );
 		}
 	}
@@ -341,7 +343,7 @@ tBaseFreeTypeFace* tTVPFreeTypeFaceList::GetFace( const tjs_string& facename, tj
 		FaceKey key( facename, options&( TVP_TF_ITALIC | TVP_TF_BOLD ) );
 		auto i = systemfont_.find( key );
 		if( i != systemfont_.end() ) {
-			FontInfo* font = i->second;
+			tTVPFTFontInfo* font = i->second;
 			return new tGenericFreeTypeFace( font->path, ttstr( facename ), font->index );
 		}
 	}
@@ -358,7 +360,7 @@ extern const tjs_char *TVPGetDefaultFontName();
 // glyphs (a CJK font covers Japanese, Latin and usually Cyrillic).
 tBaseFreeTypeFace* tTVPFreeTypeFaceList::GetFallbackFace( tjs_uint32 options, tjs_string* chosen ) const {
 	tjs_string def( TVPGetDefaultFontName() );
-	const FontInfo* best = nullptr;
+	const tTVPFTFontInfo* best = nullptr;
 	bool best_system = false;
 	for( auto s = systemfaces_.begin(); s != systemfaces_.end(); ++s ) {
 		if( (*s)->facename == def ) { best = *s; best_system = true; break; }
@@ -435,7 +437,7 @@ tBaseFreeTypeFace* tTVPFreeTypeFaceList::GetProportionalCyrillicFace( tjs_string
 	return nullptr;
 }
 //---------------------------------------------------------------------------
-bool tTVPFreeTypeFaceList::CheckFaceFlag( FontInfo& face, tjs_uint flags ) {
+bool tTVPFreeTypeFaceList::CheckFaceFlag( tTVPFTFontInfo& face, tjs_uint flags ) {
 	if( flags & TVP_FSF_FIXEDPITCH ) { // fixed pitch only ?
 		if( (face.face_flags & FT_FACE_FLAG_FIXED_SIZES) == 0 ) return false;
 	}
@@ -634,7 +636,7 @@ tGenericFreeTypeFace::tGenericFreeTypeFace(const std::string& path, const ttstr 
  * @param fonts		フォント情報格納先
  * @param faces		フェイス名リスト格納先
  */
-tGenericFreeTypeFace::tGenericFreeTypeFace(const ttstr &filename, std::vector<FontInfo*>& fonts, std::vector<tjs_string>* faces ) : File(nullptr), Face(nullptr)
+tGenericFreeTypeFace::tGenericFreeTypeFace(const ttstr &filename, std::vector<tTVPFTFontInfo*>& fonts, std::vector<tjs_string>* faces ) : File(nullptr), Face(nullptr)
 {
 	// フィールドの初期化
 	memset(&Stream, 0, sizeof(Stream));
