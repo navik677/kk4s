@@ -1146,6 +1146,25 @@ void tTJSNI_KAGParser::CallLabel(const ttstr &name)
 	GoToLabel(name);
 }
 //---------------------------------------------------------------------------
+// kk4s: [iscript] inside a macro is recorded as [kk4s_script hex="..."]: the script text as UTF-16
+// code units in hex, so the tag holds no quotes or brackets. Expanding the macro runs it again.
+static ttstr kk4sScriptToHex(const ttstr &s)
+{
+	static const tjs_char digits[] = TJS_W("0123456789abcdef");
+	const tjs_char *p = s.c_str();
+	tjs_int len = s.GetLen();
+	ttstr r;
+	tjs_char *d = r.AllocBuffer(len * 4 + 1);
+	for(tjs_int i = 0; i < len; i++)
+	{
+		tjs_uint c = (tjs_uint)p[i];
+		for(int k = 3; k >= 0; k--) *d++ = digits[(c >> (4 * k)) & 0xF];
+	}
+	*d = 0;
+	r.FixLen();
+	return r;
+}
+
 bool tTJSNI_KAGParser::SkipCommentOrLabel()
 {
 	// skip comment or label, and go to next line.
@@ -1207,8 +1226,6 @@ bool tTJSNI_KAGParser::SkipCommentOrLabel()
 			(!TJS_strcmp(p, TJS_W("@iscript")) )    )
 		{
 			// inline TJS script
- 			if(RecordingMacro)
-				TVPThrowExceptionMessage(TVP_KAGPARSER_MESSAGEMAP(TVPLabelOrScriptInMacro));
 
 			ttstr script;
 			CurLine++;
@@ -1236,6 +1253,14 @@ bool tTJSNI_KAGParser::SkipCommentOrLabel()
 
 			if(CurLine == LineCount)
 				 TVPThrowExceptionMessage(TVP_KAGPARSER_MESSAGEMAP(TVPKAGInlineScriptNotEnd));
+
+			if(RecordingMacro)
+			{
+				// kk4s: inside a macro the block is kept as a tag and run when the macro is expanded
+				if(ExcludeLevel == -1)
+					RecordingMacroStr += TJS_W("[kk4s_script hex=\"") + kk4sScriptToHex(script) + TJS_W("\"]");
+				continue;
+			}
 
 			// fire onScript callback event
 			if(ExcludeLevel == -1)
@@ -1838,7 +1863,7 @@ parse_start:
 		enum tSpecialTags
 		{ tag_other, tag_if, tag_else, tag_elsif, tag_ignore, tag_endif, tag_endignore,
 			tag_emb, tag_macro, tag_endmacro, tag_macropop, tag_erasemacro,
-			tag_jump, tag_call, tag_return, tag_pmacro, tag_erasepmacro } tagkind;
+			tag_jump, tag_call, tag_return, tag_pmacro, tag_erasepmacro, tag_kk4s_script } tagkind;
 		static bool tag_checker_init = false;
 		static tTJSHashTable<ttstr, tjs_int> special_tags_hash;
 		if(!tag_checker_init)
@@ -1876,6 +1901,8 @@ parse_start:
 				ttstr(TJS_W("pmacro")), (tjs_int)tag_pmacro);
 			special_tags_hash.Add(
 				ttstr(TJS_W("erasepmacro")), (tjs_int)tag_erasepmacro);
+				special_tags_hash.Add(
+				ttstr(TJS_W("kk4s_script")), (tjs_int)tag_kk4s_script);
 		}
 
 
@@ -2304,6 +2331,41 @@ parse_start:
 							goto parse_start;
 						}
 					}
+else if(tagkind == tag_kk4s_script)
+{
+	// kk4s: an [iscript] block recorded inside a macro (kk4sScriptToHex): run it now, as a script block
+	tTJSVariant hexval;
+	ttstr hexname(TJS_W("hex"));
+	args.getProp(hexname, hexval);
+	ttstr hex = hexval;
+	const tjs_char *hp = hex.c_str();
+	tjs_int hn = hex.GetLen() / 4;
+	ttstr script;
+	tjs_char *sd = script.AllocBuffer(hn + 1);
+	for(tjs_int i = 0; i < hn; i++)
+	{
+		tjs_uint code = 0;
+		for(int k = 0; k < 4; k++)
+		{
+			tjs_char h = hp[i * 4 + k];
+			tjs_uint v = (h >= TJS_W('0') && h <= TJS_W('9')) ? (tjs_uint)(h - TJS_W('0')) :
+				(h >= TJS_W('a') && h <= TJS_W('f')) ? (tjs_uint)(h - TJS_W('a') + 10) : 0;
+			code = (code << 4) | v;
+		}
+		*sd++ = (tjs_char)code;
+	}
+	*sd = 0;
+	script.FixLen();
+	if(Owner)
+	{
+		tTJSVariant param[3] = {script, StorageShortName, (tjs_int)TagLine};
+		tTJSVariant *pparam[3] = { param, param+1, param+2 };
+		static ttstr onScript_name(TJSMapGlobalStringMap(TJS_W("onScript")));
+		Owner->FuncCall(0, onScript_name.c_str(), onScript_name.GetHint(),
+			NULL, 3, pparam, Owner);
+	}
+	goto parse_start;
+}
 					else
 					{
 						if(tagkind == tag_macro)
