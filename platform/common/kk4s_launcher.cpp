@@ -332,7 +332,9 @@ bool SaveCover(const std::string& folder, const std::string& data, const std::st
 // UI pieces
 
 enum class Action {
-    None, Left, Right, Up, Down, PageLeft, PageRight, Ok, Back, Quit, Search, Settings, EditQuery, GameOptions
+    None, Left, Right, Up, Down, PageLeft, PageRight, Ok, Back, Quit, Search, Settings, EditQuery, GameOptions,
+    FilterPrev, FilterNext, // engine side bar (ZL / ZR)
+    Filter0                  // Filter0 + i: side bar entry i (0 = all engines)
 };
 
 struct HitBox {
@@ -585,11 +587,28 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
     };
     resort();
 
-    // carousel / grid geometry
+    // Engine side bar: shown when the games use two or more engines. Choosing an
+    // engine moves the other games to `hidden`; everything below works on `games`.
+    std::vector<GameEngine> engines; // present ones, in a fixed order
+    for (GameEngine e : {GameEngine::Kirikiri, GameEngine::NScripter, GameEngine::RenPy, GameEngine::RealLive})
+        for (const Game& g : games)
+            if (g.engine == e) { engines.push_back(e); break; }
+    const bool sidebar = engines.size() >= 2;
+    int filter = 0; // 0 = all, i = engines[i - 1]
+    std::vector<Game> hidden;
+    std::vector<int> engine_count(engines.size() + 1, 0);
+    engine_count[0] = (int)games.size();
+    for (const Game& g : games)
+        for (size_t i = 0; i < engines.size(); ++i)
+            if (g.engine == engines[i]) engine_count[i + 1]++;
+
+    // carousel / grid geometry (the grid makes room for the side bar)
+    const float side_w = sidebar ? 150 : 0;
     const float card_w = 196, card_h = 276, step = card_w + 44, center_y = 292;
     const int cols = 6;
-    const float gw = 164, gh = 230, gstep_x = 194, gstep_y = 300, grid_top = 112;
-    const float grid_x0 = 640 - (cols * gstep_x - (gstep_x - gw)) / 2;
+    const float gw = sidebar ? 152 : 164, gh = sidebar ? 213 : 230, gstep_x = sidebar ? 180 : 194, gstep_y = 300,
+                grid_top = 112;
+    const float grid_x0 = side_w + (1280 - side_w) / 2 - (cols * gstep_x - (gstep_x - gw)) / 2;
 
     float pos = (float)sel, grid_scroll = 0;
     float bake_scale = 0;
@@ -599,6 +618,28 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
     struct BgLayer { int game; float alpha; };
     std::vector<BgLayer> bg = {{(int)sel, 1.f}};
     auto refresh_bg = [&] { bg.push_back({(int)sel, 0.f}); };
+    auto set_filter = [&](int f) {
+        if (!sidebar) return;
+        f = ((f % ((int)engines.size() + 1)) + (int)engines.size() + 1) % ((int)engines.size() + 1);
+        if (f == filter) return;
+        std::string keep = games.empty() ? "" : games[sel].folder;
+        for (Game& g : hidden) games.push_back(std::move(g));
+        hidden.clear();
+        if (f > 0) {
+            std::vector<Game> shown;
+            for (Game& g : games) (g.engine == engines[f - 1] ? shown : hidden).push_back(std::move(g));
+            games = std::move(shown);
+        }
+        filter = f;
+        sel = 0;
+        resort(); // keeps `keep` selected if it is still shown
+        for (size_t i = 0; i < games.size(); ++i)
+            if (games[i].folder == keep) sel = i;
+        pos = (float)sel;
+        grid_scroll = 0;
+        bg = {{(int)sel, 1.f}}; // indexes changed
+        Log("launcher: engine filter %s (%zu game(s))", f ? EngineName(engines[f - 1]) : "all", games.size());
+    };
     Input in;
     std::string chosen;
     bool running = true, leaving = false;
@@ -950,6 +991,8 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             case Action::Down: move(line); break;
             case Action::PageLeft: move(settings.grid ? -cols * 2 : -5); break;
             case Action::PageRight: move(settings.grid ? cols * 2 : 5); break;
+            case Action::FilterPrev: set_filter(filter - 1); break;
+            case Action::FilterNext: set_filter(filter + 1); break;
             case Action::Ok:
                 if (!games.empty()) {
                     const Game& g = games[sel];
@@ -969,7 +1012,9 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             case Action::Settings: open_sheet(Sheet::Settings); break;
             case Action::GameOptions: open_sheet(Sheet::Game); break;
             case Action::Quit: running = false; break;
-            default: break;
+            default:
+                if (a >= Action::Filter0) set_filter((int)a - (int)Action::Filter0); // side bar tap
+                break;
         }
     };
     auto pad = [&](unsigned bit, bool down) {
@@ -989,6 +1034,8 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             case kPadY: a = Action::Search; break;
             case kPadMinus: a = Action::GameOptions; break;
             case kPadPlus: a = Action::Quit; break;
+            case kPadZL: a = Action::FilterPrev; break;
+            case kPadZR: a = Action::FilterNext; break;
         }
         bool dir = a == Action::Left || a == Action::Right || a == Action::Up || a == Action::Down;
         if (!down) {
@@ -1077,6 +1124,8 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
                         case SDLK_DOWN: act(Action::Down); break;
                         case SDLK_PAGEUP: act(Action::PageLeft); break;
                         case SDLK_PAGEDOWN: act(Action::PageRight); break;
+                        case SDLK_LEFTBRACKET: act(Action::FilterPrev); break;  // engine side bar
+                        case SDLK_RIGHTBRACKET: act(Action::FilterNext); break;
                         case SDLK_RETURN: case SDLK_KP_ENTER: case SDLK_SPACE: act(Action::Ok); break;
                         case SDLK_BACKSPACE: act(Action::Back); break;
                         case SDLK_ESCAPE: act(sheet != Sheet::None || searching ? Action::Back : Action::Quit); break;
@@ -1407,6 +1456,24 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             SDL_RenderSetClipRect(r, nullptr);
         }
 
+        // ---- engine side bar (left): all games, or the games of one engine
+        if (sidebar && !searching) {
+            const float px = 16, py = 104, pw = side_w - 28, item_h = 56;
+            float ph = 16 + (engines.size() + 1) * item_h + 34;
+            RoundRect(v, px, py, pw, ph, 20, WithAlpha(kSurface, 0.92f));
+            for (size_t i = 0; i <= engines.size(); ++i) {
+                float iy = py + 8 + i * item_h;
+                bool on = (int)i == filter;
+                if (on) RoundRect(v, px + 6, iy, pw - 12, item_h - 6, 14, WithAlpha(kAccent, 0.28f));
+                if (on) RoundRect(v, px + 6, iy + 12, 4, item_h - 30, 2, kAccent);
+                std::string label = i == 0 ? T(i18n::kAllEngines) : EngineName(engines[i - 1]);
+                DrawText(v, fonts, label, px + 18, iy + 7, 17, on ? kText : kText2, kLeft, pw - 28, on);
+                DrawText(v, fonts, i18n::Games(engine_count[i]), px + 18, iy + 29, 13, kText3, kLeft, pw - 28);
+                boxes.push_back({px, iy, pw, item_h, (Action)((int)Action::Filter0 + (int)i), -1});
+            }
+            DrawText(v, fonts, "ZL / ZR", px + pw / 2, py + ph - 28, 13, kText3, kCenter);
+        }
+
         // ---- bottom bar
         if (!searching) {
             std::vector<Hint> hints;
@@ -1637,11 +1704,13 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
         //   KK4S_LAUNCHER_SHOT=<file.bmp>  save a frame and quit (a %d in the name: frames 30..45 while scrolling)
         //   KK4S_LAUNCHER_SEARCH=1 | pick  open the cover search first (pick: take the first result)
         //   KK4S_LAUNCHER_SHEET=settings | controls | game  open that sheet first
+        //   KK4S_LAUNCHER_FILTER=<n>       choose engine side bar entry n first (0 = all)
         static int frames = 0;
         ++frames;
         const char* dbg_search = getenv("KK4S_LAUNCHER_SEARCH");
         if (frames == 2) {
             if (dbg_search) act(Action::Search);
+            if (const char* f = getenv("KK4S_LAUNCHER_FILTER")) set_filter(atoi(f)); // side bar entry
             if (const char* sh = getenv("KK4S_LAUNCHER_SHEET")) {
                 autostart_game = -1;
                 if (!strcmp(sh, "settings")) open_sheet(Sheet::Settings);
@@ -1677,6 +1746,7 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
     SDL_StopTextInput();
     clear_results();
     for (Game& g : games) FreeGame(g);
+    for (Game& g : hidden) FreeGame(g);
     if (!chosen.empty()) {
         settings.RecordLaunch(chosen);
         settings.Save();
