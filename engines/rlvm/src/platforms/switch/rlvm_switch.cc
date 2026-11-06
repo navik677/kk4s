@@ -21,6 +21,9 @@
 // --undefined-opcodes, --count-undefined, --trace) are accepted as well.
 // Output goes to sdmc:/switch/kk4s/logs/rlvm.log.
 //
+// Built with -DKK4S_EMBEDDED (rlvm linked into kk4s.nro, like ONScripter-NX),
+// the entry point is rlvm_main() and stdout/stderr are left to the host.
+//
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation; either version 3 of the License, or
@@ -149,6 +152,7 @@ std::string SharedFontFile() {
   return out;
 }
 
+#ifndef KK4S_EMBEDDED
 void OpenLog() {
   std::string dir = std::string(kRoot) + "/logs";
   mkdir(kRoot, 0777);
@@ -159,11 +163,16 @@ void OpenLog() {
   if (freopen(path.c_str(), "a", stderr))
     setvbuf(stderr, nullptr, _IONBF, 0);
 }
+#endif
 
 }  // namespace
 
+#ifdef KK4S_EMBEDDED
+int rlvm_main(int argc, char* argv[]) {
+#else
 int main(int argc, char* argv[]) {
   OpenLog();
+#endif
   std::cout << "rlvm (" << GetRlvmVersionString() << ") for kk4s" << std::endl;
 
   SwitchRLVMInstance instance;

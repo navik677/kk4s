@@ -17,6 +17,8 @@ endif
 
 include $(DEVKITPRO)/libnx/switch_rules
 
+.DEFAULT_GOAL := all
+
 TARGET      := rlvm
 BUILD       := build
 RLVM_PREFIX   ?= $(CURDIR)/../../out-engines/rlvm-deps/prefix
@@ -68,13 +70,34 @@ ASFLAGS  := -g $(ARCH)
 LDFLAGS  := -specs=$(LIBNX)/switch.specs -g $(ARCH) -Wl,--gc-sections \
             -Wl,-Map,$(BUILD)/$(TARGET).map
 
+# devkitPro's SDL2_mixer decodes Ogg with Tremor (libvorbisidec), whose ov_* /
+# vorbis_* functions share libvorbis' names but not its arguments (ov_read);
+# rlvm's own voice decoder (vendor/xclannad/koedec_ogg.cc) uses libvorbisfile.
+# As in kk4s (cmake/kk4s_tremor_rename.cmake), link copies of libSDL2_mixer.a and
+# libvorbisidec.a whose Tremor symbols are renamed to kk4s_tremor_<name>.
+TREMOR_DIR  := $(BUILD)/tremor
+TREMOR_LIBS := $(TREMOR_DIR)/libkk4s_SDL2_mixer.a $(TREMOR_DIR)/libkk4s_vorbisidec.a
+
+$(TREMOR_DIR)/tremor.syms: $(PORTLIBS)/lib/libvorbisidec.a
+	@mkdir -p $(dir $@)
+	@$(PREFIX)nm -g --defined-only $< | \
+		awk 'NF == 3 && $$2 ~ /^[A-Z]$$/ { print $$3 " kk4s_tremor_" $$3 }' > $@
+	@test -s $@
+
+$(TREMOR_DIR)/libkk4s_vorbisidec.a: $(PORTLIBS)/lib/libvorbisidec.a $(TREMOR_DIR)/tremor.syms
+	@$(PREFIX)objcopy --redefine-syms=$(TREMOR_DIR)/tremor.syms $< $@
+
+$(TREMOR_DIR)/libkk4s_SDL2_mixer.a: $(PORTLIBS)/lib/libSDL2_mixer.a $(TREMOR_DIR)/tremor.syms
+	@$(PREFIX)objcopy --redefine-syms=$(TREMOR_DIR)/tremor.syms $< $@
+	@echo SDL2_mixer with $$(wc -l < $(TREMOR_DIR)/tremor.syms) Tremor symbols renamed
+
 LIBDIRS  := -L$(RLVM_PREFIX)/lib -L$(PORTLIBS)/lib -L$(LIBNX)/lib
 LIBS     := -lboost_program_options -lboost_serialization -lboost_iostreams \
             -lboost_filesystem -lboost_date_time -lboost_system \
             -lsndfile \
-            -lSDL2_ttf -lSDL2_image -lSDL2_mixer \
+            -lSDL2_ttf -lSDL2_image $(TREMOR_LIBS) \
             -lfreetype -lharfbuzz -lfreetype -lbz2 -lpng16 -lwebp -ljpeg \
-            -lmodplug -lmpg123 -lopusfile -lopus -lFLAC -lvorbisidec \
+            -lmodplug -lmpg123 -lopusfile -lopus -lFLAC \
             -lvorbisfile -lvorbis -logg \
             -lSDL2 -lEGL -lGLESv2 -lglapi -ldrm_nouveau \
             -lz -lnx -lm
@@ -95,7 +118,7 @@ $(BUILD)/%.o: %.cpp
 	@echo $<
 	@$(CXX) -MMD -MP $(CXXFLAGS) -c $< -o $@
 
-$(BUILD)/$(TARGET).elf: $(OBJS)
+$(BUILD)/$(TARGET).elf: $(OBJS) $(TREMOR_LIBS)
 	@echo linking $(notdir $@)
 	@$(CXX) $(LDFLAGS) $(OBJS) $(LIBDIRS) $(LIBS) -o $@
 

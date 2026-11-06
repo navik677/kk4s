@@ -15,7 +15,7 @@
 #   this repository). The Contents folder holds lib.zip and renpy/common (from
 #   RenpyNXPorts Quickstart); kk4s' engines/renpy/renpy.py replaces its renpy.py.
 # rlvm: needs devkitPro with switch-sdl2_image switch-sdl2_mixer switch-sdl2_ttf
-#   switch-mesa; Boost and libsndfile are built first by tools/build-rlvm-deps.sh
+#   switch-mesa switch-libvorbis; Boost and libsndfile are built first by tools/build-rlvm-deps.sh
 #   into out-engines/rlvm-deps/prefix (downloads them; a host g++ is needed once).
 set -euo pipefail
 
