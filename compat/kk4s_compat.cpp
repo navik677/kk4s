@@ -44,6 +44,10 @@
 extern void TVPAddSystemFontToFreeType(const std::string& storage, std::vector<tjs_string>* faces);
 // engine/source/core/base/win32/SysInitImpl.cpp
 extern std::vector<ttstr> TVPProgramArguments;
+// engine/source/plugins/InternalPlugins.cpp
+extern bool TVPLoadInternalPlugin(const ttstr& name);
+// engine/source/plugins/ncbind/ncbind.cpp (kk4s: forget a plugin linked by the previous game)
+extern void TVPForgetRegisteredPlugin(const ttstr& name);
 
 namespace kk4s {
 namespace compat {
@@ -527,6 +531,47 @@ static void DetectSteamBuild() {
     kk4s::Log("compat: Steam build (steam_api.dll + steam.tjs/steam.xp3): added -steam=yes");
 }
 
+// kk4s: krkr.exe auto-loads every *.tpm next to the exe and in plugin\ at start-up; that scan
+// is disabled in engine/source/core/base/win32/PluginImpl.cpp, but games rely on it. A .tpm is
+// an encrypted plugin DLL and a game need not call Plugins.link for it: amakatsu gets CSVParser
+// only from plugin/csvParser.tpm, and without it the run ends at title.ks:125 (the map CSV list)
+// with `Member "CSVParser" does not exist`.
+//
+// kk4s cannot run the DLL, so link the built-in replacement of the DLL the .tpm provides. Names
+// with no replacement are only logged: most are archive decryptors (cxdec.tpm, xp3dec.tpm,
+// 11eyes.tpm, yosuga.tpm), which have nothing to add to TJS here, and an auto-loaded plugin is
+// not an ignored Plugins.link (soft mode must not count it).
+static void AutoLinkTpmPlugins() {
+    std::string dir = kk4s::GameDir();
+    if (dir.empty()) return;
+    if (dir.back() != '/') dir += '/';
+    std::vector<std::string> dlls;
+    auto scan = [&dlls](const std::string& folder) {
+        DIR* d = opendir(folder.c_str());
+        if (!d) return;
+        while (struct dirent* e = readdir(d)) {
+            std::string n = Lower(e->d_name);
+            if (n.size() > 4 && n.compare(n.size() - 4, 4, ".tpm") == 0)
+                dlls.push_back(n.substr(0, n.size() - 4) + ".dll");
+        }
+        closedir(d);
+    };
+    scan(dir);             // next to the exe
+    scan(dir + "plugin/"); // ...and its plugin folder, as krkr2 does
+    if (dlls.empty()) return;
+    std::sort(dlls.begin(), dlls.end()); // krkr2 loads them in name order
+    for (const std::string& dll : dlls) {
+        ttstr name(dll.c_str());
+        TVPForgetRegisteredPlugin(name); // the previous game may have linked it
+        if (TVPLoadInternalPlugin(name))
+            kk4s::Log("compat: auto-loaded plugin %s (%s.tpm)", dll.c_str(),
+                      dll.substr(0, dll.size() - 4).c_str());
+        else if (!LinkBuiltinPlugin(name)) // that logs "-> kk4s built-in" itself
+            kk4s::Log("compat: %s.tpm: no built-in replacement, skipped",
+                      dll.substr(0, dll.size() - 4).c_str());
+    }
+}
+
 void BeforeStartup() {
     g_main_thread = std::this_thread::get_id();
     ResetPluginLinks(); // new game: its TJS globals are new, link built-ins again
@@ -545,6 +590,7 @@ void BeforeStartup() {
     // savedata/patches Russian translation).
     RunGameScript("patch.tjs");
     InstallEngineNativesCompat(); // krkrz-native Storages/Window/System members, System.inputString
+    AutoLinkTpmPlugins();         // .tpm plugins krkr.exe would have loaded behind the game's back
     ResetPluginIgnoredThisGame();
     InstallSoftMode(); // optional: missing members of native objects -> void (off by default)
     if (!RunGameScript("xp3filter.tjs")) {

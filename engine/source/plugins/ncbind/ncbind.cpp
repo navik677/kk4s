@@ -30,3 +30,12 @@ bool ncbAutoRegister::LoadModule(const ttstr &_name)
 	}
 	return false;
 }
+
+// kk4s: this set outlives a game (kk4s returns to its launcher without restarting the
+// process), so a plugin linked by the previous game made LoadModule() report success
+// without registering anything into the new game's TJS globals. Forget one name before
+// linking it again for a new game.
+void TVPForgetRegisteredPlugin(const ttstr &_name)
+{
+	TVPRegisteredPlugins.erase(_name.AsLowerCase());
+}
