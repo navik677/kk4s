@@ -85,6 +85,15 @@ class SDLEventSystem : public EventSystem {
   void HandleMouseButtonEvent(RLMachine& machine, SDL_Event& event);
   void HandleActiveEvent(RLMachine& machine, SDL_Event& event);
 
+#ifdef __SWITCH__
+  // kk4s: Switch controller as mouse/keys (sdl_event_system.cc).
+  void TranslatePadEvent(SDL_Event& event);
+  void MovePadPointer();
+  static void PadWindowSize(int& w, int& h);
+  float pad_x_, pad_y_;  // pointer in window pixels
+  unsigned int last_pad_ticks_;
+#endif
+
   bool shift_pressed_, ctrl_pressed_;
 
   // Whether the mouse cursor is currently inside the window bounds.

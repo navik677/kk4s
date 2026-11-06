@@ -12,7 +12,7 @@
 // to GLSL ES 3.20 (out vec4, in/out, texture()).
 // -----------------------------------------------------------------------
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
 #include <GLES3/gl32.h>
 #else
 #include "GL/glew.h"
@@ -33,7 +33,7 @@ namespace {
 // -----------------------------------------------------------------------
 // GLSL ES 3.20 / GLSL 3.30 version string
 // -----------------------------------------------------------------------
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
 #  define GLSL_VERSION "#version 320 es\n"
 #  define PRECISION    "precision mediump float;\n"
 #else

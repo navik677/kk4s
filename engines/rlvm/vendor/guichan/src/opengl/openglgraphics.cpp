@@ -46,7 +46,7 @@
  */
 
 #include "guichan/opengl/openglgraphics.hpp"
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
 #include "systems/sdl/quad_batch.h"
 #include "systems/sdl/shaders.h"
 #include "systems/sdl/texture.h"
@@ -62,7 +62,7 @@
 #define glVertex3i glVertex3f
 #elif defined(__APPLE__)
 #include <OpenGL/gl.h>
-#elif defined(__ANDROID__)
+#elif defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
 #include <GLES3/gl32.h>
 #else
 #include <GL/gl.h>
@@ -93,7 +93,7 @@ namespace gcn
 
     void OpenGLGraphics::_beginDraw()
     {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
         // ES 3.2: no glPushAttrib, no matrix stack, no fixed function.
         // Just set up blend state; projection is managed by Texture::SetProjection.
         glDisable(GL_DEPTH_TEST);
@@ -162,7 +162,7 @@ namespace gcn
 
         void OpenGLGraphics::_endDraw()
     {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
         popClipArea();
         glDisable(GL_SCISSOR_TEST);
 #else
@@ -247,7 +247,7 @@ namespace gcn
 
         glBindTexture(GL_TEXTURE_2D, srcImage->getTextureHandle());
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too
         glEnable(GL_TEXTURE_2D);
 #endif
 
@@ -258,7 +258,7 @@ namespace gcn
         }
 
         // Draw a textured quad -- the image
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
         // ES 3.2: use QuadBatch instead of glBegin/glEnd
         QuadBatch::draw(Shaders::GetSpriteProgram(),
                         Texture::CurrentProjection(),
@@ -283,7 +283,7 @@ namespace gcn
         glVertex3i(dstX + width, dstY, 0);
         glEnd();
 #endif
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too
         glDisable(GL_TEXTURE_2D);
 #endif
 
@@ -306,7 +306,7 @@ namespace gcn
         x += top.xOffset;
         y += top.yOffset;
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too
         glBegin(GL_POINTS);
         glVertex2i(x, y);
         glEnd();
@@ -327,7 +327,7 @@ namespace gcn
         x2 += top.xOffset;
         y2 += top.yOffset;
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too
         glBegin(GL_LINES);
         glVertex2f(x1 + 0.375f,
                    y1 + 0.375f);
@@ -336,14 +336,14 @@ namespace gcn
         glEnd();
 #endif  // __ANDROID__
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too
         glBegin(GL_POINTS);
         glVertex2f(x2 + 1.0f - 0.375f,
                    y2 + 1.0f - 0.375f);
         glEnd();
 #endif  // __ANDROID__
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too
         glBegin(GL_POINTS);
         glVertex2f(x1 + 0.375f,
                    y1 + 0.375f);
@@ -360,7 +360,7 @@ namespace gcn
 
         const ClipRectangle& top = mClipStack.top();
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too
         glBegin(GL_LINE_LOOP);
         glVertex2f(rectangle.x + top.xOffset,
                    rectangle.y + top.yOffset);
@@ -387,7 +387,7 @@ namespace gcn
         float x2 = float(rectangle.x + rectangle.width  + top.xOffset);
         float y2 = float(rectangle.y + rectangle.height + top.yOffset);
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
         QuadBatch::draw(Shaders::GetSpriteProgram(),
                         Texture::CurrentProjection(),
                         0, 0,
@@ -409,7 +409,7 @@ namespace gcn
     void OpenGLGraphics::setColor(const Color& color)
     {
         mColor = color;
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too
         glColor4ub((GLubyte) color.r,
                    (GLubyte) color.g,
                    (GLubyte) color.b,

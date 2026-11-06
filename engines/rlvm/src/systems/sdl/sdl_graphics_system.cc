@@ -25,7 +25,7 @@
 //
 // -----------------------------------------------------------------------
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
 #include <GLES3/gl32.h>
 #else
 #include "GL/glew.h"
@@ -34,7 +34,7 @@
 #include "systems/sdl/sdl_graphics_system.h"
 
 #include <SDL2/SDL.h>
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too
 #include <SDL2/SDL_opengl.h>
 #endif
 
@@ -218,7 +218,7 @@ void SDLGraphicsSystem::EndFrame() {
     (*it)->Render(NULL);
   }
 
-#ifndef __ANDROID__  // broken, for now
+#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too  // broken, for now
   if (screen_update_mode() == SCREENUPDATEMODE_MANUAL) {
     // Copy the area behind the cursor to the temporary buffer (drivers differ:
     // the contents of the back buffer is undefined after SDL_GL_SwapBuffers()
@@ -356,13 +356,22 @@ void SDLGraphicsSystem::SetupVideo() {
   if (screen_mode() == 0)
     video_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 
+  int window_w = screen_size().width(), window_h = screen_size().height();
+#ifdef __SWITCH__
+  // kk4s: the Switch screen is always 1280x720; CalculateViewport() scales the
+  // game into it with borders.
+  video_flags |= SDL_WINDOW_FULLSCREEN;
+  window_w = 1280;
+  window_h = 720;
+#endif
+
   // Sets up OpenGL double buffering
   SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
   SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
   SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
   // Use OpenGL ES 3.2 (Android 7+, API 24+)
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -375,7 +384,7 @@ void SDLGraphicsSystem::SetupVideo() {
   // ratio
   if ((screen_ = SDL_CreateWindow(
            "rlvm", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-           screen_size().width(), screen_size().height(), video_flags)) == 0) {
+           window_w, window_h, video_flags)) == 0) {
     // This could happen for a variety of reasons,
     // including DISPLAY not being set, the specified
     // resolution not being available, etc.
@@ -401,7 +410,7 @@ void SDLGraphicsSystem::SetupVideo() {
   SDL_GetWindowSize(screen_, &ww, &wh);
   CalculateViewport(ww, wh);
 
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too
   // Initialize glew
   GLenum err = glewInit();
   if (GLEW_OK != err) {

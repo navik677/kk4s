@@ -38,6 +38,7 @@
 #include "encodings/western.h"
 
 #include <cstdint>
+#include <cstring>  // kk4s: std::strlen (not pulled in by newlib's headers)
 #include <string>
 
 bool Cp1252::IsItalic(uint16_t ch) const {

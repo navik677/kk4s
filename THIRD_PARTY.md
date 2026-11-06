@@ -77,7 +77,7 @@ into kk4s.nro, so their licenses cover only their own binaries.
   et al.; contains code by Peter "Haeleth" Jolly and Kazunori "jagarl" Ueno),
   GNU GPL v3 or later, see `engines/rlvm/COPYING`; taken from the rlvm-project
   tree with the GLES 3.2 renderer (`engines/rlvm/UPSTREAM.txt`). Bundled with
-  it: guichan 0.8 (BSD), zita-resampler (GPL-3), xclannad parts (BSD-style,
+  it: guichan 0.8 (BSD), zita-resampler (GPL-3), xclannad parts (GPL-2 or later and permissive,
   jagarl), pygame `alphablit` (LGPL-2 or later), utf8cpp (Boost license). kk4s changes
   are marked `kk4s:`; the Switch front end is `src/platforms/switch/`.
   `rlvm.nro` links Boost (Boost Software License) and libsndfile (LGPL-2.1+),

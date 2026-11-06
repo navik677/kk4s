@@ -465,7 +465,7 @@ static void determineProperties(SDL_Surface* surface,
 
     // Determine the byte order of the surface
     SDL_PixelFormat* format = surface->format;
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
     // On Android, SDL surfaces may be ABGR8888 or RGBA8888.
     // GLES 3.2 doesn't support GL_UNSIGNED_INT_8_8_8_8_REV, so we
     // always upload as GL_RGBA/GL_UNSIGNED_BYTE and convert in CPU.
@@ -520,7 +520,7 @@ void SDLSurface::uploadTextureIfNeeded() const {
       determineProperties(surface_, is_mask_, bytes_per_pixel, byte_order,
                           byte_type);
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
       // On Android, convert surface to ABGR8888 which in little-endian memory
       // is stored as [R][G][B][A] — exactly what GL_RGBA + GL_UNSIGNED_BYTE expects.
       // Note: SDL_PIXELFORMAT_RGBA8888 stores [A][B][G][R] in memory (wrong for GL).
@@ -556,14 +556,14 @@ void SDLSurface::uploadTextureIfNeeded() const {
         x_offset += *it;
       }
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
       if (converted) {
         SDL_FreeSurface(converted);
       }
 #endif
     } else {
       // Reupload the textures without reallocating them.
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
       // Convert surface for reupload too
       SDL_Surface* upload_surface = surface_;
       SDL_Surface* converted = nullptr;
@@ -579,7 +579,7 @@ void SDLSurface::uploadTextureIfNeeded() const {
         record.reupload(upload_surface, dirty_rectangle_);
       });
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
       if (converted) {
         SDL_FreeSurface(converted);
       }

@@ -372,7 +372,13 @@ std::string System::Regname() {
 }
 
 boost::filesystem::path System::GameSaveDirectory() {
-  fs::path base_dir = GetHomeDirectory() / ".rlvm" / Regname();
+  fs::path base_dir;
+  // kk4s: the front end may put the saves somewhere else (on the Switch,
+  // sdmc:/switch/kk4s/saves/<game folder>/rlvm), see RLVMInstance::Run().
+  if (gameexe().Exists("__SAVEDIR"))
+    base_dir = fs::path(gameexe()("__SAVEDIR").ToString());
+  else
+    base_dir = GetHomeDirectory() / ".rlvm" / Regname();
   fs::create_directories(base_dir);
 
   return base_dir;

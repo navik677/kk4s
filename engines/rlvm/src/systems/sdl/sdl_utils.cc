@@ -25,7 +25,7 @@
 //
 // -----------------------------------------------------------------------
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
 #include <GLES3/gl32.h>
 #else
 #include "GL/glew.h"
@@ -34,7 +34,7 @@
 #include "systems/sdl/sdl_utils.h"
 
 #include <SDL2/SDL.h>
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too
 #include <SDL2/SDL_opengl.h>
 #endif
 
@@ -76,7 +76,7 @@ void CheckGLErrors(const char* location) {
 // -----------------------------------------------------------------------
 
 bool IsNPOTSafe() {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
   // OpenGL ES 3.2 fully supports NPOT textures.
   return true;
 #else

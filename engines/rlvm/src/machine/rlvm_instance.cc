@@ -102,6 +102,10 @@ void RLVMInstance::Run(const boost::filesystem::path& gamerootPath) {
       gameexe("__GAMEFONT") = custom_font_;
     }
 
+    // kk4s: save directory chosen by the front end (System::GameSaveDirectory).
+    if (!save_dir_.empty())
+      gameexe("__SAVEDIR") = save_dir_;
+
     libreallive::Archive arc(seenPath.string(), gameexe("REGNAME"));
     SDLSystem sdlSystem(gameexe);
     RLMachine rlmachine(sdlSystem, arc);

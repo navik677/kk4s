@@ -51,6 +51,8 @@ class RLVMInstance {
   void set_tracing() { tracing_ = true; }
   void set_load_save(int in) { load_save_ = in; }
   void set_custom_font(const std::string& font) { custom_font_ = font; }
+  // kk4s: where saves go instead of ~/.rlvm/<REGNAME> (empty = default).
+  void set_save_dir(const std::string& dir) { save_dir_ = dir; }
 
   void set_dump_seen(int in) { dump_seen_ = in; }
 
@@ -88,6 +90,9 @@ class RLVMInstance {
 
   // Whether we should set a custom font.
   std::string custom_font_;
+
+  // kk4s: save directory override.
+  std::string save_dir_;
 
   // Which SEEN# we should start execution from (-1 if we shouldn't set this).
   int seen_start_;
