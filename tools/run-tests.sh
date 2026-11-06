@@ -12,9 +12,9 @@
 #              in the x86 interpreter (needs i686-w64-mingw32-gcc, else skipped)
 #   io         engine I/O: TextStream encoding, AlphaMovie, Scripts.loadDataPack,
 #              layerEx* / layerExSave / layerExDraw Layer methods, fstat.dll Storages methods,
-#              json.dll / scriptsEx.dll / windowEx.dll, mouse / wheel / touch /
-#              pad input semantics, and the original KAG3 system scripts
-#              playing a scenario and played with the pad (tests/kag3, ~60 s)
+#              json.dll / scriptsEx.dll / windowEx.dll, auto-loaded .tpm plugins,
+#              mouse / wheel / touch / pad input semantics, and the original KAG3
+#              system scripts playing a scenario and played with the pad (tests/kag3, ~60 s)
 #   decoders   PBD / PSB / CXDEC decoders vs their Python references (no engine),
 #              the x86 interpreter vs native code and the .tpm loader on
 #              synthetic filter plugins (need i686-w64-mingw32-gcc),
@@ -91,6 +91,7 @@ group_io() {
     run sprintf      python3 tests/sprintf/smoke.py "$EXE"
     run textrender   python3 tests/textrender/smoke.py "$EXE"
     run csvvar       python3 tests/csvvar/smoke.py "$EXE"
+    run tpmautolink  python3 tests/tpmautolink/smoke.py "$EXE"
     run kagparserex  python3 tests/kagparserex/smoke.py "$EXE"
     run psdfile      python3 tests/psdfile/smoke.py "$EXE"
     run layerexdraw  python3 tests/layerexdraw/smoke.py "$EXE"

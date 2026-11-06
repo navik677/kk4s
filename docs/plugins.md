@@ -3,6 +3,13 @@
 Windows plugins (`Plugins.link("x.dll")`) cannot run on Switch/Linux. kk4s replaces them natively.
 Lookup order: engine internal plugins (`engine/source/plugins`) → kk4s table (`compat/kk4s_plugins.cpp`) → ignored with a log line `compat: plugin not available, ignored: x.dll`.
 
+At start-up kk4s also scans the game folder and its `plugin/` subfolder for `*.tpm` (an encrypted plugin DLL)
+and links the built-in replacement of every name it knows, as `krkr.exe` does even when a game never calls
+`Plugins.link` (for example `plugin/csvParser.tpm` provides `CSVParser`). Names without a replacement, mostly
+archive decryptors such as `cxdec.tpm`, are logged as skipped; they are not counted as an ignored link for soft
+mode. A plugin linked by the previous game is re-registered for the next one, because kk4s returns to the
+launcher without restarting the process. `compat/kk4s_compat.cpp` (`AutoLinkTpmPlugins`), `tests/tpmautolink`.
+
 Status: **full** = same behaviour, **approx** = similar result, **stub** = does nothing (game logic continues, the effect is missing).
 
 **Soft mode** (optional, off by default; launcher setting "Soft plugin mode", `settings.ini` `soft_mode=1`):

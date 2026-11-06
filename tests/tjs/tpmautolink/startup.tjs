@@ -1,0 +1,20 @@
+// Auto-loaded .tpm plugins (tests/tpmautolink/smoke.py).
+// krkr.exe loads every *.tpm next to the executable and in plugin/ at start-up,
+// even when the game never calls Plugins.link. kk4s must link the built-in
+// replacement of the DLL behind such a file (compat/kk4s_compat.cpp,
+// AutoLinkTpmPlugins). The test copies this script into a temporary game folder
+// and writes csvParser.tpm next to it; nothing is linked here on purpose.
+var fails = 0;
+if (typeof global.CSVParser == "undefined") {
+    fails++;
+    Debug.message("TPM_AUTOLINK FAIL: CSVParser is not defined");
+} else {
+    var p = new CSVParser();
+    p.init("1,2\n");
+    var row = p.getNextLine();
+    if (row === void || row.join("|") != "1|2") {
+        fails++;
+        Debug.message("TPM_AUTOLINK FAIL: CSVParser is not usable");
+    }
+}
+if (fails == 0) Debug.message("TPM_AUTOLINK PASS");
