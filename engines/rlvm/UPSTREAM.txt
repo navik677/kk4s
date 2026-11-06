@@ -1,0 +1,11 @@
+rlvm (RealLive virtual machine clone), Elliot Glaysher et al., GNU GPL v3 or later (COPYING).
+Taken from the rlvm-project tree (rlvm/ + rlvm-r/ Android port, "Version 0.14",
+GLES 3.2 renderer) that the user keeps at E:\kk4s-pc\engines\rlvm-project-main.
+
+Copied: rlvm/src (without src/platforms/{gtk,osx,android}), rlvm/vendor/{guichan,
+zita-resampler,xclannad,pygame,utf8cpp,lru_cache.hpp}. Not copied: SCons files,
+tests, GLEW/gtest/gmock/luabind, the vendored SDL_image/SDL_mixer/SDL_ttf (devkitPro
+has them), the Android app. icon-src.png is rlvm/resources/512.png.
+
+kk4s changes are marked "kk4s:"; the Switch front end is src/platforms/switch/ and
+the build is Makefile (see docs/engines.md).
