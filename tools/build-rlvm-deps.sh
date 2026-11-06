@@ -117,6 +117,9 @@ EOF
     # No mmap on the Switch; rlvm uses only the zlib filter of Boost.Iostreams.
     sed -i 's/^local sources = file_descriptor.cpp mapped_file.cpp ;/local sources = file_descriptor.cpp ;/' \
         "$src/libs/iostreams/build/Jamfile.v2"
+    # newlib declares fdopendir(), so Boost.Filesystem's compile-only check says
+    # yes, but libnx does not implement it: iterate directories with opendir().
+    sed -i '/has_fdopendir_nofollow/d' "$src/libs/filesystem/build/Jamfile.v2"
 
     echo "== b2 (boost $BOOST_VERSION) -> $PREFIX"
     (cd "$src" && "$b2" -j"$JOBS" -q \

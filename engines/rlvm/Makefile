@@ -1,7 +1,7 @@
 # kk4s: Nintendo Switch build of rlvm -> rlvm.nro (docs/engines.md).
 #
 #   tools/build-rlvm-deps.sh          # Boost + libsndfile into out-engines/rlvm-deps/prefix
-#   make -C engines/rlvm RLVM_DEPS=<that prefix>
+#   make -C engines/rlvm RLVM_PREFIX=<that prefix>
 #
 # or simply tools/build-engines.sh rlvm. Needs devkitPro (devkitA64, libnx) with
 # switch-sdl2 switch-sdl2_image switch-sdl2_mixer switch-sdl2_ttf switch-mesa
@@ -19,7 +19,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 
 TARGET      := rlvm
 BUILD       := build
-RLVM_DEPS   ?= $(CURDIR)/../../out-engines/rlvm-deps/prefix
+RLVM_PREFIX   ?= $(CURDIR)/../../out-engines/rlvm-deps/prefix
 
 APP_TITLE   := rlvm (kk4s)
 APP_AUTHOR  := Elliot Glaysher et al.; kk4s
@@ -53,7 +53,7 @@ ARCH     := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 
 INCLUDES := -Iswitch/include -I. -Isrc -Ivendor -Ivendor/guichan/include \
             -Ivendor/zita-resampler/include -Ivendor/xclannad \
-            -I$(RLVM_DEPS)/include \
+            -I$(RLVM_PREFIX)/include \
             -I$(PORTLIBS)/include -I$(PORTLIBS)/include/SDL2 -I$(LIBNX)/include
 
 DEFINES  := -D__SWITCH__ -DHAVE_CONFIG_H -DNO_SDL_GLEXT -DCASE_SENSITIVE_FILESYSTEM \
@@ -68,7 +68,7 @@ ASFLAGS  := -g $(ARCH)
 LDFLAGS  := -specs=$(LIBNX)/switch.specs -g $(ARCH) -Wl,--gc-sections \
             -Wl,-Map,$(BUILD)/$(TARGET).map
 
-LIBDIRS  := -L$(RLVM_DEPS)/lib -L$(PORTLIBS)/lib -L$(LIBNX)/lib
+LIBDIRS  := -L$(RLVM_PREFIX)/lib -L$(PORTLIBS)/lib -L$(LIBNX)/lib
 LIBS     := -lboost_program_options -lboost_serialization -lboost_iostreams \
             -lboost_filesystem -lboost_date_time -lboost_system \
             -lsndfile \
