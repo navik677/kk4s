@@ -16,6 +16,9 @@ PKGS=(
     switch-libpng switch-libjpeg-turbo switch-libwebp
     switch-libogg switch-libvorbis switch-libopus switch-opusfile
     switch-zlib switch-bzip2 switch-curl
+    # ONScripter built in (NScripter games, docs/engines.md)
+    switch-sdl2_image switch-sdl2_mixer switch-sdl2_ttf switch-smpeg2
+    switch-libmodplug switch-mpg123 switch-libvorbisidec
 )
 
 install_deps() {

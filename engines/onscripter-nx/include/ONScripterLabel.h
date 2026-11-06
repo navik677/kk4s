@@ -75,13 +75,14 @@
 
 #define NUM_GLYPH_CACHE 30
 
+// kk4s: declared here, defined once in ONScripterLabel.cpp
 #ifdef SDL2
-Uint8 window_id;
+extern Uint8 window_id;
 #endif
 
 #ifdef __SWITCH__
-SDL_Rect screen_clip;
-SDL_Rect cinematic_bars[2];
+extern SDL_Rect screen_clip;
+extern SDL_Rect cinematic_bars[2];
 #endif
 
 struct OVInfo{

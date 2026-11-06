@@ -1375,7 +1375,7 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             bool has_play = it != settings.played.end() && it->second.last > 0;
             chips.push_back(has_play ? i18n::F(i18n::kLastPlayed, FormatDate(it->second.last)) : T(i18n::kNeverPlayed));
             if (has_play) chips.push_back(i18n::Launches(it->second.count));
-            if (IsExternalEngine(g.engine)) chips.push_back(EngineName(g.engine));
+            if (g.engine != GameEngine::Kirikiri) chips.push_back(EngineName(g.engine));
             if (g.title != g.folder) chips.push_back(g.folder);
             bool dot = g.folder == last;
             float total = 0;

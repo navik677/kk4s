@@ -29,6 +29,7 @@ const char* EngineName(GameEngine e) {
 }
 
 bool IsExternalEngine(GameEngine e) {
+    if (IsBuiltInEngine(e)) return false;
     return e == GameEngine::NScripter || e == GameEngine::RealLive || e == GameEngine::RenPy;
 }
 

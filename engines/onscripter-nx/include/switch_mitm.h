@@ -10,11 +10,12 @@ typedef struct {
     int *current_mode;
 } ThreadData;
 
-ThreadData *thread_data;
-SDL_Thread *thread_id;
+// kk4s: declared here, defined once in ONScripterLabel.cpp
+extern ThreadData *thread_data;
+extern SDL_Thread *thread_id;
 
-PadState pad;
-PadRepeater pad_r;
+extern PadState pad;
+extern PadRepeater pad_r;
 
 void switch_init();
 void switch_deinit();

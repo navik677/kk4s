@@ -22,6 +22,7 @@
  */
 
 #include "ScriptHandler.h"
+#include "kk4s_ons.h"
 #ifdef __SWITCH__
 #include "switch_mitm.h"
 #endif
@@ -547,7 +548,9 @@ void ScriptHandler::saveKidokuData()
 {
     FILE *fp;
 
-    if ( ( fp = fopen( "kidoku.dat", "wb" ) ) == NULL ){
+    // kk4s: the kk4s save folder when it is set
+    if ( !kk4sSaveOpen( "kidoku.dat", "wb", &fp ) ) fp = fopen( "kidoku.dat", "wb" );
+    if ( fp == NULL ){
         fprintf( stderr, "can't write kidoku.dat\n" );
         return;
     }
@@ -564,7 +567,8 @@ void ScriptHandler::loadKidokuData()
     kidoku_buffer = new char[ script_buffer_length/8 + 1 ];
     memset( kidoku_buffer, 0, script_buffer_length/8 + 1 );
 
-    if ( ( fp = fopen( "kidoku.dat", "rb" ) ) != NULL ){
+    if ( !kk4sSaveOpen( "kidoku.dat", "rb", &fp ) ) fp = fopen( "kidoku.dat", "rb" ); // kk4s
+    if ( fp != NULL ){
         fread( kidoku_buffer, 1, script_buffer_length/8, fp );
         fclose( fp );
     }

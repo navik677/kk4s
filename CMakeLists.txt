@@ -127,6 +127,7 @@ set(INCLUDES
 set(SOURCES
     platform/common/kk4s_common.cpp
     platform/common/kk4s_engines.cpp
+    platform/common/kk4s_onscripter.cpp
     platform/common/kk4s_files.cpp
     platform/common/kk4s_i18n.cpp
     platform/common/kk4s_image.cpp
@@ -406,6 +407,79 @@ if(KK4S_PLATFORM STREQUAL "desktop")
 endif()
 
 add_executable(${PROJECT_NAME} ${SOURCES})
+
+# --- ONScripter-NX built in (NScripter games, docs/engines.md) ---
+# GPL-2+: with it, the kk4s binary is distributed under the GPL. AUTO = on when
+# SDL2_image / SDL2_mixer / SDL2_ttf / smpeg2 are found; without them NScripter
+# games use a separate onscripter program from <root>/engines/ as before.
+set(KK4S_ONSCRIPTER "AUTO" CACHE STRING "Build ONScripter into kk4s: AUTO, ON or OFF")
+set_property(CACHE KK4S_ONSCRIPTER PROPERTY STRINGS AUTO ON OFF)
+if(NOT KK4S_ONSCRIPTER STREQUAL "OFF")
+    if(KK4S_ONSCRIPTER STREQUAL "ON")
+        set(KK4S_ONS_REQUIRED REQUIRED)
+    endif()
+    pkg_check_modules(KK4S_ONS ${KK4S_ONS_REQUIRED} SDL2_image SDL2_mixer SDL2_ttf)
+    # smpeg2 (MP3 music) ships smpeg2-config, no .pc file
+    find_path(KK4S_SMPEG2_INCLUDE_DIR smpeg2/smpeg.h)
+    find_library(KK4S_SMPEG2_LIBRARY NAMES smpeg2)
+    if(KK4S_ONS_FOUND AND NOT (KK4S_SMPEG2_INCLUDE_DIR AND KK4S_SMPEG2_LIBRARY))
+        if(KK4S_ONSCRIPTER STREQUAL "ON")
+            message(FATAL_ERROR "kk4s: smpeg2 not found (needed by ONScripter)")
+        endif()
+        set(KK4S_ONS_FOUND FALSE)
+    endif()
+endif()
+if(KK4S_ONS_FOUND)
+    message(STATUS "kk4s: ONScripter built in")
+    file(GLOB KK4S_ONS_SOURCES ${CMAKE_SOURCE_DIR}/engines/onscripter-nx/source/*.cpp)
+    if(NOT KK4S_PLATFORM STREQUAL "switch")
+        list(FILTER KK4S_ONS_SOURCES EXCLUDE REGEX "switch_[a-z_]+\\.cpp$")
+    endif()
+    add_library(kk4s_onscripter STATIC ${KK4S_ONS_SOURCES})
+    # old code (2006): register, narrowing, string literals as char*
+    set_target_properties(kk4s_onscripter PROPERTIES CXX_STANDARD 11 CXX_EXTENSIONS ON)
+    target_include_directories(kk4s_onscripter PUBLIC ${CMAKE_SOURCE_DIR}/engines/onscripter-nx/include)
+    target_include_directories(kk4s_onscripter PRIVATE ${KK4S_SMPEG2_INCLUDE_DIR} ${KK4S_SMPEG2_INCLUDE_DIR}/smpeg2)
+    target_compile_definitions(kk4s_onscripter PRIVATE
+        KK4S_EMBEDDED SDL2 INSANI USE_OGG_VORBIS ENABLE_1BYTE_CHAR FORCE_1BYTE_CHAR)
+    if(KK4S_PLATFORM STREQUAL "desktop" AND NOT WIN32)
+        target_compile_definitions(kk4s_onscripter PRIVATE LINUX)
+    endif()
+    # ONScripter's class names (FontInfo, DirtyRect, ...) also exist in the
+    # Kirikiri engine and plugins: same-named inline members would be merged
+    # silently by the linker. Every ONScripter class gets an ons_ prefix.
+    foreach(cls Alias AnimationInfo ArchiveInfo ArrayVariable BaseReader ButtonLink ButtonState
+                DirectReader DirtyRect EffectLink FileInfo FontInfo GlyphCache LabelInfo LogInfo
+                LogLink NestInfo NsaReader ONScripterLabel OVInfo RMenuLink RegisteredCompressionType
+                RubyStruct SarReader SaveFileInfo ScriptHandler ScriptParser SelectLink TextBuffer
+                UserFuncLUT VariableData VariableInfo WAVE_HEADER)
+        target_compile_definitions(kk4s_onscripter PRIVATE ${cls}=ons_${cls})
+    endforeach()
+    target_compile_options(kk4s_onscripter PRIVATE -g -O2 -fpermissive -Wno-write-strings -Wno-narrowing
+        -Wno-register -w)
+    if(KK4S_PLATFORM STREQUAL "switch")
+        target_include_directories(kk4s_onscripter PRIVATE ${KK4S_ONS_STATIC_INCLUDE_DIRS} ${KK4S_DEPS_STATIC_INCLUDE_DIRS})
+        target_compile_options(kk4s_onscripter PRIVATE ${KK4S_ONS_STATIC_CFLAGS_OTHER})
+        target_link_directories(${PROJECT_NAME} PRIVATE ${KK4S_ONS_STATIC_LIBRARY_DIRS})
+        # SDL_mixer's Tremor would clash with libvorbis (kk4s, FFmpeg): renamed copies
+        include(${CMAKE_SOURCE_DIR}/cmake/kk4s_tremor_rename.cmake)
+        kk4s_tremor_rename("${DEVKITPRO}/portlibs/switch/lib" "${CMAKE_BINARY_DIR}/kk4s-tremor" KK4S_ONS_MIXER)
+        set(KK4S_ONS_LIBS ${KK4S_ONS_STATIC_LIBRARIES})
+        list(TRANSFORM KK4S_ONS_LIBS REPLACE "^SDL2_mixer$" "${KK4S_ONS_MIXER}")
+        list(FILTER KK4S_ONS_LIBS EXCLUDE REGEX "^vorbisidec$")
+        set(KK4S_ONS_LINK ${KK4S_SMPEG2_LIBRARY} ${KK4S_ONS_LIBS} bz2)
+    else()
+        target_include_directories(kk4s_onscripter PRIVATE ${KK4S_ONS_INCLUDE_DIRS} ${KK4S_DEPS_INCLUDE_DIRS})
+        target_compile_options(kk4s_onscripter PRIVATE ${KK4S_ONS_CFLAGS_OTHER})
+        target_link_directories(${PROJECT_NAME} PRIVATE ${KK4S_ONS_LIBRARY_DIRS})
+        set(KK4S_ONS_LINK ${KK4S_SMPEG2_LIBRARY} ${KK4S_ONS_LIBRARIES} bz2)
+    endif()
+    target_compile_definitions(${PROJECT_NAME} PRIVATE KK4S_HAS_ONSCRIPTER=1)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/engines/onscripter-nx/include)
+else()
+    message(STATUS "kk4s: ONScripter not built in (separate program from engines/onscripter/)")
+    set(KK4S_ONS_LINK "")
+endif()
 if(WIN32 AND KK4S_PLATFORM STREQUAL "desktop")
     target_sources(${PROJECT_NAME} PRIVATE platform/desktop/kk4s.rc)
 endif()
@@ -416,14 +490,20 @@ if(KK4S_PLATFORM STREQUAL "switch")
     target_include_directories(${PROJECT_NAME} PRIVATE ${KK4S_DEPS_STATIC_INCLUDE_DIRS})
     target_compile_options(${PROJECT_NAME} PRIVATE ${KK4S_DEPS_STATIC_CFLAGS_OTHER})
     target_link_directories(${PROJECT_NAME} PRIVATE ${KK4S_DEPS_STATIC_LIBRARY_DIRS})
+    if(KK4S_ONS_FOUND)
+        target_link_libraries(${PROJECT_NAME} kk4s_onscripter)
+    endif()
     target_link_libraries(${PROJECT_NAME}
-        -Wl,--start-group ${KK4S_DEPS_STATIC_LIBRARIES} -Wl,--end-group
+        -Wl,--start-group ${KK4S_ONS_LINK} ${KK4S_DEPS_STATIC_LIBRARIES} -Wl,--end-group
         ${KK4S_DEPS_STATIC_LDFLAGS_OTHER}
     )
 else()
     target_include_directories(${PROJECT_NAME} PRIVATE ${KK4S_DEPS_INCLUDE_DIRS})
     target_compile_options(${PROJECT_NAME} PRIVATE ${KK4S_DEPS_CFLAGS_OTHER})
     target_link_directories(${PROJECT_NAME} PRIVATE ${KK4S_DEPS_LIBRARY_DIRS})
+    if(KK4S_ONS_FOUND)
+        target_link_libraries(${PROJECT_NAME} kk4s_onscripter ${KK4S_ONS_LINK})
+    endif()
     target_link_libraries(${PROJECT_NAME} ${KK4S_DEPS_LIBRARIES} ${KK4S_DEPS_LDFLAGS_OTHER})
     find_package(Threads REQUIRED)
     target_link_libraries(${PROJECT_NAME} Threads::Threads)

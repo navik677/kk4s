@@ -90,21 +90,17 @@ void *FontInfo::openFont( char *font_file, int ratio1, int ratio2 )
         fc->next = new FontContainer();
         fc->next->size = font_size;
 #ifdef __SWITCH__
-        FILE *sd_fp = fopen( font_file, "r" );
-        FILE *romfs_fp = romfsOpen( font_file, "r" );
-        FILE *fp;
-        if (sd_fp)
-            fp = sd_fp;
-        else if (romfs_fp)
-            fp = romfs_fp;
-        else
-            return NULL;
-#else
-        FILE *fp = fopen( font_file, "r" );
-        if ( fp == NULL ) return NULL;
-#endif
+        // kk4s: binary mode; the romfs copy is opened only when the SD one is missing
+        FILE *fp = fopen( font_file, "rb" );
+        if ( !fp ) fp = romfsOpen( font_file, "rb" );
+        if ( !fp ) return NULL;
         SDL_RWops *font_rw = SDL_RWFromFP( fp, SDL_TRUE );
         fc->next->font = TTF_OpenFontRW( font_rw, 1, font_size * ratio1 / ratio2 );
+#else
+        // kk4s: SDL_ttf opens the file itself (a text-mode FILE* broke fonts on Windows)
+        fc->next->font = TTF_OpenFont( font_file, font_size * ratio1 / ratio2 );
+        if ( fc->next->font == NULL ) return NULL;
+#endif
     }
 
     ttf_font = (void*)fc->next->font;

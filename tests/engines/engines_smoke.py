@@ -9,7 +9,9 @@ Cases (all synthetic, no game content):
             (Gameexe.ini + Seen.txt), Ren'Py (game/*.rpyc); Kirikiri wins over
             a stray game/*.rpy; a lone 0.txt or a game/ without scripts is no game
   missing   without engines/<id>/ the line says "(engine not installed)"
-  launch    kk4s <NScripter folder> runs engines/onscripter/onscripter(.exe)
+  builtin   kk4s built with ONScripter: kk4s <NScripter folder> runs a tiny
+            script in it; the global save lands in saves/<game>/, not in the game
+  launch    otherwise: kk4s <NScripter folder> runs engines/onscripter/onscripter(.exe)
             with --root <folder> and waits for it (needs a C compiler: cc / gcc,
             else skipped)
 """
@@ -36,6 +38,7 @@ def run(executable: str, root: Path, args: list[str]) -> tuple[int, str, str]:
     env = os.environ.copy()
     env["KK4S_ROOT"] = str(root)
     env.setdefault("SDL_VIDEODRIVER", "dummy")
+    env.setdefault("SDL_AUDIODRIVER", "dummy")
     result = subprocess.run([executable, *args], env=env, timeout=60, check=False,
                             capture_output=True, text=True)
     logs = sorted((root / "logs").glob("kk4s-*.log"))
@@ -96,13 +99,30 @@ def main() -> int:
                     failures.append(f"list: {folder} should stay Kirikiri, got {line!r}")
             elif not line.startswith(engine + ": "):
                 failures.append(f"list: {folder} should be {engine}, got {line!r}")
-            elif "(engine not installed)" not in line and folder != "rp":
+            elif "(engine not installed)" not in line and folder != "rp" and not line.endswith(": built in"):
                 failures.append(f"missing: {folder}: {line!r}")
         if code != 0:
             failures.append(f"--list-games exited with {code}")
 
+        builtin = listed.get("ns_dat", "").endswith(": built in")
         cc = find_cc()
-        if not cc:
+        if builtin:
+            # ONScripter inside kk4s: run a tiny script; its global save goes to saves/<game>/
+            game = root / "games" / "ns_run"
+            game.mkdir()
+            (game / "0.txt").write_bytes(b"*define\r\nglobalon\r\ngame\r\n*start\r\nmov %200,42\r\nend\r\n")
+            (game / "arc.nsa").write_bytes(b"\x00\x00\x00\x00\x00\x06")  # empty NSA archive
+            code, _, log = run(executable, root, [str(game)])
+            save = root / "saves" / "ns_run" / "gloval.sav"
+            if "onscripter: game ended" not in log:
+                failures.append("builtin: ONScripter did not run the script\n" + log[-1500:])
+            if not save.exists() or save.read_bytes()[:4] != (42).to_bytes(4, "little"):
+                failures.append(f"builtin: no global save with %200 = 42 in {save}")
+            if (game / "gloval.sav").exists():
+                failures.append("builtin: the save went to the game folder")
+            if code != 0:
+                failures.append(f"builtin: kk4s exited with {code}")
+        elif not cc:
             print("launch: no C compiler, skipped")
         else:
             args_file = Path(temp) / "engine-args.txt"

@@ -22,6 +22,7 @@
  */
 
 #include "ONScripterLabel.h"
+#include "kk4s_ons.h"
 
 #if defined(LINUX) || defined(MACOSX)
 #include <sys/types.h>
@@ -54,6 +55,12 @@ void ONScripterLabel::searchSaveFile( SaveFileInfo &save_file_info, int no )
     script_h.getStringFromInteger( save_file_info.sjis_no, no, (num_save_file >= 10)?2:1 );
 #if defined(LINUX) || defined(MACOSX)
     sprintf( file_name, "%ssave%d.dat", archive_path, no );
+    { // kk4s: the kk4s save folder first
+        char name[32], game_path[256];
+        sprintf( name, "save%d.dat", no );
+        strcpy( game_path, file_name );
+        kk4sSavePath( name, game_path, file_name, sizeof(file_name) );
+    }
     struct stat buf;
     struct tm *tm;
     if ( stat( file_name, &buf ) != 0 ){
@@ -68,6 +75,12 @@ void ONScripterLabel::searchSaveFile( SaveFileInfo &save_file_info, int no )
     save_file_info.minute = tm->tm_min;
 #elif defined(WIN32)
     sprintf( file_name, "%ssave%d.dat", archive_path, no );
+    { // kk4s: the kk4s save folder first
+        char name[32], game_path[256];
+        sprintf( name, "save%d.dat", no );
+        strcpy( game_path, file_name );
+        kk4sSavePath( name, game_path, file_name, sizeof(file_name) );
+    }
     HANDLE  handle;
     FILETIME    tm, ltm;
     SYSTEMTIME  stm;
@@ -126,6 +139,12 @@ void ONScripterLabel::searchSaveFile( SaveFileInfo &save_file_info, int no )
     save_file_info.minute = buf.st_mtime.minute;
 #elif defined(__SWITCH__)
     sprintf( file_name, "save%d.dat", no );
+    { // kk4s: the kk4s save folder first
+        char name[32], game_path[256];
+        sprintf( name, "save%d.dat", no );
+        strcpy( game_path, file_name );
+        kk4sSavePath( name, game_path, file_name, sizeof(file_name) );
+    }
     struct stat buf;
     struct tm *tm;
     if ( stat( file_name, &buf ) != 0 ){

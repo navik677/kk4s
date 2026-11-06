@@ -10,6 +10,7 @@
 #include <vector>
 
 struct SDL_Renderer;
+struct SDL_Window;
 
 namespace kk4s {
 
@@ -130,7 +131,13 @@ GameEngine DetectEngine(const std::string& dir);
 // Games of other engines run in a separate program (kk4s_engines.cpp):
 // <RootDir>/engines/<id>/<id>.nro on the Switch, <id>.exe / <id> on PC.
 const char* EngineName(GameEngine e); // "NScripter", "RealLive", "Ren'Py", ...
-bool IsExternalEngine(GameEngine e);
+bool IsExternalEngine(GameEngine e);   // runs in a separate program
+// Built into kk4s (kk4s_onscripter.cpp): NScripter when kk4s is built with
+// ONScripter (KK4S_HAS_ONSCRIPTER). RunBuiltInEngine replaces the launcher's
+// window with the engine's and does not return; at the end of the game kk4s
+// goes back to the launcher like after a Kirikiri game (ExitAfterGame).
+bool IsBuiltInEngine(GameEngine e);
+void RunBuiltInEngine(GameEngine e, const std::string& game_dir, SDL_Window* window, SDL_Renderer* renderer);
 // The program that runs this game, "" if it is not installed.
 std::string ExternalEngineProgram(GameEngine e, const std::string& game_dir);
 // Runs a game of an external engine. game_dir ends with '/'.

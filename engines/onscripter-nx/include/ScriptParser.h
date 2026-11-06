@@ -50,7 +50,7 @@
 typedef unsigned char uchar3[3];
 
 #ifdef __SWITCH__
-int screen_width_wide, screen_width, screen_height, bar_length[2];
+extern int screen_width_wide, screen_width, screen_height, bar_length[2]; // kk4s: defined in ONScripterLabel.cpp
 #endif
 
 class ScriptParser
