@@ -7,7 +7,8 @@ Cases (all synthetic, no game content):
   list      kk4s --list-games names the engine of each folder: NScripter
             (nscript.dat; 0.txt + arc.nsa; inside a wrapper folder), RealLive
             (Gameexe.ini + Seen.txt), Ren'Py (game/*.rpyc); Kirikiri wins over
-            a stray game/*.rpy; a lone 0.txt or a game/ without scripts is no game
+            a stray game/*.rpy; a lone 0.txt or a game/ without scripts is no game;
+            a folder of several games (coll/) lists each one as coll/<game>
   missing   without engines/<id>/ the line says "(engine not installed)"
   builtin   kk4s built with ONScripter: kk4s <NScripter folder> runs a tiny
             script in it; the global save lands in saves/<game>/, not in the game
@@ -64,7 +65,10 @@ def make_games(games: Path) -> dict[str, str]:
     touch(games / "kiri" / "game" / "notes.rpy")
     touch(games / "readme_only" / "0.txt")
     touch(games / "rp_no_scripts" / "game" / "bg.png")
-    return {"ns_dat": "NScripter", "ns_txt": "NScripter", "ns_wrap": "NScripter", "rl": "RealLive",
+    touch(games / "coll" / "one" / "nscript.dat")  # a collection: games/coll/<game>
+    touch(games / "coll" / "two" / "00.txt")
+    touch(games / "coll" / "two" / "arc.sar")
+    return {"coll/one": "NScripter", "coll/two": "NScripter", "coll": "","ns_dat": "NScripter", "ns_txt": "NScripter", "ns_wrap": "NScripter", "rl": "RealLive",
             "rp": "Ren'Py", "kiri": "Kirikiri", "readme_only": "", "rp_no_scripts": ""}
 
 
@@ -108,12 +112,12 @@ def main() -> int:
         cc = find_cc()
         if builtin:
             # ONScripter inside kk4s: run a tiny script; its global save goes to saves/<game>/
-            game = root / "games" / "ns_run"
+            game = root / "games" / "coll" / "ns_run"  # inside the collection
             game.mkdir()
             (game / "0.txt").write_bytes(b"*define\r\nglobalon\r\ngame\r\n*start\r\nmov %200,42\r\nend\r\n")
             (game / "arc.nsa").write_bytes(b"\x00\x00\x00\x00\x00\x06")  # empty NSA archive
             code, _, log = run(executable, root, [str(game)])
-            save = root / "saves" / "ns_run" / "gloval.sav"
+            save = root / "saves" / "coll" / "ns_run" / "gloval.sav"
             if "onscripter: game ended" not in log:
                 failures.append("builtin: ONScripter did not run the script\n" + log[-1500:])
             if not save.exists() or save.read_bytes()[:4] != (42).to_bytes(4, "little"):

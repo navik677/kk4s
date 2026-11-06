@@ -5,6 +5,7 @@
 #include "kk4s_platform.h"
 #include "kk4s_internal.h"
 #include "kk4s_settings.h"
+#include "kk4s_files.h"
 
 #ifdef KK4S_HAS_ONSCRIPTER
 #define KK4S_EMBEDDED 1
@@ -39,7 +40,7 @@ void RunBuiltInEngine(GameEngine e, const std::string& game_dir, SDL_Window* win
 #ifdef KK4S_HAS_ONSCRIPTER
     if (e != GameEngine::NScripter) return;
     std::string saves = SavesDir() + "/" + detail::GameKey(game_dir) + "/";
-    detail::MakeDir(saves);
+    files::MakeDirs(saves);
     std::vector<std::string> args{"onscripter"};
     for (const std::string& a : detail::ExternalEngineArgs(e, game_dir, "", "")) args.push_back(a);
     args.push_back("--kk4s-saves");

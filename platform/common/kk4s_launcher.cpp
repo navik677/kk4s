@@ -104,9 +104,12 @@ std::string BaseLower(const std::string& f) { return img::Lower(f.substr(0, f.rf
 
 // <data>/covers/<folder>.* first (where the cover search saves), then the game folder.
 std::string FindCover(const std::string& dir, const std::string& folder) {
-    std::string covers = RootDir() + "/covers";
+    // a game of a collection ("ons/Narcissu"): covers/ons/Narcissu.*
+    size_t slash = folder.rfind('/');
+    std::string covers = RootDir() + "/covers" + (slash == std::string::npos ? "" : "/" + folder.substr(0, slash));
+    std::string base = folder.substr(slash == std::string::npos ? 0 : slash + 1);
     for (const std::string& f : ListFiles(covers, IsImageFile))
-        if (BaseLower(f) == img::Lower(folder)) return covers + "/" + f;
+        if (BaseLower(f) == img::Lower(base)) return covers + "/" + f;
     for (const char* base : {"cover", "folder", "poster"})
         for (const std::string& f : ListFiles(dir, IsImageFile))
             if (BaseLower(f) == base) return dir + "/" + f;
@@ -144,7 +147,8 @@ std::string ReadFirstLine(const std::string& path) {
 std::string ReadTitle(const std::string& dir, const std::string& folder) {
     std::string t = ReadFirstLine(dir + "/title.txt");
     if (t.empty()) t = ReadFirstLine(RootDir() + "/covers/" + folder + ".txt");
-    return t.empty() ? folder : t;
+    // a game of a collection ("ons/Narcissu") is called by its own folder
+    return t.empty() ? folder.substr(folder.rfind('/') + 1) : t;
 }
 
 SDL_Color TintFor(const std::string& name) {
@@ -317,6 +321,7 @@ bool WriteFile(const std::string& path, const std::string& data) {
 bool SaveCover(const std::string& folder, const std::string& data, const std::string& title) {
     std::string dir = RootDir() + "/covers";
     MakeDir(dir);
+    if (folder.find('/') != std::string::npos) files::MakeDirs(dir + "/" + folder.substr(0, folder.rfind('/')));
     for (const char* ext : {"png", "jpg", "jpeg", "webp"}) remove((dir + "/" + folder + "." + ext).c_str());
     if (!WriteFile(dir + "/" + folder + "." + img::ImageExt(data), data)) return false;
     if (!title.empty()) WriteFile(dir + "/" + folder + ".txt", title + "\n");
