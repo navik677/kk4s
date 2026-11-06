@@ -1842,6 +1842,10 @@ struct PluginEntry {
 static const PluginEntry kPlugins[] = {
     {"util.dll", LinkUtilDllAll},
     {"kagparserex.dll", LinkKAGParserExDll},
+    // Same parser under the name some game builds use (Karigurashi Renai: system/override.tjs links
+    // ExtKAGParser.dll, then its scripts use @pmacro; unlinked, pmacro reached the engine as a tag
+    // and the game stopped on a black screen at Macro_Effect.ks:37).
+    {"extkagparser.dll", LinkKAGParserExDll},
     {"fstat.dll", LinkFstatDll},
     {"p.dll", LinkPDll},
     {"krkrsteam.dll", LinkKrrkSteamDll},
