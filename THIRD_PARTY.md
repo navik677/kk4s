@@ -65,15 +65,20 @@ Kirikiri license, adapted to krkrs' streams.
 
 ## Other engines (`engines/`), separate programs
 
-kk4s starts these as their own programs (docs/engines.md); they are not linked
-into kk4s.nro, so their licenses cover only their own binaries.
+See docs/engines.md.
 
 - `engines/onscripter-nx/`: ONScripter-NX by clamintus (Switch port of
   onscripter-20060724-insani-sdl2; ONScripter by Ogapee), GNU GPL v2 or later,
-  see `engines/onscripter-nx/COPYING`. kk4s changes are marked `kk4s:`
-  (`--kk4s-return`, `--root` enters the game folder, start-up file check).
+  see `engines/onscripter-nx/COPYING`. **Built into kk4s** when its libraries
+  are found (`KK4S_ONSCRIPTER`): such a kk4s binary is distributed under the
+  GNU GPL (the Kirikiri license allows this). kk4s changes are marked `kk4s:`
+  (save files in kk4s' save folder, `--kk4s-return`, `--root` enters the game
+  folder, start-up file check, font opened in binary mode, one definition of
+  the header variables, `onscripter_main`). With it the binary also links
+  SDL2_image, SDL2_mixer, SDL2_ttf (zlib), smpeg2 (LGPL-2), libmodplug (public
+  domain), mpg123 (LGPL-2.1) and Tremor (BSD-3).
   Its `romfs/default.ttf` comes with the upstream repository.
-- `engines/renpy/renpy.py`: `renpy.py` of Ren'Py 7.3.5 (Tom Rothamel), MIT
+- `engines/renpy/renpy.py` (a separate program, not linked into kk4s): `renpy.py` of Ren'Py 7.3.5 (Tom Rothamel), MIT
   license (header of the file), as shipped with the Ren'Py Switch SDK; kk4s
   lines marked `kk4s:`. The SDK binary (renpy-switch, uyjulian) and its
   `lib.zip` are not in this repository.

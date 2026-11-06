@@ -23,6 +23,7 @@
 
 #include "ONScripterLabel.h"
 #include "version.h"
+#include "kk4s_ons.h"
 #ifdef __SWITCH__
 #include <switch.h>
 #include <unistd.h>
@@ -56,7 +57,10 @@ void optionVersion()
     printf("This is free software; see the source for copying conditions.\n");
     exit(0);
 }
-#if defined(QWS)
+#if defined(KK4S_EMBEDDED)
+// kk4s: built into kk4s, which calls this after its launcher (kk4s_onscripter.cpp)
+int onscripter_main( int argc, char **argv )
+#elif defined(QWS)
 int SDL_main( int argc, char **argv )
 #elif defined(PSP)
 extern "C" int main( int argc, char **argv )
@@ -64,7 +68,7 @@ extern "C" int main( int argc, char **argv )
 int main( int argc, char **argv )
 #endif
 {
-#if defined(WIN32)
+#if defined(WIN32) && !defined(KK4S_EMBEDDED)
     freopen("stdout.txt", "w", stdout);
     freopen("stderr.txt", "w", stderr);
 #endif
@@ -123,6 +127,15 @@ int main( int argc, char **argv )
                 // current folder, which hbloader sets to the folder of the .nro.
                 if ( chdir( argv[0] ) != 0 ) printf( "kk4s: cannot enter %s\n", argv[0] );
 #endif
+            }
+            else if ( !strcmp( argv[0]+1, "-kk4s-saves" ) ){
+                // kk4s: save files go to this folder (kk4s_ons.h)
+                argc--;
+                argv++;
+                size_t len = strlen( argv[0] );
+                kk4s_save_dir = new char[ len + 2 ];
+                strcpy( kk4s_save_dir, argv[0] );
+                if ( len == 0 || ( argv[0][len-1] != '/' && argv[0][len-1] != '\\' ) ) strcat( kk4s_save_dir, "/" );
             }
             else if ( !strcmp( argv[0]+1, "-kk4s-return" ) ){
                 // kk4s: started from the kk4s launcher; hbloader starts this NRO

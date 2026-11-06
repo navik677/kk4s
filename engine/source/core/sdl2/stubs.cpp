@@ -1616,6 +1616,12 @@ int main(int argc, char **argv) {
 		return 0;
 	}
 
+	// kk4s: NScripter games run in the ONScripter built into kk4s (does not return)
+	{
+		kk4s::GameEngine kk4sEngine = kk4s::DetectEngine(kk4sGameDir);
+		if (kk4s::IsBuiltInEngine(kk4sEngine)) kk4s::RunBuiltInEngine(kk4sEngine, kk4sGameDir, window, renderer);
+	}
+
 	int kk4sArgc = kk4s::EngineArgc();
 	char** kk4sArgv = kk4s::EngineArgv();
 	_argc = kk4sArgc > 0 ? kk4sArgc : 1;

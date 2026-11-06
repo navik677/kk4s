@@ -319,7 +319,8 @@ std::string SelectGame(SDL_Renderer* renderer) {
         for (const std::string& g : games) {
             std::string dir = GamesDir() + "/" + g + "/";
             GameEngine e = DetectEngine(dir);
-            std::string project = IsExternalEngine(e) ? std::string(EngineName(e)) + ": " +
+            std::string project = IsBuiltInEngine(e) ? std::string(EngineName(e)) + ": built in"
+                                  : IsExternalEngine(e) ? std::string(EngineName(e)) + ": " +
                                                             (ExternalEngineProgram(e, dir).empty()
                                                                  ? std::string("(engine not installed)")
                                                                  : ExternalEngineProgram(e, dir))

@@ -22,6 +22,7 @@
  */
 
 #include "ScriptParser.h"
+#include "kk4s_ons.h"
 
 #define VERSION_STR1 "ONScripter"
 #define VERSION_STR2 "Copyright (C) 2001-2006 Studio O.G.A. All Rights Reserved."
@@ -513,7 +514,9 @@ void ScriptParser::allocFileIOBuf()
 int ScriptParser::saveFileIOBuf( const char *filename, int offset )
 {
     FILE *fp;
-    if ( (fp = fopen( filename, "wb" )) == NULL ) return -1;
+    // kk4s: saves go to the kk4s save folder when it is set
+    if ( !kk4sSaveOpen( filename, "wb", &fp ) ) fp = fopen( filename, "wb" );
+    if ( fp == NULL ) return -1;
     
     size_t ret = fwrite(file_io_buf+offset, 1, file_io_buf_ptr-offset, fp);
     fclose(fp);
@@ -526,7 +529,9 @@ int ScriptParser::saveFileIOBuf( const char *filename, int offset )
 int ScriptParser::loadFileIOBuf( const char *filename )
 {
     FILE *fp;
-    if ( (fp = fopen( filename, "rb" )) == NULL )
+    // kk4s: the kk4s save folder first, then the game folder
+    if ( !kk4sSaveOpen( filename, "rb", &fp ) ) fp = fopen( filename, "rb" );
+    if ( fp == NULL )
         return -1;
     
     fseek(fp, 0, SEEK_END);

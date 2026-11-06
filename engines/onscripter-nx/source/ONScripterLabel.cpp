@@ -26,6 +26,20 @@
 #include "switch_mitm.h"
 #endif
 
+// kk4s: the variables the headers declare, one definition each
+#ifdef SDL2
+Uint8 window_id;
+#endif
+#ifdef __SWITCH__
+SDL_Rect screen_clip;
+SDL_Rect cinematic_bars[2];
+int screen_width_wide, screen_width, screen_height, bar_length[2];
+ThreadData *thread_data;
+SDL_Thread *thread_id;
+PadState pad;
+PadRepeater pad_r;
+#endif
+
 extern void initSJIS2UTF16();
 extern "C" void waveCallback( int channel );
 
