@@ -26,6 +26,7 @@
 #include <io.h>
 #include <process.h>
 #else
+#include <sys/wait.h>
 #include <unistd.h>
 #endif
 
@@ -241,6 +242,74 @@ void WindowConfig(int& width, int& height, unsigned& sdl_flags) {
     sdl_flags = SDL_WINDOW_RESIZABLE;
 }
 
+// Runs program with args in folder `cwd` and waits for it. Returns its exit code, -1 if it did not start.
+static int RunAndWait(const std::string& program, const std::vector<std::string>& args, const std::string& cwd) {
+#ifdef _WIN32
+    // kk4s.manifest sets the UTF-8 code page, so the A functions take UTF-8 paths.
+    std::string cmd = "\"" + program + "\"";
+    for (const std::string& a : args) cmd += " \"" + a + "\"";
+    std::vector<char> line(cmd.begin(), cmd.end());
+    line.push_back(0);
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    memset(&si, 0, sizeof(si));
+    si.cb = sizeof(si);
+    memset(&pi, 0, sizeof(pi));
+    if (!CreateProcessA(program.c_str(), line.data(), nullptr, nullptr, FALSE, 0, nullptr,
+                        cwd.empty() ? nullptr : cwd.c_str(), &si, &pi)) {
+        Log("engines: CreateProcess(%s) failed: error %lu", program.c_str(), (unsigned long)GetLastError());
+        return -1;
+    }
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 0;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return (int)code;
+#else
+    pid_t pid = fork();
+    if (pid < 0) return -1;
+    if (pid == 0) {
+        if (!cwd.empty() && chdir(cwd.c_str()) != 0) _exit(127);
+        std::vector<char*> argv{const_cast<char*>(program.c_str())};
+        for (const std::string& a : args) argv.push_back(const_cast<char*>(a.c_str()));
+        argv.push_back(nullptr);
+        execv(program.c_str(), argv.data());
+        _exit(127);
+    }
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) return -1;
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+#endif
+}
+
+bool StartExternalEngine(GameEngine e, const std::string& game_dir) {
+    std::string program = ExternalEngineProgram(e, game_dir);
+    if (program.empty()) {
+        Log("engines: %s game, but %s/engines/%s/ has no %s program", EngineName(e), RootDir().c_str(), EngineId(e),
+            EngineId(e));
+        return false;
+    }
+    std::vector<std::string> args = ExternalEngineArgs(e, game_dir, program, "");
+    std::string line;
+    for (const std::string& a : args) line += " \"" + a + "\"";
+    Log("engines: %s game -> %s%s", EngineName(e), program.c_str(), line.c_str());
+    size_t slash = program.find_last_of("/\\");
+    std::string cwd = slash == std::string::npos ? std::string() : program.substr(0, slash);
+    int code = RunAndWait(program, args, cwd);
+    Log("engines: %s exited with code %d", program.c_str(), code);
+    return code != -1;
+}
+
+// After an external engine's game the launcher shows again in the same window.
+static bool RunExternal(SDL_Renderer* renderer, GameEngine e, const std::string& dir) {
+    SDL_Window* w = renderer ? SDL_RenderGetWindow(renderer) : nullptr;
+    if (w) SDL_HideWindow(w);
+    bool ok = StartExternalEngine(e, dir);
+    if (w) SDL_ShowWindow(w);
+    return ok;
+}
+
 std::string SelectGame(SDL_Renderer* renderer) {
     if (g_list_games) {
         // kk4s --list-games: which folders in games/ are recognised and where each
@@ -248,14 +317,24 @@ std::string SelectGame(SDL_Renderer* renderer) {
         std::vector<std::string> games = ScanGames();
         Log("launcher: %zu game(s) found in %s", games.size(), GamesDir().c_str());
         for (const std::string& g : games) {
-            std::string project = ResolveProjectDir(GamesDir() + "/" + g + "/");
+            std::string dir = GamesDir() + "/" + g + "/";
+            GameEngine e = DetectEngine(dir);
+            std::string project = IsExternalEngine(e) ? std::string(EngineName(e)) + ": " +
+                                                            (ExternalEngineProgram(e, dir).empty()
+                                                                 ? std::string("(engine not installed)")
+                                                                 : ExternalEngineProgram(e, dir))
+                                                      : ResolveProjectDir(dir);
             Log("game: %s -> %s", g.c_str(), project.c_str());
             printf("%s\t%s\n", g.c_str(), project.c_str());
         }
         return "";
     }
     if (!g_cli_game.empty()) {
-        return SetGameDir(g_cli_game);
+        std::string dir = SetGameDir(g_cli_game);
+        GameEngine e = DetectEngine(dir);
+        if (!IsExternalEngine(e)) return dir;
+        RunExternal(renderer, e, dir);
+        return "";
     }
     std::vector<std::string> games = ScanGames();
     Log("launcher: %zu game(s) found in %s", games.size(), GamesDir().c_str());
@@ -263,10 +342,17 @@ std::string SelectGame(SDL_Renderer* renderer) {
     std::string last = ReadLastPlayed();
     for (size_t i = 0; i < games.size(); ++i)
         if (games[i] == last) sel = i;
-    std::string chosen = RunLauncher(renderer, games, sel);
-    if (chosen.empty()) return "";
-    WriteLastPlayed(chosen);
-    return SetGameDir(GamesDir() + "/" + chosen);
+    for (;;) {
+        std::string chosen = RunLauncher(renderer, games, sel);
+        if (chosen.empty()) return "";
+        WriteLastPlayed(chosen);
+        std::string dir = SetGameDir(GamesDir() + "/" + chosen);
+        GameEngine e = DetectEngine(dir);
+        if (!IsExternalEngine(e)) return dir;
+        RunExternal(renderer, e, dir);
+        for (size_t i = 0; i < games.size(); ++i)
+            if (games[i] == chosen) sel = i;
+    }
 }
 
 } // namespace kk4s

@@ -121,6 +121,23 @@ const std::string& GameDir();
 // File names are matched case-insensitively. game_dir must end with '/'.
 std::string ResolveProjectDir(const std::string& game_dir);
 
+// Which engine a game folder is made for (a single wrapper sub-folder is looked
+// into, like the launcher does). Kirikiri is checked first with the same rules as
+// before; the others only when no Kirikiri project is found. See docs/engines.md.
+enum class GameEngine { None, Kirikiri, NScripter, RealLive, RenPy };
+GameEngine DetectEngine(const std::string& dir);
+
+// Games of other engines run in a separate program (kk4s_engines.cpp):
+// <RootDir>/engines/<id>/<id>.nro on the Switch, <id>.exe / <id> on PC.
+const char* EngineName(GameEngine e); // "NScripter", "RealLive", "Ren'Py", ...
+bool IsExternalEngine(GameEngine e);
+// The program that runs this game, "" if it is not installed.
+std::string ExternalEngineProgram(GameEngine e, const std::string& game_dir);
+// Runs a game of an external engine. game_dir ends with '/'.
+// Switch: sets that program as the next NRO; kk4s must exit right after (true).
+// PC: runs it, waits for it to end and returns true. false (logged) on failure.
+bool StartExternalEngine(GameEngine e, const std::string& game_dir);
+
 // Font files (native paths) the engine may use as "installed system fonts":
 // OS fonts that cover Japanese/Cyrillic/Latin, plus <RootDir>/fonts/.
 // Switch: Nintendo's shared system font (cached on SD) + romfs:/fonts/.

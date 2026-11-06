@@ -337,6 +337,41 @@ void WindowConfig(int& width, int& height, unsigned& sdl_flags) {
 // ---------------------------------------------------------------------------
 // launcher
 
+// argv string for envSetNextLoad: every argument in quotes (libnx splits on
+// spaces outside quotes; game folders often have spaces).
+static std::string QuoteArgs(const std::vector<std::string>& args) {
+    std::string s;
+    for (const std::string& a : args) {
+        if (!s.empty()) s += ' ';
+        s += '"' + a + '"';
+    }
+    return s;
+}
+
+bool StartExternalEngine(GameEngine e, const std::string& game_dir) {
+    std::string program = ExternalEngineProgram(e, game_dir);
+    if (program.empty()) {
+        Log("engines: %s game, but %s/engines/%s/%s.nro is missing", EngineName(e), RootDir().c_str(), EngineId(e),
+            EngineId(e));
+        return false;
+    }
+    if (!envHasNextLoad()) {
+        Log("engines: cannot start %s: not launched by hbloader (no next-load)", program.c_str());
+        return false;
+    }
+    std::string self = (__system_argc > 0 && __system_argv[0]) ? __system_argv[0] : RootDir() + "/kk4s.nro";
+    if (e == GameEngine::RenPy && !WriteRenPyHandoff(game_dir, self)) return false;
+    std::vector<std::string> argv{program};
+    for (const std::string& a : ExternalEngineArgs(e, game_dir, program, self)) argv.push_back(a);
+    std::string args = QuoteArgs(argv);
+    if (R_FAILED(envSetNextLoad(program.c_str(), args.c_str()))) {
+        Log("engines: envSetNextLoad(%s) failed", program.c_str());
+        return false;
+    }
+    Log("engines: %s game -> %s %s", EngineName(e), program.c_str(), args.c_str());
+    return true;
+}
+
 std::string SelectGame(SDL_Renderer* renderer) {
     std::vector<std::string> games = ScanGames();
     Log("launcher: %zu game(s) found in %s", games.size(), GamesDir().c_str());
@@ -344,13 +379,25 @@ std::string SelectGame(SDL_Renderer* renderer) {
     std::string last = ReadLastPlayed();
     for (size_t i = 0; i < games.size(); ++i)
         if (games[i] == last) sel = i;
-    std::string chosen = RunLauncher(renderer, games, sel);
-    if (chosen.empty()) {
-        Log("launcher: no game selected, exiting");
-        return "";
+    for (;;) {
+        std::string chosen = RunLauncher(renderer, games, sel);
+        if (chosen.empty()) {
+            Log("launcher: no game selected, exiting");
+            return "";
+        }
+        WriteLastPlayed(chosen);
+        std::string dir = SetGameDir(GamesDir() + "/" + chosen);
+        GameEngine engine = DetectEngine(dir);
+        if (!IsExternalEngine(engine)) return dir;
+        // Another engine's program takes over after kk4s exits (hbloader starts
+        // it next); it comes back to kk4s.nro when its game quits.
+        if (StartExternalEngine(engine, dir)) {
+            SetGamePerformance(false);
+            return "";
+        }
+        for (size_t i = 0; i < games.size(); ++i)
+            if (games[i] == chosen) sel = i;
     }
-    WriteLastPlayed(chosen);
-    return SetGameDir(GamesDir() + "/" + chosen);
 }
 
 } // namespace kk4s

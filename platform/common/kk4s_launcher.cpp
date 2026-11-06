@@ -74,6 +74,7 @@ struct Game {
     std::string folder; // name inside GamesDir()
     std::string title;
     std::string issue; // DetectGameIssue(): non-empty = may not start (repack/DRM)
+    GameEngine engine = GameEngine::Kirikiri; // others run in their own program (kk4s_engines.cpp)
     SDL_Texture* cover = nullptr; // full cover art
     SDL_Texture* blur = nullptr;  // tiny blurred cover for the background
     SDL_Texture* icon = nullptr;  // icon for generated cards
@@ -163,7 +164,8 @@ void LoadGame(SDL_Renderer* r, Game& g) {
     FreeGame(g);
     std::string dir = GamesDir() + "/" + g.folder;
     g.title = ReadTitle(dir, g.folder);
-    g.issue = detail::DetectGameIssue(dir);
+    g.engine = DetectEngine(dir);
+    g.issue = g.engine == GameEngine::Kirikiri ? detail::DetectGameIssue(dir) : std::string();
     g.tint = TintFor(g.folder);
     std::string cover = FindCover(dir, g.folder);
     if (!cover.empty()) {
@@ -945,7 +947,15 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             case Action::PageRight: move(settings.grid ? cols * 2 : 5); break;
             case Action::Ok:
                 if (!games.empty()) {
-                    chosen = games[sel].folder;
+                    const Game& g = games[sel];
+                    if (IsExternalEngine(g.engine) &&
+                        ExternalEngineProgram(g.engine, GamesDir() + "/" + g.folder).empty()) {
+                        // its engine program is not on the SD card: say where it goes
+                        Log("launcher: %s: %s engine not installed", g.folder.c_str(), EngineName(g.engine));
+                        show_toast(i18n::F(i18n::kEngineMissing, detail::EngineId(g.engine)), 4000);
+                        break;
+                    }
+                    chosen = g.folder;
                     leaving = true;
                     leave_at = SDL_GetTicks();
                 }
@@ -1365,6 +1375,7 @@ std::string RunLauncher(SDL_Renderer* r, const std::vector<std::string>& folders
             bool has_play = it != settings.played.end() && it->second.last > 0;
             chips.push_back(has_play ? i18n::F(i18n::kLastPlayed, FormatDate(it->second.last)) : T(i18n::kNeverPlayed));
             if (has_play) chips.push_back(i18n::Launches(it->second.count));
+            if (IsExternalEngine(g.engine)) chips.push_back(EngineName(g.engine));
             if (g.title != g.folder) chips.push_back(g.folder);
             bool dot = g.folder == last;
             float total = 0;

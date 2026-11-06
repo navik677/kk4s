@@ -126,6 +126,7 @@ set(INCLUDES
 
 set(SOURCES
     platform/common/kk4s_common.cpp
+    platform/common/kk4s_engines.cpp
     platform/common/kk4s_files.cpp
     platform/common/kk4s_i18n.cpp
     platform/common/kk4s_image.cpp

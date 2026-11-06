@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <initializer_list>
 #include <dirent.h>
 #include <strings.h>
 #include <sys/stat.h>
@@ -341,9 +342,9 @@ static bool SubfolderHas(const std::string& dir, const char* sub, const char* na
     return found;
 }
 
-// A folder is a game when Kirikiri would find a project in it: startup.tjs or an
-// XP3 at the top, startup.tjs in data/ or content-data/, or an archive inside an exe.
-static bool IsGameFolderFlat(const std::string& dir) {
+// A folder is a Kirikiri game when Kirikiri would find a project in it: startup.tjs
+// or an XP3 at the top, startup.tjs in data/ or content-data/, or an archive inside an exe.
+static bool IsKirikiriFolderFlat(const std::string& dir) {
     DIR* d = opendir(dir.c_str());
     if (!d) return false;
     bool ok = false;
@@ -361,6 +362,77 @@ static bool IsGameFolderFlat(const std::string& dir) {
     if (SubfolderHas(dir, "data", "startup.tjs") || SubfolderHas(dir, "content-data", "startup.tjs")) return true;
     return !FindSelfCombinedExe(dir, false).empty();
 }
+
+static bool EndsWithNoCase(const char* s, const char* suffix) {
+    size_t n = strlen(s), m = strlen(suffix);
+    return n > m && strcasecmp(s + n - m, suffix) == 0;
+}
+
+// True if some file directly in dir ends with one of the suffixes (case-insensitive).
+static bool HasFileEnding(const std::string& dir, std::initializer_list<const char*> suffixes) {
+    DIR* d = opendir(dir.c_str());
+    if (!d) return false;
+    bool found = false;
+    while (!found)
+        if (struct dirent* e = readdir(d)) {
+            for (const char* s : suffixes)
+                if (EndsWithNoCase(e->d_name, s)) { found = true; break; }
+        } else {
+            break;
+        }
+    closedir(d);
+    return found;
+}
+
+static bool HasEntry(const std::string& dir, const char* name, bool want_dir);
+
+// Real name of the sub-folder `sub` of dir (case-insensitive), "" if none.
+static std::string SubfolderName(const std::string& dir, const char* sub) {
+    std::string base = dir;
+    if (!base.empty() && base.back() != '/') base += '/';
+    DIR* d = opendir(base.c_str());
+    if (!d) return "";
+    std::string found;
+    while (struct dirent* e = readdir(d)) {
+        if (strcasecmp(e->d_name, sub) != 0) continue;
+        struct stat st;
+        if (stat((base + e->d_name).c_str(), &st) == 0 && S_ISDIR(st.st_mode)) { found = base + e->d_name; break; }
+    }
+    closedir(d);
+    return found;
+}
+
+// Ren'Py: game/ holds the scripts (.rpy / .rpyc) or the .rpa archives.
+static bool IsRenPyFolderFlat(const std::string& dir) {
+    std::string game = SubfolderName(dir, "game");
+    return !game.empty() && HasFileEnding(game, {".rpa", ".rpyc", ".rpy", ".rpymc"});
+}
+
+// RealLive (rlvm): Gameexe.ini next to the compiled scenario Seen.txt.
+static bool IsRealLiveFolderFlat(const std::string& dir) {
+    return HasEntry(dir, "gameexe.ini", false) && HasEntry(dir, "seen.txt", false);
+}
+
+// NScripter (ONScripter): its script files, or 0.txt / 00.txt next to NSA / SAR archives
+// (a lone 0.txt could be any readme).
+static bool IsNScripterFolderFlat(const std::string& dir) {
+    for (const char* n : {"nscript.dat", "nscr_sec.dat", "nscript.___", "onscript.nt", "onscript.nt2", "onscript.nt3",
+                          "pscript.dat"})
+        if (HasEntry(dir, n, false)) return true;
+    return (HasEntry(dir, "0.txt", false) || HasEntry(dir, "00.txt", false)) &&
+           HasFileEnding(dir, {".nsa", ".sar", ".ns2"});
+}
+
+// Kirikiri first, exactly as before, so a Kirikiri folder is never taken for another engine.
+static GameEngine DetectEngineFlat(const std::string& dir) {
+    if (IsKirikiriFolderFlat(dir)) return GameEngine::Kirikiri;
+    if (IsRenPyFolderFlat(dir)) return GameEngine::RenPy;
+    if (IsRealLiveFolderFlat(dir)) return GameEngine::RealLive;
+    if (IsNScripterFolderFlat(dir)) return GameEngine::NScripter;
+    return GameEngine::None;
+}
+
+static bool IsGameFolderFlat(const std::string& dir) { return DetectEngineFlat(dir) != GameEngine::None; }
 
 // Archives often unpack into a wrapper: games/<Name>/<Name>/data.xp3. When `dir` is not a game itself
 // but exactly one of its sub-folders (up to two levels down) is, that sub-folder is the game.
@@ -393,6 +465,19 @@ static std::string WrapperGameDir(const std::string& dir, int depth = 0) {
 bool IsGameFolder(const std::string& dir) {
     return IsGameFolderFlat(dir) || !WrapperGameDir(dir).empty();
 }
+
+} // namespace detail
+
+GameEngine DetectEngine(const std::string& dir) {
+    std::string d = dir;
+    while (d.size() > 1 && (d.back() == '/' || d.back() == '\\')) d.pop_back();
+    GameEngine e = detail::DetectEngineFlat(d);
+    if (e != GameEngine::None) return e;
+    std::string inner = detail::WrapperGameDir(d);
+    return inner.empty() ? GameEngine::None : detail::DetectEngineFlat(inner);
+}
+
+namespace detail {
 
 // True if <dir>/<name> exists (case-insensitive); want_dir also requires a
 // directory. Cheap: only reads the directory entry names.

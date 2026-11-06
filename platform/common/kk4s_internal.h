@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "kk4s_platform.h"
+
 struct SDL_Renderer;
 
 namespace kk4s {
@@ -27,6 +29,14 @@ long long FindXP3InExecutable(const std::string& path, bool full_scan);
 // "" for a plain KiriKiri folder, else a short reason why it cannot start as
 // one (Steam/PackinOne repack markers). Shown in the launcher and the log.
 std::string DetectGameIssue(const std::string& dir);
+
+// External engines (kk4s_engines.cpp).
+const char* EngineId(GameEngine e);           // "onscripter", "rlvm", "renpy"
+std::string GameKey(const std::string& game_dir); // folder name directly in GamesDir()
+// Arguments after argv[0]; return_to = program to come back to (Switch), or "".
+std::vector<std::string> ExternalEngineArgs(GameEngine e, const std::string& game_dir, const std::string& program,
+                                            const std::string& return_to);
+bool WriteRenPyHandoff(const std::string& game_dir, const std::string& return_to);
 
 std::string ReadLastPlayed();
 void WriteLastPlayed(const std::string& name);

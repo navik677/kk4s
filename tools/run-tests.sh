@@ -8,6 +8,7 @@
 # Groups:
 #   xp3        storage layer: project dir, overlay precedence, archive parsing,
 #              game-folder layouts (data/, data.exe, XP3 inside an exe),
+#              other engines (NScripter, RealLive, Ren'Py detection and the PC hand-off),
 #              keyless .tpm encryption discovery, the game's own .tpm filter
 #              in the x86 interpreter (needs i686-w64-mingw32-gcc, else skipped)
 #   io         engine I/O: TextStream encoding, AlphaMovie, Scripts.loadDataPack,
@@ -73,6 +74,7 @@ group_xp3() {
     run xp3-malformed-index python3 tests/xp3/malformed_index_smoke.py "$EXE"
     run xp3-index-cycle     python3 tests/xp3/index_cycle_smoke.py "$EXE"
     run xp3-layouts         python3 tests/xp3/layout_smoke.py "$EXE"
+    run engines             python3 tests/engines/engines_smoke.py "$EXE"
     run xp3-crypt           python3 tests/xp3/crypt_smoke.py "$EXE"
     run xp3-tpm             python3 tests/tpm/smoke.py "$EXE"
     run xp3-constadlr       python3 tests/xp3/constadlr_smoke.py "$EXE"
