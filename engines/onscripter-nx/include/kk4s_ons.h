@@ -25,6 +25,18 @@ void kk4sSavePath( const char *name, const char *fallback, char *out, size_t out
 #ifdef KK4S_EMBEDDED
 /* ONScripter's main() when it is built into kk4s (kk4s calls it, it never returns). */
 int onscripter_main( int argc, char **argv );
+
+/* Implemented by kk4s (platform/common/kk4s_onscripter.cpp):
+   - kk4sOnsInputTick: the Switch input thread calls it every 10 ms instead of
+     ONScripter-NX's own button mapping; it turns the kk4s pad mapping into
+     key / wheel events and asks for the kk4s menu on L3 + R3.
+   - kk4sOnsFilterEvent: the main event loop passes every event; true = kk4s
+     used it (the kk4s menu runs inside this call, over the last frame). */
+union SDL_Event;
+struct SDL_Window;
+struct SDL_Surface;
+void kk4sOnsInputTick();
+bool kk4sOnsFilterEvent( SDL_Event *event, SDL_Window *window, SDL_Surface *screen );
 #endif
 
 #endif

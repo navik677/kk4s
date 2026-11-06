@@ -126,6 +126,18 @@ def main() -> int:
                 failures.append("builtin: the save went to the game folder")
             if code != 0:
                 failures.append(f"builtin: kk4s exited with {code}")
+            # the kk4s menu over a running ONScripter game (L3 + R3 on the Switch, F1 on PC)
+            (game / "0.txt").write_bytes(b"*define\r\ngame\r\n*start\r\nwait 20000\r\nend\r\n")
+            shot = Path(temp) / "menu.bmp"
+            os.environ["KK4S_ONS_MENU_SHOT"] = str(shot)
+            try:
+                code, _, log = run(executable, root, [str(game)])
+            finally:
+                del os.environ["KK4S_ONS_MENU_SHOT"]
+            if "kk4s menu open" not in log or not shot.exists():
+                failures.append("menu: the kk4s menu did not open over ONScripter\n" + log[-1500:])
+            if "leaving the game" not in log or code != 0:
+                failures.append(f"menu: leaving the game from the menu failed (exit {code})")
         elif not cc:
             print("launch: no C compiler, skipped")
         else:

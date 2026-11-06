@@ -12,6 +12,10 @@ namespace overlay {
 
 enum class Request { None, QuickSave, QuickLoad, Volume, ToLauncher, Quit };
 
+// Basic menu (built-in ONScripter): no quick save / load, volume or screen
+// mode, which only the Kirikiri side carries out.
+void SetBasic(bool basic);
+
 bool IsOpen();   // takes input
 bool Visible();  // open, or still fading out (needs drawing)
 void Open(const std::string& game_title, bool quick_save_exists);

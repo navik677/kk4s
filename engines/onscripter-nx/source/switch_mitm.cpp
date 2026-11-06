@@ -24,6 +24,7 @@
 #include "ONScripterLabel.h"
 #include "ScriptParser.h"
 #include "switch_mitm.h"
+#include "kk4s_ons.h"
 
 u32 prev_touchcount = 0;
 bool ctrl_pressed;
@@ -108,6 +109,12 @@ int switch_getinput( void* data )
         // int YY = time_struct->tm_year + 1900;
 
         // printf( "[%02i/%02i/%i %02i:%02i:%02i] Getting inputs...\n", dd, MM, YY, hh, mm, ss );
+#ifdef KK4S_EMBEDDED
+        // kk4s: the kk4s pad mapping and the kk4s menu (L3 + R3)
+        kk4sOnsInputTick();
+        SDL_Delay( 10 );
+        continue;
+#endif
         padUpdate( &pad );
         padRepeaterUpdate( &pad_r, padGetButtons( &pad ) & ( HidNpadButton_AnyLeft | HidNpadButton_AnyRight | HidNpadButton_AnyUp | HidNpadButton_AnyDown ) );
 
