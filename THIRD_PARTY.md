@@ -62,3 +62,18 @@ Kirikiri license, adapted to krkrs' streams.
   (`plutovg/FTL.TXT`); stb_truetype / stb_image (public domain / MIT) are
   bundled in it. Upstream commit in `plutovg/UPSTREAM.txt`; kk4s change:
   a file-read fallback instead of `mmap` on the Switch (marked `kk4s:`).
+
+## Other engines (`engines/`), separate programs
+
+kk4s starts these as their own programs (docs/engines.md); they are not linked
+into kk4s.nro, so their licenses cover only their own binaries.
+
+- `engines/onscripter-nx/`: ONScripter-NX by clamintus (Switch port of
+  onscripter-20060724-insani-sdl2; ONScripter by Ogapee), GNU GPL v2 or later,
+  see `engines/onscripter-nx/COPYING`. kk4s changes are marked `kk4s:`
+  (`--kk4s-return`, `--root` enters the game folder, start-up file check).
+  Its `romfs/default.ttf` comes with the upstream repository.
+- `engines/renpy/renpy.py`: `renpy.py` of Ren'Py 7.3.5 (Tom Rothamel), MIT
+  license (header of the file), as shipped with the Ren'Py Switch SDK; kk4s
+  lines marked `kk4s:`. The SDK binary (renpy-switch, uyjulian) and its
+  `lib.zip` are not in this repository.
