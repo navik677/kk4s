@@ -7,8 +7,9 @@ At start-up kk4s also scans the game folder and its `plugin/` subfolder for `*.t
 and links the built-in replacement of every name it knows, as `krkr.exe` does even when a game never calls
 `Plugins.link` (for example `plugin/csvParser.tpm` provides `CSVParser`). Names without a replacement, mostly
 archive decryptors such as `cxdec.tpm`, are logged as skipped; they are not counted as an ignored link for soft
-mode. A plugin linked by the previous game is re-registered for the next one, because kk4s returns to the
-launcher without restarting the process. `compat/kk4s_compat.cpp` (`AutoLinkTpmPlugins`), `tests/tpmautolink`.
+mode. A name is forgotten before it is linked from a `.tpm`, so the auto-load pass still registers the plugin
+when the game had already called `Plugins.link` for it. `compat/kk4s_compat.cpp` (`AutoLinkTpmPlugins`),
+`tests/tpmautolink`.
 
 Status: **full** = same behaviour, **approx** = similar result, **stub** = does nothing (game logic continues, the effect is missing).
 

@@ -2149,9 +2149,9 @@ struct ncbAutoRegister {
 			p->Unregist();
 	}
 
-	// kk4s: rebuild the list instead of appending to it. The engine is initialised again for
-	// every game, and a second pass left duplicate entries; once kk4s re-links a plugin for a
-	// new game (TVPForgetRegisteredPlugin), those duplicates would register it twice.
+	// kk4s: rebuild the list instead of appending to it. A second AllRegist() pass otherwise
+	// leaves duplicate entries; once kk4s re-links a plugin (TVPForgetRegisteredPlugin), those
+	// duplicates would register it twice.
 	static void AllRegist()   { _internal_plugins.clear();
 		for (int line = 0; line < LINE_COUNT; line++) AllRegist(static_cast<LineT>(line)); }
 	static void AllUnregist() { for (int line = 0; line < LINE_COUNT; line++) AllUnregist(static_cast<LineT>(line)); }
