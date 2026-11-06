@@ -1,8 +1,8 @@
 # Status
 
-Last update: 2026-11-05.
+Last update: 2026-11-06.
 
-## Current state (user-confirmed on Switch, 2026-11-05)
+## Current state (user-confirmed on Switch, 2026-11-05/06)
 
 - **ATRI -My Dear Moments-** (Steam release, original folder): runs on the console.
 - Other tested games (Sharin, Tsukihime, The Makings of a Lady, FSN): work; **Fate/FSN is not broken**.
@@ -19,6 +19,20 @@ Last update: 2026-11-05.
   notes blamed a "`<storage>@<piece>%layer` pseudo-storage": wrong, it is a plain file name in `patch.xp3`. Not
   yet seen on the Switch; E-mote characters are not drawn (`draw()` is a stub), the font `Source Han Sans CN
   Medium` falls back to Noto Sans CJK.
+
+## Repo check (2026-11-06)
+
+- Desktop suite on Windows (MinGW, `build-desktop/kk4s.exe`, SDL dummy): **37/37** groups; the x86
+  interpreter tests are skipped because `i686-w64-mingw32-gcc` is not installed there.
+- Found and fixed two regressions after the 2026-11-05 sprint:
+  - the catch-all around the archive cache also hid a corrupt XP3 index (desktop CI red); only files
+    without an XP3 mark are skipped now, and `xp3-malformed-index` / `xp3-index-cycle` pass again;
+  - `TemporaryFiles` could delete a file **inside the game folder** on Windows: `InsideGameDir()`
+    compared a trailing-slash game folder and `_fullpath()`'s letter case with `strncmp`. The path is
+    now normalised, and a synthetic fstat run leaves `md5.bin` in place. This is a hard project rule,
+    so the test now covers it on Windows too.
+- `tests/xp3/layout_smoke.py` copies the games folder instead of making a directory symlink, which
+  Windows refuses without developer mode.
 
 ## Branch `cloud-session` (2026-11-05, universal-runtime sprint)
 
@@ -50,18 +64,22 @@ that the Switch NRO builds (devkitA64 docker image). Commit list and details: `d
 | Compat | optional soft mode (off by default): after an ignored plugin, missing members of native objects read / return void, logged once | `tests/softmode` (both settings); never tried with a real game |
 | Engine | sanitizer run 2026-11-05: csvParser stream release, TLG5/TLG6 unaligned loads and negative shifts, psd:// pixel alignment, FreeType `FontInfo` ODR clash, ncbind null offset | whole suite 30/30 under ASan+UBSan (halt on error) |
 
-Expected effect on ATRI (unverified): `generateWhiteNoise` no longer throws, `clipAlphaRect` really
-clips affine layers (before it silently did nothing).
+ATRI round 3 (2026-11-05): `fillAlpha` and `clipAlphaRect` are supplied and the opening plays; the
+`layerEx*` family's `generateWhiteNoise` is still missing (6 exceptions in 6.5 min), so those noise
+layers draw nothing.
 
-**CI on `main` is red since `7a77878`** (the ASan crash above; not a test failure). `348300f` fixes it
-once merged.
+**Desktop CI on `main` is red** since `49dfe56`: first the ASan/UBSan crash (fixed by `348300f`, merged),
+then the xp3 storage group. The cause was the catch-all that skips a non-XP3 archive: it also swallowed
+a corrupt XP3 index, so `xp3-malformed-index` and `xp3-index-cycle` no longer saw the expected throw.
+Fixed on 2026-11-06 by checking the XP3 mark before the cache lookup, so only non-XP3 files are skipped
+(see the repo-check section below); the next push verifies it in CI. The Switch CI job is green.
 
 ## Builds (CI, every push to main)
 
 | Target | State | Where to get it |
 |---|---|---|
 | Switch `kk4s.nro` (+ `.elf`) | builds, **runs on hardware** | [nightly release](https://github.com/navik677/kk4s/releases/tag/nightly), Actions artifact `kk4s-<sha>` |
-| PC viewer, Linux (ASan + UBSan) | builds; boot smoke test + the synthetic suite (see [tests/README.md](../tests/README.md)). Red on `main` since `7a77878` (sanitizer miscompile, fixed on `cloud-session` by `348300f`) | Actions → desktop → `kk4s-linux-<sha>` |
+| PC viewer, Linux (ASan + UBSan) | builds; boot smoke test + the synthetic suite (see [tests/README.md](../tests/README.md)). Was red from `49dfe56` (sanitizer crash, then the archive-catch regression); both fixed, see the repo-check section | Actions → desktop → `kk4s-linux-<sha>` |
 | PC viewer, Windows (MinGW) | builds; portable decoder tests run; the viewer is **not** executed in CI | Actions → desktop → `kk4s-windows-<sha>` (exe + DLLs) |
 
 ## Tests and CI
@@ -97,7 +115,7 @@ All unmodified, Russian fan translations, on a real Switch (title takeover) and 
 | Tsukihime + Plus-Disc | own font (`umineko.ttf`) |
 | The Makings of a Lady – Purity Yours to Defile | `xp3filter.tjs` (`b.xor(0,l,h)`); existing saves from the game folder are migrated |
 | ATRI -My Dear Moments- (Steam release, original folder) | User-confirmed: runs on Switch (2026-11-05); `TinyFilter`/CXDEC bind 6 archives, PackinOne layers work. Affine-noise effects (`generateWhiteNoise`) are not drawn yet (round 3) |
-| NekoPara Vol. 1 | **Not working, unresolved.** CXDEC decrypts and the scripts start; the title UI stops at `title.ks:13` on the KAGZ UI pseudo-storage `window@help__config%layer` (round 2–3 below) | (Corrected 2026-11-05: `window@help__config%layer` is a plain file name, `window@help__config%layer.png` in `patch.xp3`; the archive was not bound because all its entries share one constant adlr. Fixed in `1cd7bb3`.)
+| NekoPara Vol. 1 | **Not playable yet.** CXDEC decrypts, its scripts run, the title screen and new game work on the PC; it stops after ~9 s with `Image Load Error / Invalid image` in `imageaffinesourcelayer.tjs`, and E-mote characters are not drawn. PC only, not tried on the Switch. The old `title.ks:13` `%layer` blocker was a file in an unbound `patch.xp3`, fixed in `1cd7bb3`. |
 
 ## Compatibility matrix (CXDEC, 2026-11-04)
 

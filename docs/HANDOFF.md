@@ -1,18 +1,40 @@
 # Handoff — read this first in a new session
 
-Last update: 2026-11-05. Goal: **a universal Kirikiri runtime/compatibility layer**: any KAG/TJS2
+Last update: 2026-11-06. Goal: **a universal Kirikiri runtime/compatibility layer**: any KAG/TJS2
 game folder (plain or repacked) runs unmodified on Switch and PC. ATRI is one PC-repack test fixture,
 not the target. No per-game fixes, game files, keys or conversion; compatibility belongs in the engine,
 `compat/` or kk4s' own files. Full requirements: `docs/original-prompt.md`; milestones:
 `docs/roadmap.md`.
 
-## Where we are (2026-11-05)
+## Where we are (2026-11-06)
 
-**Branches:** everything is merged into `main` (fast-forward, `c6649c7` at the time of writing, 46 commits
-after `49dfe56`): `cloud-session` (session 3), `research/emote-psb`, `research/emote-crossgame`,
+**Branches:** everything is merged into `main` (`36f1b16` at the time of writing, after the screen-mode
+and README commits): `cloud-session` (session 3), `research/emote-psb`, `research/emote-crossgame`,
 `feature/universal-emote-runtime`, `work/game-compat-patchtjs`. Work from here starts from `main`. The older
-"on `cloud-session`" remarks below describe where a change was made, not an unmerged state. Hardware: the
-Switch NRO of `main` built locally (29,259,173 bytes) but nothing after `49dfe56` ran on a console yet.
+"on `cloud-session`" remarks below describe where a change was made, not an unmerged state.
+
+**Hardware (user, 2026-11-05/06):** the NRO with the 2026-11-05 sprint runs on the Switch; FSN, Sharin,
+Tsukihime, The Makings of a Lady and ATRI work, and the screen-mode switch works. Yosuga no Sora and 11 eyes
+start with the `ddb8adf` NRO (Yosuga needs its `ヨスガノソラ.cf` on the SD card). NekoPara and E-mote drawing
+are still open.
+
+**Desktop CI** was red from `49dfe56`; the two causes were fixed on 2026-11-06 (see the repo-check entry in
+`docs/status.md`). The synthetic suite on Windows is 37/37.
+
+### Repo check (2026-11-06)
+
+The Windows desktop build ran the full synthetic suite: **37/37** (the x86 interpreter tests skip without
+`i686-w64-mingw32-gcc`). Two regressions from the 2026-11-05 sprint were found and fixed:
+
+- `engine/source/core/base/StorageIntf.cpp`: the catch-all added for non-XP3 files named `*.xp3` also hid a
+  corrupt XP3 index (desktop CI red: `xp3-malformed-index`, `xp3-index-cycle`). The XP3 mark is now checked
+  before the archive cache is opened; only files without one are skipped.
+- `compat/kk4s_plugins.cpp`: `TemporaryFiles` could delete a file **inside the game folder** on Windows.
+  `InsideGameDir()` compared a game path with a trailing `/` and `_fullpath()`'s original letter case using
+  `strncmp`; it now normalises separators, drops the trailing separator and compares case-insensitively on
+  Windows. `tests/fstat` verifies that `md5.bin` survives.
+- `tests/xp3/layout_smoke.py` copies the folder for `--list-games` instead of making a directory symlink
+  (Windows refuses those without developer mode).
 
 ### Session 4 (PC, Windows) — Kirikiroid2 packs and Russian games; E-mote runtime started
 
@@ -55,8 +77,8 @@ First Switch run of the session-4 NRO (logs read over FTP, sdmc:/switch/kk4s/log
 - **Screen mode for 4:3 games on 16:9:** `Settings::ScreenMode()` = original with bars (default) / stretch /
   zoom to fill (crop). Stored as `keep_aspect` + new `zoom_fill` in `settings.ini`; row "Screen" in the
   launcher settings and in the in-game menu (`kk4sGameRect` in `engine/source/core/sdl2/stubs.cpp`). Touch /
-  mouse mapping goes through the same rect. Seen on the PC (Fate logo fills 1280x720 in zoom mode); not seen on
-  the Switch.
+  mouse mapping goes through the same rect. Seen on the PC (Fate logo fills 1280x720 in zoom mode) and the user
+  confirmed the switch on the Switch (2026-11-06).
 
 ### E-mote (`compat/emote/`, merged into `main`)
 
@@ -612,11 +634,9 @@ stops when the console sleeps. Big uploads: one file per `curl`, check sizes aft
 
 ## Next steps (universal engine; ATRI is one test fixture)
 
-**Aspect, first (user report 2026-11-05):** Fate/FSN and Tsukihime now show 4:3 with black bars on the
-16:9 screen (from `806395c`); before that they filled 16:9. Wanted: (a) a 16:9 picture for them by stretch
-or an upscaler, and (b) a switch between original 4:3 and 16:9 (launcher setting, `settings.ini`).
-Touch and mouse must keep mapping through whatever rectangle is shown (`kk4sGameRect` / `kk4sToGame`,
-`tests/aspect`). Not committed yet; the code is unchanged in this step.
+**Screen mode (done in `ddb8adf`):** original 4:3 with bars / stretch / zoom-fill, in the launcher and the
+in-game menu, with touch and mouse mapped through the same rectangle (`kk4sGameRect` / `kk4sToGame`,
+`tests/aspect`). User-confirmed on the Switch 2026-11-06. An upscaler is still open.
 
 Then, in order:
 
