@@ -106,6 +106,10 @@ change is intended.
 
 The Windows job compiles the viewer but does **not** run it: a green Windows run
 is a compile check plus portable decoder tests, not Windows runtime verification.
+A local MinGW run on 2026-11-06 did pass the whole suite (37/37; the x86
+interpreter tests skip without `i686-w64-mingw32-gcc`), and it found the
+`TemporaryFiles` game-folder bug that Linux could not see. That is a developer
+check, not CI coverage, so the `windows` job remains a compile check.
 
 ## Not covered
 

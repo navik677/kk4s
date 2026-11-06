@@ -14,6 +14,7 @@ The engine must run the startup.tjs from the chosen place.
 """
 import os
 from pathlib import Path
+import shutil
 import struct
 import subprocess
 import sys
@@ -134,7 +135,9 @@ def main() -> int:
         # --list-games: the launcher's view of a games/ folder
         root = temp_path / "root-list"
         root.mkdir()
-        os.symlink(games, root / "games")
+        # A copy, not a symlink: Windows refuses directory symlinks without
+        # developer mode, and the launcher only needs the same contents.
+        shutil.copytree(games, root / "games")
         code, stdout, log = run(executable, root, ["--list-games"])
         listed = {line.split("\t")[0] for line in stdout.splitlines() if "\t" in line}
         # deep_exe is only found by the full scan, which the launcher skips

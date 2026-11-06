@@ -1156,17 +1156,17 @@ static tjs_uint TVPRebuildAutoPathTable()
 			// kk4s: a file named *.xp3 that is not an XP3 (for example a ZIP kept under an .xp3 name,
 			// Karigurashi Renai's adult.xp3) used to abort every storage lookup with an exception.
 			// Skip that path instead (logged once), the game runs without its content.
-			try
-			{
-				arc = TVPArchiveCache.Get(arcname);
-			}
-			catch(...)
+			// Only the "not an XP3 archive" case is skipped: an archive with a valid XP3 mark but a
+			// corrupt index must still throw, otherwise damage is hidden and the storage tests cannot
+			// tell a rejected archive from an ignored one.
+			if(!TVPIsXP3Archive(arcname))
 			{
 				static std::set<std::string> reported;
 				if(reported.insert(arcname.AsNarrowStdString()).second)
 					TVPAddLog(ttstr(TJS_W("(warning) archive ignored (not an XP3 archive or unsupported): ")) + arcname);
 				continue;
 			}
+			arc = TVPArchiveCache.Get(arcname);
 
 			try
 			{

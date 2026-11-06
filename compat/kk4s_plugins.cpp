@@ -295,8 +295,26 @@ static bool SetFileTimesMs(const std::string& path, tjs_int64 mtime_ms, tjs_int6
 static bool InsideGameDir(const std::string& path) {
     char a[PATH_MAX], b[PATH_MAX];
     if (!realpath(path.c_str(), a) || !realpath(kk4s::GameDir().c_str(), b)) return false;
-    size_t n = strlen(b);
-    return strncmp(a, b, n) == 0 && (a[n] == '/' || a[n] == 0);
+    // GameDir() ends with '/', while realpath() drops it on some platforms and
+    // keeps it on others (MinGW); compare normalised prefixes instead. A trailing
+    // separator on the folder made the old check fail on Windows and
+    // TemporaryFiles deleted a file inside the game folder.
+    std::string pa = a, pb = b;
+    for (char& c : pa) if (c == '\\') c = '/';
+    for (char& c : pb) if (c == '\\') c = '/';
+    while (pb.size() > 1 && pb.back() == '/') pb.pop_back();
+#ifdef _WIN32
+    // MinGW's realpath is _fullpath(): it keeps the caller's letter case, and
+    // the storage layer lower-cases names, so compare case-insensitively.
+    auto same = [](const std::string& x, const std::string& y, size_t n) {
+        return _strnicmp(x.c_str(), y.c_str(), n) == 0;
+    };
+#else
+    auto same = [](const std::string& x, const std::string& y, size_t n) {
+        return x.compare(0, n, y) == 0;
+    };
+#endif
+    return same(pa, pb, pb.size()) ? (pa.size() == pb.size() || pa[pb.size()] == '/') : false;
 }
 
 static void LinkFstatExtras(iTJSDispatch2* st) {
