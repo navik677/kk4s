@@ -76,6 +76,11 @@ printf '%s\n' "${SRCS[@]}" | xargs -d '\n' -P "$JOBS" -n 1 bash -c 'compile "$1"
 OBJS=()
 for s in "${SRCS[@]}"; do OBJS+=("$OUT/obj/${s%.*}.o"); done
 
+# The UTF-8 manifest (src/platforms/win32/rlvm.manifest): argv and file names
+# in UTF-8, as in kk4s.exe.
+windres -I "$RLVM/src/platforms/win32" "$RLVM/src/platforms/win32/rlvm.rc"     -O coff -o "$OUT/obj/rlvm_res.o"
+OBJS+=("$OUT/obj/rlvm_res.o")
+
 echo "linking $OUT/rlvm.exe"
 "$CXX" -o "$OUT/rlvm.exe" "${OBJS[@]}" \
     -lboost_program_options-mt -lboost_serialization-mt -lboost_iostreams-mt \
