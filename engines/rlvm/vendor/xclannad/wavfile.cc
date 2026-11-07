@@ -92,7 +92,7 @@ typedef struct {
   u_long dwAvgBytesPerSec;
   u_short wBlockAlign;
   u_short wBitsPerSample;
-} WAVEFORMAT;
+} XWAVEFORMAT;
 
 typedef struct {
   char RiffID[4];
@@ -110,7 +110,7 @@ typedef struct {
   u_long nDataBytes;
 } WAVE_HEADER;
 
-static void waveFormatCopy(WAVEFORMAT* wav, char* ptr);
+static void waveFormatCopy(XWAVEFORMAT* wav, char* ptr);
 static char* findchunk(char* s1, const char* s2, size_t n);
 
 static int WaveHeaderCheck(char* wave_buf,
@@ -118,8 +118,8 @@ static int WaveHeaderCheck(char* wave_buf,
                            u_long* samplerate,
                            int* samplebits,
                            u_long* samples,
-                           u_long* datastart) {
-  static WAVEFORMAT waveformat;
+                           size_t* datastart) {
+  static XWAVEFORMAT waveformat;
   char* ptr;
   u_long databytes;
 
@@ -143,7 +143,7 @@ static int WaveHeaderCheck(char* wave_buf,
   ptr += 4; /* Move past "fmt ".*/
   waveFormatCopy(&waveformat, ptr);
 
-  if (waveformat.dwSize != (sizeof(WAVEFORMAT) - sizeof(u_long))) {
+  if (waveformat.dwSize != (sizeof(XWAVEFORMAT) - sizeof(u_long))) {
     /* fprintf(stderr, "Bad format: Bad fmt size"); */
     /* return  WR_BADFORMATSIZE ; */
   }
@@ -170,7 +170,7 @@ static int WaveHeaderCheck(char* wave_buf,
   *samplebits = waveformat.wBitsPerSample;
   *samples = databytes / waveformat.wBlockAlign;
 
-  *datastart = (u_long)(ptr) + 4;
+  *datastart = (size_t)(uintptr_t)ptr + 4;
 
   if (waveformat.dwSamplesPerSec !=
       waveformat.dwAvgBytesPerSec / waveformat.wBlockAlign) {
@@ -209,7 +209,7 @@ static char* findchunk(char* pstart, const char* fourcc, size_t n) {
   return NULL;
 }; /* findchuck*/
 
-static void waveFormatCopy(WAVEFORMAT* wav, char* ptr) {
+static void waveFormatCopy(XWAVEFORMAT* wav, char* ptr) {
   wav->dwSize = LittleEndian_getDW(ptr, 0);
   wav->wFormatTag = LittleEndian_getW(ptr, 4);
   wav->wChannels = LittleEndian_getW(ptr, 6);
@@ -225,7 +225,7 @@ static char* WavGetInfo(WAVFILE* wfile, char* data) {
   u_long samplerate; /* Sampling rate */
   int sample_bits;   /* data bit size (8/12/16) */
   u_long samples;    /* The number of samples in this file */
-  u_long datastart;  /* The offset to the wav data */
+  size_t datastart;  /* The offset to the wav data */
 
   if ((e = WaveHeaderCheck(data, &channels, &samplerate, &sample_bits, &samples,
                            &datastart) != 0)) {
