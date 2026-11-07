@@ -568,6 +568,24 @@ std::vector<std::string> CollectionGames(const std::string& dir) {
     return out;
 }
 
+// Whether games/<name> (full) is a collection whose games are listed as
+// "<name>/<game>": a folder of several games, or a folder named after an
+// engine (games/ons/<game>/) even with one game in it. Any other folder with
+// one game inside is a wrapper (games/<Game>/<Game or game>/data.xp3) and
+// keeps its own name, which is also the name of its saves folder.
+bool IsCollectionFolder(const std::string& full, const std::string& name) {
+    if (IsGameFolderFlat(full)) return false;
+    std::vector<std::string> inner = CollectionGames(full);
+    if (inner.size() >= 2) return true;
+    if (inner.size() != 1) return false;
+    static const char* const kEngineFolders[] = {
+        "ons", "onscripter", "nscripter", "rlvm", "reallive", "renpy",
+    };
+    for (const char* n : kEngineFolders)
+        if (strcasecmp(name.c_str(), n) == 0) return true;
+    return false;
+}
+
 std::vector<std::string> ScanGames() {
     std::vector<std::string> games;
     std::string root = GamesDir();
@@ -585,14 +603,10 @@ std::vector<std::string> ScanGames() {
                 Log("launcher: %s: %s (a plain Kirikiri game has no native protection; "
                     "a clean DRM-free release is needed, see docs/HANDOFF.md)", e->d_name, issue.c_str());
         } else {
-            // A collection: a folder of games (games/ons/<game>/), each listed as
-            // "<collection>/<game>". One game counts too, unless the folder only
-            // repeats its own name (games/<Game>/<Game>/data.xp3): that is a
-            // wrapper and stays listed under its own name.
-            std::vector<std::string> inner = CollectionGames(full);
-            bool collection = inner.size() >= 2 ||
-                              (inner.size() == 1 && strcasecmp(inner[0].c_str(), e->d_name) != 0);
-            if (collection) {
+            // A collection (IsCollectionFolder): each game listed as
+            // "<collection>/<game>"; otherwise a wrapper under its own name.
+            if (IsCollectionFolder(full, e->d_name)) {
+                std::vector<std::string> inner = CollectionGames(full);
                 Log("launcher: %s: collection of %zu game(s)", e->d_name, inner.size());
                 for (const std::string& g : inner) games.push_back(std::string(e->d_name) + "/" + g);
             } else if (IsGameFolder(full)) {

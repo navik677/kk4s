@@ -26,6 +26,7 @@
 // -----------------------------------------------------------------------
 
 #include "systems/sdl/sdl_sound_chunk.h"
+#include "utilities/path_str.h"  // kk4s
 
 #include <SDL2/SDL_mixer.h>
 #include <boost/algorithm/string.hpp>

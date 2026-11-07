@@ -26,6 +26,7 @@
 // -----------------------------------------------------------------------
 
 #include "modules/module_sys_save.h"
+#include "utilities/path_str.h"  // kk4s
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/filesystem.hpp>

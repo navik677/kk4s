@@ -56,6 +56,7 @@
 // -----------------------------------------------------------------------
 
 #include "systems/base/koepac_voice_archive.h"
+#include "utilities/path_str.h"  // kk4s
 
 #include <boost/filesystem/fstream.hpp>
 #include <boost/filesystem/path.hpp>

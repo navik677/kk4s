@@ -26,6 +26,7 @@
 // -----------------------------------------------------------------------
 
 #include "systems/sdl/sdl_text_system.h"
+#include "utilities/path_str.h"  // kk4s
 
 #include <SDL2/SDL_ttf.h>
 

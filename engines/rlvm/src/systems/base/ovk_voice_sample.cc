@@ -56,6 +56,7 @@
 // -----------------------------------------------------------------------
 
 #include "systems/base/ovk_voice_sample.h"
+#include "utilities/path_str.h"  // kk4s
 
 #include <vorbis/vorbisfile.h>
 

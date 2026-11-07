@@ -53,6 +53,7 @@
 #include <string>
 
 #include "machine/rlvm_instance.h"
+#include "utilities/path_str.h"  // kk4s
 #include "systems/base/system.h"
 #include "utilities/file.h"
 

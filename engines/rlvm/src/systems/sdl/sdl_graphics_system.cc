@@ -32,6 +32,7 @@
 #endif
 
 #include "systems/sdl/sdl_graphics_system.h"
+#include "utilities/path_str.h"  // kk4s
 
 #include <SDL2/SDL.h>
 #if !defined(__ANDROID__) && !defined(__SWITCH__) && !defined(KK4S_GLES)  // kk4s: GLES on the Switch too

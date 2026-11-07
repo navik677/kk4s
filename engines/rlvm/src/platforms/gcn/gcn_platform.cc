@@ -25,6 +25,7 @@
 // -----------------------------------------------------------------------
 
 #include "platforms/gcn/gcn_platform.h"
+#include "utilities/path_str.h"  // kk4s
 
 #include <boost/filesystem.hpp>
 #include <functional>

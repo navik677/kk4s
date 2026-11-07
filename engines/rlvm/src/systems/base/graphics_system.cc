@@ -26,6 +26,7 @@
 // -----------------------------------------------------------------------
 
 #include "systems/base/graphics_system.h"
+#include "utilities/path_str.h"  // kk4s
 
 #include <boost/algorithm/string.hpp>
 #include <boost/archive/text_iarchive.hpp>

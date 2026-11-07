@@ -65,7 +65,7 @@ std::string GameKey(const std::string& game_dir) {
         size_t s1 = rest.find('/');
         std::string first = rest.substr(0, s1);
         // a game of a collection (games/ons/<game>): "ons/<game>", as the launcher lists it
-        if (s1 != std::string::npos && !IsGameFolder(root + first)) {
+        if (s1 != std::string::npos && IsCollectionFolder(root + first, first)) {
             size_t s2 = rest.find('/', s1 + 1);
             return rest.substr(0, s2);
         }

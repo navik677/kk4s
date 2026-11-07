@@ -25,6 +25,7 @@
 // -----------------------------------------------------------------------
 
 #include "systems/base/nwk_voice_archive.h"
+#include "utilities/path_str.h"  // kk4s
 
 #include <cstdio>
 

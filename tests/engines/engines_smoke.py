@@ -9,6 +9,8 @@ Cases (all synthetic, no game content):
             (Gameexe.ini + Seen.txt), Ren'Py (game/*.rpyc); Kirikiri wins over
             a stray game/*.rpy; a lone 0.txt or a game/ without scripts is no game;
             a folder of several games (coll/) lists each one as coll/<game>
+            and so does an engine-named folder with one game (rlvm/Solo), while
+            any other folder with one game (kiri_wrap/game/) keeps its own name
   missing   without engines/<id>/ the line says "(engine not installed)"
   builtin   kk4s built with ONScripter: kk4s <NScripter folder> runs a tiny
             script in it; the global save lands in saves/<game>/, not in the game
@@ -55,7 +57,7 @@ def touch(path: Path, data: bytes = b"x") -> None:
 def make_games(games: Path) -> dict[str, str]:
     """Create the folders; returns folder -> expected engine name ("" = not a game)."""
     touch(games / "ns_dat" / "NSCRIPT.DAT")
-    touch(games / "ns_txt" / "0.txt")
+    touch(games / "ns_txt" / "0.txt", b";mode800\r\n*start\r\n")  # reads as a script
     touch(games / "ns_txt" / "arc.nsa")
     touch(games / "ns_wrap" / "Inner Game" / "nscr_sec.dat")
     touch(games / "rl" / "Gameexe.ini")
@@ -66,10 +68,14 @@ def make_games(games: Path) -> dict[str, str]:
     touch(games / "readme_only" / "0.txt")
     touch(games / "rp_no_scripts" / "game" / "bg.png")
     touch(games / "coll" / "one" / "nscript.dat")  # a collection: games/coll/<game>
-    touch(games / "coll" / "two" / "00.txt")
+    touch(games / "coll" / "two" / "00.txt", b"*define\r\n")
     touch(games / "coll" / "two" / "arc.sar")
+    touch(games / "rlvm" / "Solo" / "Gameexe.ini")  # engine-named: a collection of one
+    touch(games / "rlvm" / "Solo" / "SEEN.TXT")
+    touch(games / "kiri_wrap" / "game" / "data.xp3")  # a wrapper, listed under its own name
     return {"coll/one": "NScripter", "coll/two": "NScripter", "coll": "","ns_dat": "NScripter", "ns_txt": "NScripter", "ns_wrap": "NScripter", "rl": "RealLive",
-            "rp": "Ren'Py", "kiri": "Kirikiri", "readme_only": "", "rp_no_scripts": ""}
+            "rp": "Ren'Py", "kiri": "Kirikiri", "readme_only": "", "rp_no_scripts": "",
+            "rlvm/Solo": "RealLive", "rlvm": "", "kiri_wrap/game": ""}
 
 
 def find_cc() -> str:
@@ -105,6 +111,8 @@ def main() -> int:
                 failures.append(f"list: {folder} should be {engine}, got {line!r}")
             elif "(engine not installed)" not in line and folder != "rp" and not line.endswith(": built in"):
                 failures.append(f"missing: {folder}: {line!r}")
+        if "kiri_wrap" not in listed:  # a Kirikiri wrapper keeps its name (and saves folder)
+            failures.append("list: kiri_wrap (Kirikiri in kiri_wrap/game/) not listed")
         if code != 0:
             failures.append(f"--list-games exited with {code}")
 

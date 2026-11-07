@@ -45,8 +45,19 @@
 // compiled: mingw already defines WIN32 and O_BINARY/O_RDONLY as macros.)
 const HANDLE INVALID_HANDLE_VALUE = nullptr;
 #else
+const HANDLE INVALID_HANDLE_VALUE = -1;
 #include <fcntl.h>
+#ifdef __SWITCH__
+// kk4s: no mmap on the Switch; mopen() falls back to reading the file.
+#define PROT_READ 1
+#define PROT_WRITE 2
+#define MAP_SHARED 1
+#define MAP_FAILED ((void*)-1)
+static inline void* mmap(void*, size_t, int, int, int, off_t) { return MAP_FAILED; }
+static inline int munmap(void*, size_t) { return 0; }
+#else
 #include <sys/mman.h>
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>

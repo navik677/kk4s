@@ -25,6 +25,7 @@
 // -----------------------------------------------------------------------
 
 #include "machine/rlvm_instance.h"
+#include "utilities/path_str.h"  // kk4s
 
 #include <iostream>
 #include <string>

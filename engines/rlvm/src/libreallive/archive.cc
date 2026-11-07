@@ -32,6 +32,7 @@
 // -----------------------------------------------------------------------
 
 #include "libreallive/archive.h"
+#include "utilities/path_str.h"  // kk4s
 
 #include <boost/algorithm/string.hpp>
 #include <boost/filesystem.hpp>

@@ -24,6 +24,8 @@ void LogBanner(const char* platform_name);
 std::vector<std::string> ScanGames();
 bool IsGameFolder(const std::string& dir);
 std::vector<std::string> CollectionGames(const std::string& dir);
+// games/<name> is a collection (ScanGames lists "<name>/<game>"), not a game.
+bool IsCollectionFolder(const std::string& full, const std::string& name);
 
 // Offset of an XP3 archive inside a Windows executable, -1 if none. Looks after
 // the PE image first; full_scan also searches the whole file as Kirikiri does.

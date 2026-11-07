@@ -25,6 +25,7 @@
 // -----------------------------------------------------------------------
 
 #include "systems/base/voice_cache.h"
+#include "utilities/path_str.h"  // kk4s
 
 #include <boost/algorithm/string.hpp>
 #include <boost/filesystem/path.hpp>
