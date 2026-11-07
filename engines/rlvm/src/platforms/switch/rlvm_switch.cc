@@ -250,7 +250,7 @@ int main(int argc, char* argv[]) {
                   .empty())
       gamerootPath /= "REALLIVEDATA";
   }
-  std::cout << "game " << gamerootPath.string() << std::endl;
+  std::cout << "game " << PathStr(gamerootPath) << std::endl;
 
   if (saves.empty())
     saves = std::string(kRoot) + "/saves/" + GameKey(game) + "/rlvm";
@@ -260,7 +260,7 @@ int main(int argc, char* argv[]) {
   if (font.empty() && CorrectPathCase(gamerootPath / "msgothic.ttc").empty()) {
     // kk4s: the Steam editions of Key's games ship the font of the translation
     // instead of msgothic.ttc (CLANNAD HD: dat/migmix-1m-regular.ttf).
-    font = CorrectPathCase(gamerootPath / "dat" / "migmix-1m-regular.ttf").string();
+    font = PathStr(CorrectPathCase(gamerootPath / "dat" / "migmix-1m-regular.ttf"));
     if (font.empty())
       font = SharedFontFile();
   }

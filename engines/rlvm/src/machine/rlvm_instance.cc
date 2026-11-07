@@ -83,15 +83,15 @@ void RLVMInstance::Run(const boost::filesystem::path& gamerootPath) {
     CheckBadEngine(gamerootPath, siglus_exes, _("Can't run Siglus games"));
 
     Gameexe gameexe(gameexePath);
-    gameexe("__GAMEPATH") = gamerootPath.string();
+    gameexe("__GAMEPATH") = PathStr(gamerootPath);
 
     // kk4s: a translation hook's table for the half-width codes (Cp932).
     fs::path hook = CorrectPathCase(gamerootPath / "dsound.dll");
     if (!hook.empty()) {
-      int n = LoadCp932HalfwidthTable(hook.string());
+      int n = LoadCp932HalfwidthTable(PathStr(hook));
       if (n > 0)
         std::cout << "rlvm: " << n << " half-width characters remapped by "
-                  << hook.string() << std::endl;
+                  << PathStr(hook) << std::endl;
     }
 
     // Possibly force starting at a different seen
@@ -116,7 +116,7 @@ void RLVMInstance::Run(const boost::filesystem::path& gamerootPath) {
     if (!save_dir_.empty())
       gameexe("__SAVEDIR") = save_dir_;
 
-    libreallive::Archive arc(seenPath.string(), gameexe("REGNAME"));
+    libreallive::Archive arc(PathStr(seenPath), gameexe("REGNAME"));
     SDLSystem sdlSystem(gameexe);
     RLMachine rlmachine(sdlSystem, arc);
     AddAllModules(rlmachine);

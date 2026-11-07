@@ -58,7 +58,7 @@ namespace fs = boost::filesystem;
 fs::path CorrectPathCase(fs::path Path) {
 #ifndef CASE_SENSITIVE_FILESYSTEM
   if (!fs::exists(Path))
-    return path();
+    return fs::path();
   return Path;
 #else
   // If the path is OK as it stands, do nothing.
@@ -71,7 +71,7 @@ fs::path CorrectPathCase(fs::path Path) {
   // which may have incorrect case.
   std::stack<std::string> pathElts;
   while (!Path.empty() && !fs::exists(Path)) {
-    pathElts.push(Path.filename().string());
+    pathElts.push(PathStr(Path.filename()));
     Path = Path.parent_path();
   }
   // Now proceed forwards through the possibly-incorrect elements.
@@ -95,7 +95,7 @@ fs::path CorrectPathCase(fs::path Path) {
       fs::directory_iterator end;
       bool found = false;
       for (fs::directory_iterator dir(Path); dir != end; ++dir) {
-        std::string uleaf = dir->path().filename().string();
+        std::string uleaf = PathStr(dir->path().filename());
         to_upper(uleaf);
         if (uleaf == elt && (!needDir || is_directory(*dir))) {
           Path /= dir->path().filename();
@@ -107,7 +107,7 @@ fs::path CorrectPathCase(fs::path Path) {
         return "";
     }
   }
-  return Path.string();
+  return PathStr(Path);
 #endif
 }
 

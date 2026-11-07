@@ -27,7 +27,7 @@
 
 #include "systems/sdl/sdl_text_window.h"
 
-#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too
+#if !defined(__ANDROID__) && !defined(__SWITCH__) && !defined(KK4S_GLES)  // kk4s: GLES on the Switch too
 #include <SDL2/SDL_opengl.h>
 #endif
 #include <SDL2/SDL_ttf.h>

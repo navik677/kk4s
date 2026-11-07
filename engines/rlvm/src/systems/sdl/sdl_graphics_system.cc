@@ -25,7 +25,7 @@
 //
 // -----------------------------------------------------------------------
 
-#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
+#if defined(__ANDROID__) || defined(__SWITCH__) || defined(KK4S_GLES)  // kk4s: GLES on the Switch too
 #include <GLES3/gl32.h>
 #else
 #include "GL/glew.h"
@@ -34,7 +34,7 @@
 #include "systems/sdl/sdl_graphics_system.h"
 
 #include <SDL2/SDL.h>
-#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too
+#if !defined(__ANDROID__) && !defined(__SWITCH__) && !defined(KK4S_GLES)  // kk4s: GLES on the Switch too
 #include <SDL2/SDL_opengl.h>
 #endif
 
@@ -218,7 +218,7 @@ void SDLGraphicsSystem::EndFrame() {
     (*it)->Render(NULL);
   }
 
-#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too  // broken, for now
+#if !defined(__ANDROID__) && !defined(__SWITCH__) && !defined(KK4S_GLES)  // kk4s: GLES on the Switch too  // broken, for now
   if (screen_update_mode() == SCREENUPDATEMODE_MANUAL) {
     // Copy the area behind the cursor to the temporary buffer (drivers differ:
     // the contents of the back buffer is undefined after SDL_GL_SwapBuffers()
@@ -371,7 +371,7 @@ void SDLGraphicsSystem::SetupVideo() {
   SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
+#if defined(__ANDROID__) || defined(__SWITCH__) || defined(KK4S_GLES)  // kk4s: GLES on the Switch too
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
   // Use OpenGL ES 3.2 (Android 7+, API 24+)
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -410,7 +410,7 @@ void SDLGraphicsSystem::SetupVideo() {
   SDL_GetWindowSize(screen_, &ww, &wh);
   CalculateViewport(ww, wh);
 
-#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too
+#if !defined(__ANDROID__) && !defined(__SWITCH__) && !defined(KK4S_GLES)  // kk4s: GLES on the Switch too
   // Initialize glew
   GLenum err = glewInit();
   if (GLEW_OK != err) {
@@ -635,7 +635,7 @@ std::shared_ptr<const Surface> SDLGraphicsSystem::LoadSurfaceFromFile(
   }
 
   // Glue code to allow my stuff to work with Jagarl's loader
-  FILE* file = fopen(filename.string().c_str(), "rb");
+  FILE* file = fopen(PathStr(filename).c_str(), "rb");
   if (!file) {
     std::ostringstream oss;
     oss << "Could not open file: " << filename;

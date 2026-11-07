@@ -413,14 +413,34 @@ static bool IsRealLiveFolderFlat(const std::string& dir) {
     return HasEntry(dir, "gameexe.ini", false) && HasEntry(dir, "seen.txt", false);
 }
 
-// NScripter (ONScripter): its script files, or 0.txt / 00.txt next to NSA / SAR archives
-// (a lone 0.txt could be any readme).
+// 0.txt / 00.txt is an ONScripter script (ONScripter opens it before nscript.dat)
+// when it starts like one: a ';' comment or a '*' label. A readme does not.
+static bool IsNScripterScriptText(const std::string& dir, const char* name) {
+    std::string path;
+    if (DIR* d = opendir(dir.c_str())) {
+        while (struct dirent* e = readdir(d))
+            if (strcasecmp(e->d_name, name) == 0) { path = dir + "/" + e->d_name; break; }
+        closedir(d);
+    }
+    if (path.empty()) return false;
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) return false;
+    char buf[2048];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    const char* p = buf;
+    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') ++p;
+    return *p == ';' || *p == '*';
+}
+
+// NScripter (ONScripter): its script files, or 0.txt / 00.txt that reads as a
+// script, with loose assets (Android ports) or NSA / SAR archives.
 static bool IsNScripterFolderFlat(const std::string& dir) {
     for (const char* n : {"nscript.dat", "nscr_sec.dat", "nscript.___", "onscript.nt", "onscript.nt2", "onscript.nt3",
                           "pscript.dat"})
         if (HasEntry(dir, n, false)) return true;
-    return (HasEntry(dir, "0.txt", false) || HasEntry(dir, "00.txt", false)) &&
-           HasFileEnding(dir, {".nsa", ".sar", ".ns2"});
+    return IsNScripterScriptText(dir, "0.txt") || IsNScripterScriptText(dir, "00.txt");
 }
 
 // Kirikiri first, exactly as before, so a Kirikiri folder is never taken for another engine.
@@ -558,19 +578,29 @@ std::vector<std::string> ScanGames() {
         std::string full = root + "/" + e->d_name;
         struct stat st;
         if (stat(full.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) continue;
-        if (IsGameFolder(full)) {
+        if (IsGameFolderFlat(full)) {
             games.push_back(e->d_name);
             std::string issue = DetectGameIssue(full);
             if (!issue.empty())
                 Log("launcher: %s: %s (a plain Kirikiri game has no native protection; "
                     "a clean DRM-free release is needed, see docs/HANDOFF.md)", e->d_name, issue.c_str());
         } else {
-            // A collection: a folder of several games (games/ons/<game>/). Each
-            // one is listed as "<collection>/<game>".
+            // A collection: a folder of games (games/ons/<game>/), each listed as
+            // "<collection>/<game>". One game counts too, unless the folder only
+            // repeats its own name (games/<Game>/<Game>/data.xp3): that is a
+            // wrapper and stays listed under its own name.
             std::vector<std::string> inner = CollectionGames(full);
-            if (inner.size() >= 2) {
+            bool collection = inner.size() >= 2 ||
+                              (inner.size() == 1 && strcasecmp(inner[0].c_str(), e->d_name) != 0);
+            if (collection) {
                 Log("launcher: %s: collection of %zu game(s)", e->d_name, inner.size());
                 for (const std::string& g : inner) games.push_back(std::string(e->d_name) + "/" + g);
+            } else if (IsGameFolder(full)) {
+                games.push_back(e->d_name);
+                std::string issue = DetectGameIssue(full);
+                if (!issue.empty())
+                    Log("launcher: %s: %s (a plain Kirikiri game has no native protection; "
+                        "a clean DRM-free release is needed, see docs/HANDOFF.md)", e->d_name, issue.c_str());
             }
         }
     }

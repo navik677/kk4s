@@ -465,7 +465,7 @@ static void determineProperties(SDL_Surface* surface,
 
     // Determine the byte order of the surface
     SDL_PixelFormat* format = surface->format;
-#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
+#if defined(__ANDROID__) || defined(__SWITCH__) || defined(KK4S_GLES)  // kk4s: GLES on the Switch too
     // On Android, SDL surfaces may be ABGR8888 or RGBA8888.
     // GLES 3.2 doesn't support GL_UNSIGNED_INT_8_8_8_8_REV, so we
     // always upload as GL_RGBA/GL_UNSIGNED_BYTE and convert in CPU.
@@ -520,7 +520,7 @@ void SDLSurface::uploadTextureIfNeeded() const {
       determineProperties(surface_, is_mask_, bytes_per_pixel, byte_order,
                           byte_type);
 
-#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
+#if defined(__ANDROID__) || defined(__SWITCH__) || defined(KK4S_GLES)  // kk4s: GLES on the Switch too
       // On Android, convert surface to ABGR8888 which in little-endian memory
       // is stored as [R][G][B][A] — exactly what GL_RGBA + GL_UNSIGNED_BYTE expects.
       // Note: SDL_PIXELFORMAT_RGBA8888 stores [A][B][G][R] in memory (wrong for GL).
@@ -556,14 +556,14 @@ void SDLSurface::uploadTextureIfNeeded() const {
         x_offset += *it;
       }
 
-#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
+#if defined(__ANDROID__) || defined(__SWITCH__) || defined(KK4S_GLES)  // kk4s: GLES on the Switch too
       if (converted) {
         SDL_FreeSurface(converted);
       }
 #endif
     } else {
       // Reupload the textures without reallocating them.
-#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
+#if defined(__ANDROID__) || defined(__SWITCH__) || defined(KK4S_GLES)  // kk4s: GLES on the Switch too
       // Convert surface for reupload too
       SDL_Surface* upload_surface = surface_;
       SDL_Surface* converted = nullptr;
@@ -579,7 +579,7 @@ void SDLSurface::uploadTextureIfNeeded() const {
         record.reupload(upload_surface, dirty_rectangle_);
       });
 
-#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
+#if defined(__ANDROID__) || defined(__SWITCH__) || defined(KK4S_GLES)  // kk4s: GLES on the Switch too
       if (converted) {
         SDL_FreeSurface(converted);
       }
@@ -739,6 +739,12 @@ Surface* SDLSurface::Clone() const {
 
 std::vector<int> SDLSurface::segmentPicture(int size_remainging) {
   int max_texture_size = GetMaxTextureSize();
+  // A failed GL query (or a call before the context exists) gives 0 here, and
+  // the loop below would then push zeroes forever: 512 MB and a bad_alloc.
+  if (max_texture_size <= 0)
+    max_texture_size = 4096;
+  if (size_remainging <= 0)
+    return std::vector<int>(1, 1);
 
   std::vector<int> output;
   while (size_remainging > max_texture_size) {

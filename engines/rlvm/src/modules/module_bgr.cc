@@ -92,7 +92,7 @@ struct bgrLoadHaikei_main : RLOpcode<StrConstant_T, IntConstant_T> {
     graphics.ClearStack();
 
     fs::path path = system.FindFile(filename, HIK_FILETYPES);
-    if (iends_with(path.string(), "hik")) {
+    if (iends_with(PathStr(path), "hik")) {
       if (!machine.replaying_graphics_stack())
         graphics.ClearAndPromoteObjects();
 
@@ -270,7 +270,7 @@ struct bgrPreloadScript : public RLOpcode<IntConstant_T, StrConstant_T> {
   void operator()(RLMachine& machine, int slot, string name) {
     System& system = machine.system();
     fs::path path = system.FindFile(name, HIK_FILETYPES);
-    if (iends_with(path.string(), "hik")) {
+    if (iends_with(PathStr(path), "hik")) {
       system.graphics().PreloadHIKScript(system, slot, name, path);
     }
   }

@@ -134,11 +134,11 @@ void Archive::ReadOverrides() {
   fs::path seen_dir = fs::path(name_).parent_path();
   fs::directory_iterator end;
   for (fs::directory_iterator it(seen_dir); it != end; ++it) {
-    std::string filename = it->path().filename().string();
+    std::string filename = PathStr(it->path().filename());
     if (filename.size() == 12 && istarts_with(filename, "seen") &&
         iends_with(filename, ".txt") && isdigit(filename[4]) &&
         isdigit(filename[5]) && isdigit(filename[6]) && isdigit(filename[7])) {
-      Mapping* mapping = new Mapping((seen_dir / filename).string(), Read);
+      Mapping* mapping = new Mapping(PathStr(seen_dir / filename), Read);
       maps_to_delete_.emplace_back(mapping);
 
       int index = std::stoi(filename.substr(4, 4));

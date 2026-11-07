@@ -37,8 +37,11 @@
 #include <cstdio>
 #include <string>
 
-#ifdef WIN32
-#include <windows.h>
+// kk4s: no <windows.h> here - it would leak its macros (GetObject, FLOAT,
+// u_long) into every translation unit that touches a Mapping. On Windows the
+// handle is just the FILE* that filemap.cc keeps.
+#if defined(_WIN32)
+typedef void* HANDLE;
 #else
 typedef int HANDLE;
 #endif

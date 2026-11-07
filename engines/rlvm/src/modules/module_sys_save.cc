@@ -272,7 +272,7 @@ struct LatestSave : public RLStoreOpcode<> {
     if (fs::exists(saveDir)) {
       fs::directory_iterator end;
       for (fs::directory_iterator it(saveDir); it != end; ++it) {
-        string filename = it->path().filename().string();
+        string filename = PathStr(it->path().filename());
         if (starts_with(filename, "save") && ends_with(filename, ".sav.gz")) {
           time_t mtime = fs::last_write_time(*it);
 

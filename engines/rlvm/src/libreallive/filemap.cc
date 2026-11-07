@@ -33,46 +33,47 @@
 
 #include "libreallive/filemap.h"
 
-#include <fcntl.h>
-#ifndef O_BINARY
-const int O_BINARY = 0;
-#endif
-const HANDLE INVALID_HANDLE_VALUE = -1;
-
-#ifdef __SWITCH__
-// kk4s: no mmap on the Switch; mopen() falls back to reading the file.
+#include <algorithm>
+#include <cerrno>
 #include <cstdio>
-#define PROT_READ 1
-#define PROT_WRITE 2
-#define MAP_SHARED 1
-#define MAP_FAILED ((void*)-1)
-static inline void* mmap(void*, size_t, int, int, int, off_t) { return MAP_FAILED; }
-static inline int munmap(void*, size_t) { return 0; }
+#include <cstring>
+#include <string>
+
+#if defined(_WIN32)
+// kk4s: Windows has no mmap and no POSIX open(); Mapping reads the file into
+// memory and writes it back on close. (The old WIN32 branch here never
+// compiled: mingw already defines WIN32 and O_BINARY/O_RDONLY as macros.)
+const HANDLE INVALID_HANDLE_VALUE = nullptr;
 #else
+#include <fcntl.h>
 #include <sys/mman.h>
-#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#endif
 
-#include <algorithm>
-#include <cerrno>
-#include <string>
+#ifndef O_BINARY
+const int O_BINARY = 0;
+#endif
 
 namespace libreallive {
 
-#ifdef WIN32
-const int O_BINARY = 0;
-const int O_RDONLY = GENERIC_READ;
-const int O_RDWR = GENERIC_READ | GENERIC_WRITE;
-inline HANDLE open(const char* filename, int mode, int ignored) {
-  return CreateFile(filename, mode, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-                    OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-}
-inline void close(HANDLE fp) { CloseHandle(fp); }
-#endif
-
 void Mapping::mclose() {
+#if defined(_WIN32)
+  if (fp) {
+    FILE* f = (FILE*)fp;
+    if (mode_ == Write && mem && len) {
+      fseek(f, 0, SEEK_SET);
+      fwrite(mem, 1, len, f);
+    }
+    fclose(f);
+    fp = nullptr;
+  }
+  delete[] (char*)mem;
+  mem = nullptr;
+  mapped = false;
+  len = 0;
+#else
   if (mem && mapped) {
     munmap(mem, len);
   } else if (mem) {
@@ -80,9 +81,38 @@ void Mapping::mclose() {
   }
   if (fp != INVALID_HANDLE_VALUE)
     close(fp);
+#endif
 }
 
 void Mapping::mopen() {
+#if defined(_WIN32)
+  FILE* f = fopen(fn_.c_str(), mode_ == Read ? "rb" : "r+b");
+  if (!f && mode_ != Read)
+    f = fopen(fn_.c_str(), "wb");
+  if (!f) {
+    if (mode_ == Read)
+      throw Error("File not found");
+    throw Error("Could not open file");
+  }
+  fseek(f, 0, SEEK_END);
+  long long file_size = ftell(f);
+  if (file_size < 0)
+    file_size = 0;
+  fseek(f, 0, SEEK_SET);
+  len = (size_t)std::max((long long)msz_, file_size);
+  mem = (void*)(new char[len]);
+  if (file_size > 0 && fread(mem, 1, (size_t)file_size, f) != (size_t)file_size) {
+    fclose(f);
+    delete[] (char*)mem;
+    mem = nullptr;
+    len = 0;
+    throw Error("Could not read file");
+  }
+  for (long long i = file_size; i < (long long)len; ++i)
+    ((char*)mem)[i] = 0;
+  fp = (HANDLE)f;
+  mapped = true;
+#else
   struct stat st;
   if (stat(fn_.c_str(), &st) != 0) {
     if (errno != ENOENT)
@@ -115,6 +145,7 @@ void Mapping::mopen() {
   } else {
     mapped = true;
   }
+#endif
 }
 
 Mapping::Mapping(string filename, Mode mode, off_t min_size)

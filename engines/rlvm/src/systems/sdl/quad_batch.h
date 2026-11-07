@@ -19,7 +19,7 @@
 #ifndef SRC_SYSTEMS_SDL_QUAD_BATCH_H_
 #define SRC_SYSTEMS_SDL_QUAD_BATCH_H_
 
-#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
+#if defined(__ANDROID__) || defined(__SWITCH__) || defined(KK4S_GLES)  // kk4s: GLES on the Switch too
 #include <GLES3/gl32.h>
 #else
 #include "GL/glew.h"

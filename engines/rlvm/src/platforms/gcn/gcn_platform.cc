@@ -389,7 +389,7 @@ void GCNPlatform::initializeGuichan(System& system, const Rect& screen_size) {
   guichan_gui_->setTop(toplevel_container_.get());
 
   fs::path font_file = FindFontFile(system);
-  global_font_.reset(new GCNTrueTypeFont(font_file.string().c_str(), 12));
+  global_font_.reset(new GCNTrueTypeFont(PathStr(font_file).c_str(), 12));
   gcn::Widget::setGlobalFont(global_font_.get());
 }
 

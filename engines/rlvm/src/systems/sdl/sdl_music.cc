@@ -247,7 +247,7 @@ std::shared_ptr<SDLMusic> SDLMusic::CreateMusic(
     throw rlvm::Exception(oss.str());
   }
 
-  const std::string& raw_path = file_path.native();
+  const std::string raw_path = PathStr(file_path);
   for (FileTypes::const_iterator it = types.begin(); it != types.end(); ++it) {
     if (boost::iends_with(raw_path, it->first)) {
       FILE* f = fopen(raw_path.c_str(), "r");

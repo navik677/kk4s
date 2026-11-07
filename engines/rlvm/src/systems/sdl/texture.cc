@@ -13,7 +13,7 @@
 // ARB extension functions replaced with standard GL 3.3 / ES 3.2 core.
 // -----------------------------------------------------------------------
 
-#if defined(__ANDROID__) || defined(__SWITCH__)  // kk4s: GLES on the Switch too
+#if defined(__ANDROID__) || defined(__SWITCH__) || defined(KK4S_GLES)  // kk4s: GLES on the Switch too
 #include <GLES3/gl32.h>
 #include <android/log.h>
 #define LOG_TAG "RLVM-TEX"
@@ -24,7 +24,7 @@
 #endif
 
 #include <SDL2/SDL.h>
-#if !defined(__ANDROID__) && !defined(__SWITCH__)  // kk4s: GLES on the Switch too
+#if !defined(__ANDROID__) && !defined(__SWITCH__) && !defined(KK4S_GLES)  // kk4s: GLES on the Switch too
 #include <SDL2/SDL_opengl.h>
 #endif
 
