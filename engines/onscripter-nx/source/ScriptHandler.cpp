@@ -23,6 +23,12 @@
 
 #include "ScriptHandler.h"
 #include "kk4s_ons.h"
+
+#include <string>
+#include <string.h>
+
+// kk4s: see the UTF-8 script conversion below.
+unsigned short convUTF16ToSJIS( unsigned short in );
 #ifdef __SWITCH__
 #include "switch_mitm.h"
 #endif
@@ -766,22 +772,22 @@ int ScriptHandler::getStringFromInteger( char *buffer, int no, int num_column, b
     int c = 0;
     if (is_zero_inserted){
         for (i=0 ; i<num_space ; i++){
-            buffer[c++] = ((char*)"‚O")[0];
-            buffer[c++] = ((char*)"‚O")[1];
+            buffer[c++] = ((char*)"ï¿½O")[0];
+            buffer[c++] = ((char*)"ï¿½O")[1];
         }
     }
     else{
     for (i=0 ; i<num_space ; i++){
-        buffer[c++] = ((char*)"@")[0];
-        buffer[c++] = ((char*)"@")[1];
+        buffer[c++] = ((char*)"ï¿½@")[0];
+        buffer[c++] = ((char*)"ï¿½@")[1];
     }
     }
     if (num_minus == 1){
-        buffer[c++] = "|"[0];
-        buffer[c++] = "|"[1];
+        buffer[c++] = "ï¿½|"[0];
+        buffer[c++] = "ï¿½|"[1];
     }
     c = (num_column-1)*2;
-    char num_str[] = "‚O‚P‚Q‚R‚S‚T‚U‚V‚W‚X";
+    char num_str[] = "ï¿½Oï¿½Pï¿½Qï¿½Rï¿½Sï¿½Tï¿½Uï¿½Vï¿½Wï¿½X";
     for (i=0 ; i<num_digit ; i++){
         buffer[c]   = num_str[ no % 10 * 2];
         buffer[c+1] = num_str[ no % 10 * 2 + 1];
@@ -849,6 +855,85 @@ int ScriptHandler::readScriptSub( FILE *fp, char **buf, int encrypt_mode )
 
     *(*buf)++ = 0x0a;
     return 0;
+}
+
+// kk4s: some fan translations ship the script (0.txt) as UTF-8, while this
+// engine reads text as Shift-JIS: every Cyrillic byte was taken for a half-width
+// katakana code point, the font had no glyphs for those, and the game drew empty
+// boxes. Decode UTF-8 and re-encode the text as CP932 (Cyrillic there is JIS X
+// 0208 row 7, Shift-JIS 0x8440 and up), so the byte-oriented parser keeps
+// working and the game's own font renders the text. Nothing on disk is touched.
+static bool kk4sUTF8Decode( const unsigned char *s, int len, unsigned &cp, int &used )
+{
+    unsigned c = s[0];
+    int n;
+    unsigned min_cp;
+
+    if ( c < 0x80 ){
+        cp = c;
+        used = 1;
+        return true;
+    }else if ( (c & 0xe0) == 0xc0 ){
+        cp = c & 0x1f; n = 2; min_cp = 0x80;
+    }else if ( (c & 0xf0) == 0xe0 ){
+        cp = c & 0x0f; n = 3; min_cp = 0x800;
+    }else if ( (c & 0xf8) == 0xf0 ){
+        cp = c & 0x07; n = 4; min_cp = 0x10000;
+    }else{
+        return false;
+    }
+
+    if ( len < n ) return false;
+    for ( int i = 1; i < n; i++ ){
+        if ( (s[i] & 0xc0) != 0x80 ) return false;
+        cp = (cp << 6) | (s[i] & 0x3f);
+    }
+    if ( cp < min_cp || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ) return false;
+
+    used = n;
+    return true;
+}
+
+// Returns the new length, or 0 when the buffer is not UTF-8 text.
+static int kk4sScriptUTF8ToSjis( char *buf, int len )
+{
+    const unsigned char *src = (const unsigned char*)buf;
+    int start = 0;
+
+    // UTF-8 BOM would otherwise turn into a full-width question mark before the
+    // first ';' comment and break the header parse.
+    if ( len >= 3 && src[0] == 0xef && src[1] == 0xbb && src[2] == 0xbf ) start = 3;
+
+    bool multibyte = false;
+    for ( int i = start; i < len; ){
+        unsigned cp;
+        int used;
+        if ( !kk4sUTF8Decode( src + i, len - i, cp, used ) ) return 0;
+        if ( used > 1 ) multibyte = true;
+        i += used;
+    }
+    if ( !multibyte ) return 0;
+
+    std::string out;
+    out.reserve( len - start );
+    for ( int i = start; i < len; ){
+        unsigned cp;
+        int used;
+        kk4sUTF8Decode( src + i, len - i, cp, used );
+        if ( cp < 0x80 ){
+            out.push_back( (char)cp );
+        }else{
+            unsigned short sjis = ( cp <= 0xffff ) ? convUTF16ToSJIS( (unsigned short)cp ) : 0;
+            if ( !sjis ) sjis = 0x8148; // full-width '?'
+            out.push_back( (char)( sjis >> 8 ) );
+            out.push_back( (char)( sjis & 0xff ) );
+        }
+        i += used;
+    }
+    if ( (int)out.size() > len ) return 0;
+
+    memcpy( buf, out.data(), out.size() );
+    return (int)out.size();
 }
 
 int ScriptHandler::readScript( char *path )
@@ -927,6 +1012,16 @@ int ScriptHandler::readScript( char *path )
     delete[] tmp_script_buf;
 
     script_buffer_length = p_script_buffer - script_buffer;
+
+    // kk4s: UTF-8 scripts of fan translations, see kk4sScriptUTF8ToSjis().
+    {
+        int converted = kk4sScriptUTF8ToSjis( script_buffer, script_buffer_length );
+        if ( converted > 0 ){
+            fprintf( stderr, "kk4s: script is UTF-8, converted to Shift-JIS (%d -> %d bytes)\n",
+                     script_buffer_length, converted );
+            script_buffer_length = converted;
+        }
+    }
 
     /* ---------------------------------------- */
     /* screen size and value check */

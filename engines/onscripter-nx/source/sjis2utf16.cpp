@@ -1,4 +1,6 @@
 /* sjis 0x8140 - 0xfcfc */
+#include <string.h>
+
 unsigned short sjis_2_utf16[0xfcfc - 0x8140 + 1];
 
 static unsigned short sjis_2_utf16_org[][2] = {
@@ -11393,5 +11395,27 @@ void initSJIS2UTF16()
 unsigned short convSJIS2UTF16( unsigned short in )
 {
     return sjis_2_utf16[ in - 0x8140 ];
+}
+
+// kk4s: the reverse direction, for scripts that ship as UTF-8 (fan
+// translations): their Cyrillic maps onto JIS X 0208 row 7, which the engine
+// already knows as Shift-JIS 0x8440 and up.
+unsigned short convUTF16ToSJIS( unsigned short in )
+{
+    static unsigned short utf16_2_sjis[0x10000];
+    static bool ready = false;
+
+    if ( !ready ){
+        memset( utf16_2_sjis, 0, sizeof(utf16_2_sjis) );
+        int i = 0;
+        while ( sjis_2_utf16_org[i][0] ){
+            unsigned short u = sjis_2_utf16_org[i][1];
+            if ( u && !utf16_2_sjis[u] ) utf16_2_sjis[u] = sjis_2_utf16_org[i][0];
+            i++;
+        }
+        ready = true;
+    }
+
+    return utf16_2_sjis[in];
 }
 
