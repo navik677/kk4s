@@ -3,6 +3,13 @@
 Same engine as the Switch build, with `platform/desktop/` instead of libnx. It is the main
 dev/test loop: crashes here are much cheaper than on the Switch.
 
+Code parity: one `kk4s` CMake target compiles the same `platform/common/*`, `engine/source/*`,
+`compat/*` and `engines/onscripter-nx/source/*` for both; `KK4S_PLATFORM` only picks
+`platform/{desktop,switch}/kk4s_platform.cpp`. What differs: libnx specifics (pad, battery, romfs
+fonts, `envSetNextLoad`), the SDL renderer (Windows defaults to Direct3D; run with
+`SDL_RENDER_DRIVER=opengles2` for the Switch's GLES2 path) and rlvm's GL backend (EGL/ANGLE on
+Windows, Mesa on the Switch).
+
 ## Run
 
 ```
@@ -18,6 +25,18 @@ launcher (setting); a game given on the command line just exits.
 Keyboard: arrows, Enter, Esc work in games as on Windows; **F1** opens the kk4s in-game menu.
 Launcher: arrows / Enter / Esc, Y or F3 = cover search, X or F2 = settings, O or F4 = game options,
 mouse and wheel. PC gamepads work through SDL game controllers. See [launcher.md](launcher.md).
+
+## RealLive (rlvm) on Windows
+
+RealLive games run in a separate `rlvm.exe` built from the same `engines/rlvm/src` as the Switch
+build (`tools/build-rlvm-win.sh`); only the platform front end and the GL backend differ. Build it,
+copy `rlvm.exe` and its DLLs to `engines/rlvm/`, then run `rlvm.exe <game folder>` (or let the
+launcher start it).
+
+NWA/Ogg files are binary. Opening them in text mode corrupts the header on Windows and used to end
+CLANNAD with `std::bad_alloc` in SDL's audio callback; this is fixed in the engine (see
+[engines.md](engines.md)). If a RealLive game still dies right after the loading screen, run it
+under gdb and check stderr for `invalid stream` (see [debugging.md](debugging.md)).
 
 ## Build
 

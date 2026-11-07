@@ -57,6 +57,15 @@ It prints the data-area strings and the VM instructions (opcodes are from
 `engine/source/core/tjs2/tjsInterCodeGen.h`). A repack protection stub looks like a single
 `System.inform("...")` call with no branches; see the ATRI section in `docs/HANDOFF.md`.
 
+## rlvm on Windows (audio crash)
+
+`rlvm.exe` is a separate process, so its stdout/stderr is the only log. An exception on SDL's audio
+thread prints `std::bad_alloc` interleaved with the engine's textout lines and looks like a text
+bug, but the throwing thread is `SDLAudioP2`. Reproduce with `gdb --args rlvm.exe <game folder>`
+and run `bt` after the crash: the frame inside `SDLMusic::MixMusic` names the real caller (for
+CLANNAD it was `NWAFILE::Seek`). `invalid stream` on stderr before the crash means a binary file
+(NWA/Ogg) was opened in text mode; it must use `fopen(..., "rb")`.
+
 ## Input scripts (PC)
 
 `KK4S_INPUT_SCRIPT=<file>` plays gamepad presses, touches and screenshots through the same code as
