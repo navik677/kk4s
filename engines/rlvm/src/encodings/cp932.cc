@@ -71,7 +71,9 @@
 #include "encodings/cp932.h"
 
 #include <cstdint>
+#include <cstdio>
 #include <string>
+#include <vector>
 
 #include "utilities/string_utilities.h"
 
@@ -1053,7 +1055,13 @@ struct leading fmcp932_tbl[] = {
 
 // -----------------------------------------------------------------------
 
+// kk4s: replacement characters for the one-byte codes 0xA1-0xDF, see
+// LoadCp932HalfwidthTable() (0 = keep half-width katakana).
+static uint16_t g_halfwidth_table[63];
+
 uint16_t Cp932::Convert(uint16_t ch) const {
+  if (ch >= 0xa1 && ch <= 0xdf && g_halfwidth_table[ch - 0xa1])
+    return g_halfwidth_table[ch - 0xa1];  // kk4s
   unsigned char sb = ch > 255 ? ((ch & 0xFF00) >> 8) : ch;
   leading& lb = fmcp932_tbl[sb];
   if (lb.tbl) {
@@ -1109,4 +1117,75 @@ std::wstring Cp932::ConvertString(const std::string& s) const {
   return std::wstring();
 }
 
+#endif
+
+// -----------------------------------------------------------------------
+// kk4s: half-width table of a translation hook
+// -----------------------------------------------------------------------
+
+#ifndef NO_CP932_CONVERSION
+namespace {
+
+// A character a translation may put on a half-width code: Cyrillic, or the
+// punctuation such tables use instead of katakana marks.
+bool IsTableChar(uint16_t v, int i) {
+  if (v == 0xff61 + i)
+    return true;  // unchanged katakana
+  if (v >= 0x0400 && v <= 0x045f)
+    return true;
+  switch (v) {
+    case 0x00ab: case 0x00bb: case 0x2013: case 0x2014: case 0x2026:
+    case 0x201c: case 0x201d: case 0x201e: case 0x2116:
+      return true;
+  }
+  return false;
+}
+
+}  // namespace
+
+bool IsCp932HalfwidthTableChar(int codepoint) {
+  if (codepoint <= 0 || codepoint > 0xffff)
+    return false;
+  for (uint16_t v : g_halfwidth_table)
+    if (v == codepoint)
+      return true;
+  return false;
+}
+
+int LoadCp932HalfwidthTable(const std::string& dll) {
+  FILE* f = fopen(dll.c_str(), "rb");
+  if (!f)
+    return 0;
+  std::vector<unsigned char> b;
+  unsigned char buf[65536];
+  size_t n;
+  while ((n = fread(buf, 1, sizeof(buf), f)) > 0 && b.size() < (8u << 20))
+    b.insert(b.end(), buf, buf + n);
+  fclose(f);
+
+  const size_t kLen = 63 * 2;
+  for (size_t off = 0; off + kLen <= b.size(); off += 2) {
+    int changed = 0, cyrillic = 0;
+    bool ok = true;
+    for (int i = 0; i < 63 && ok; ++i) {
+      uint16_t v = b[off + 2 * i] | (b[off + 2 * i + 1] << 8);
+      ok = IsTableChar(v, i);
+      if (v != 0xff61 + i)
+        ++changed;
+      if (v >= 0x0400 && v <= 0x045f)
+        ++cyrillic;
+    }
+    if (!ok || cyrillic < 24)
+      continue;
+    for (int i = 0; i < 63; ++i) {
+      uint16_t v = b[off + 2 * i] | (b[off + 2 * i + 1] << 8);
+      g_halfwidth_table[i] = v == 0xff61 + i ? 0 : v;
+    }
+    return changed;
+  }
+  return 0;
+}
+#else
+int LoadCp932HalfwidthTable(const std::string&) { return 0; }
+bool IsCp932HalfwidthTableChar(int) { return false; }
 #endif

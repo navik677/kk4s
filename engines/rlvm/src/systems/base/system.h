@@ -33,6 +33,7 @@
 #include <boost/serialization/version.hpp>
 
 #include <map>
+#include <memory>  // kk4s: std::shared_ptr (glibc builds)
 #include <sstream>
 #include <string>
 #include <utility>

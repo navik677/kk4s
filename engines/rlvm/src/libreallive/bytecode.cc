@@ -122,6 +122,8 @@ CommandElement* BuildFunctionElement(const char* stream) {
     const char* end = ptr + 1;
     while (*end != ')') {
       const size_t len = NextData(end);
+      if (len == 0)  // kk4s: unparseable data; fail instead of eating memory
+        throw Error("Could not parse the parameters of a function call");
       params.emplace_back(end, len);
       end += len;
     }
@@ -304,6 +306,29 @@ void MetaElement::RunOnMachine(RLMachine& machine) const {
 // TextoutElement
 // -----------------------------------------------------------------------
 
+// kk4s: how many bytes the text character at p takes. The rlvm-project fork
+// treated every byte 0xC0-0xDF / 0xF0-0xF7 as a UTF-8 lead byte, but in CP932
+// those are one-byte characters (half-width katakana, which fan translations
+// such as the Russian CLANNAD use for Cyrillic). Skipping the next byte then
+// swallowed closing quotes and the parser lost track of where text ends.
+// Multi-byte UTF-8 is taken only when its continuation bytes are there.
+static size_t TextCharLength(const char* p, const char* end) {
+  auto at = [&](int i) -> unsigned {
+    return p + i < end ? static_cast<unsigned char>(p[i]) : 0u;
+  };
+  auto cont = [&](int i) { return at(i) >= 0x80 && at(i) <= 0xbf; };
+  unsigned c = at(0);
+  if (c >= 0x81 && c <= 0x9f)
+    return 2;  // CP932 lead byte
+  if (c >= 0xe0 && c <= 0xef)
+    return cont(1) && cont(2) ? 3 : 2;  // UTF-8 3-byte, else CP932
+  if (c >= 0xf0 && c <= 0xf7)
+    return cont(1) && cont(2) && cont(3) ? 4 : 1;
+  if (c >= 0xc0 && c <= 0xdf)
+    return cont(1) ? 2 : 1;
+  return 1;
+}
+
 TextoutElement::TextoutElement(const char* src, const char* file_end) {
   const char* end = src;
   bool quoted = false;
@@ -320,36 +345,10 @@ TextoutElement::TextoutElement(const char* src, const char* file_end) {
           *end == entrypoint_marker)
         break;
     }
-    // Detect CP932 (0x81-0x9F, 0xE0-0xEF) or UTF-8 lead bytes
-    // UTF-8: 0xC0-0xDF (2 bytes), 0xE0-0xEF (3 bytes), 0xF0-0xF7 (4 bytes)
-    unsigned char c = static_cast<unsigned char>(*end);
-#ifdef __ANDROID__
-    __android_log_print(ANDROID_LOG_INFO, "RLVM", "TextoutElement: byte=0x%02x", c);
-#endif
-    if (c >= 0x81 && c <= 0x9f) {
-      // CP932 lead byte only (UTF-8 doesn't use this range)
-      end += 2;
-    } else if (c >= 0xe0 && c <= 0xef) {
-      // Ambiguous: could be CP932 or UTF-8
-      // Check next byte: UTF-8 continuation bytes are 0x80-0xBF
-      unsigned char next = static_cast<unsigned char>(end[1]);
-      if (next >= 0x80 && next <= 0xBF) {
-        // UTF-8: 3-byte character
-        end += 3;
-      } else {
-        // CP932: 2-byte character
-        end += 2;
-      }
-    } else if (c >= 0xf0 && c <= 0xf7) {
-      // UTF-8: 4-byte character
-      end += 4;
-    } else if (c >= 0xc0 && c <= 0xdf) {
-      // UTF-8: 2-byte character
-      end += 2;
-    } else {
-      ++end;
-    }
+    end += TextCharLength(end, file_end);  // kk4s
   }
+  if (end > file_end)
+    end = file_end;
   repr.assign(src, end);
 }
 
@@ -372,38 +371,10 @@ const string TextoutElement::GetText() const {
         rv.push_back('\\');
       }
     } else {
-      // Detect CP932 or UTF-8 lead bytes
-      unsigned char c = static_cast<unsigned char>(*it);
-      if (c >= 0x81 && c <= 0x9f) {
-        // CP932 lead byte only (UTF-8 doesn't use this range)
+      // kk4s: same character lengths as the constructor.
+      size_t n = TextCharLength(&*it, repr.data() + repr.size());
+      for (size_t k = 0; k < n && it != repr.cend(); ++k)
         rv.push_back(*it++);
-        rv.push_back(*it++);
-      } else if (c >= 0xe0 && c <= 0xef) {
-        // Ambiguous: could be CP932 or UTF-8
-        unsigned char next = static_cast<unsigned char>(it[1]);
-        if (next >= 0x80 && next <= 0xBF) {
-          // UTF-8: 3-byte character
-          rv.push_back(*it++);
-          rv.push_back(*it++);
-          rv.push_back(*it++);
-        } else {
-          // CP932: 2-byte character
-          rv.push_back(*it++);
-          rv.push_back(*it++);
-        }
-      } else if (c >= 0xf0 && c <= 0xf7) {
-        // UTF-8: 4-byte character
-        rv.push_back(*it++);
-        rv.push_back(*it++);
-        rv.push_back(*it++);
-        rv.push_back(*it++);
-      } else if (c >= 0xc0 && c <= 0xdf) {
-        // UTF-8: 2-byte character
-        rv.push_back(*it++);
-        rv.push_back(*it++);
-      } else {
-        rv.push_back(*it++);
-      }
     }
   }
   return rv;

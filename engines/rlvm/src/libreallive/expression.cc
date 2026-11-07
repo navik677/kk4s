@@ -123,10 +123,6 @@ size_t NextString(const char* src) {
   while (true) {
     if (quoted) {
       quoted = !IsUnescapedQuotationMark(src, end);
-      if (!quoted && *(end - 1) != '\\') {
-        end++;  // consume the final quote
-        break;
-      }
     } else {
       quoted = IsUnescapedQuotationMark(src, end);
       if (strncmp(end, "###PRINT(", 9) == 0) {
@@ -134,13 +130,26 @@ size_t NextString(const char* src) {
         end += 1 + NextExpression(end);
         continue;
       }
-      if (!((*end >= 0x81 && *end <= 0x9f) || (*end >= 0xe0 && *end <= 0xef) ||
+      // kk4s: 'a' followed by a control byte is the tag of the next
+      // parameter, not a letter of this unquoted string (CLANNAD Steam:
+      // a{1:"ACH_PROLOGUE"}, a{0:1}). Without this the parameter loop in
+      // BuildFunctionElement() never advanced and ate all memory.
+      if (*end == 'a' && static_cast<unsigned char>(end[1]) < 0x20)
+        break;
+      // kk4s: one-byte CP932 codes 0xA1-0xDF (half-width katakana; the
+      // Russian CLANNAD puts Cyrillic there) are text too.
+      const unsigned char c = static_cast<unsigned char>(*end);
+      if (!((c >= 0x81 && c <= 0x9f) || (c >= 0xe0 && c <= 0xef) ||
+            (c >= 0xa1 && c <= 0xdf) ||
             (*end >= 'a' && *end <= 'z') || (*end >= 'A' && *end <= 'Z') ||
             (*end >= '0' && *end <= '9') || *end == ' ' || *end == '?' ||
             *end == '_' || *end == '"' || *end == '\\')) {
         break;
       }
     }
+    // kk4s: a closing quote does not end the string (the rlvm-project fork
+    // stopped there): choices are written as C"..."###PRINT(...)"...", the
+    // way upstream rlvm reads them.
     if ((*end >= 0x81 && *end <= 0x9f) || (*end >= 0xe0 && *end <= 0xef))
       end += 2;
     else
@@ -156,6 +165,8 @@ size_t NextData(const char* src) {
   if (*src == '\n')
     return 3 + NextData(src + 3);
   if ((*src >= 0x81 && *src <= 0x9f) || (*src >= 0xe0 && *src <= 0xef) ||
+      (static_cast<unsigned char>(*src) >= 0xa1 &&  // kk4s: one-byte CP932
+       static_cast<unsigned char>(*src) <= 0xdf) ||
       (*src >= 'A' && *src <= 'Z') || (*src >= '0' && *src <= '9') ||
       *src == ' ' || *src == '?' || *src == '_' || *src == '"' ||
       strcmp(src, "###PRINT(") == 0)
@@ -177,8 +188,12 @@ size_t NextData(const char* src) {
       }
     }
 
-    while (*end != ')')
-      end += NextData(end);
+    while (*end != ')') {
+      size_t len = NextData(end);
+      if (len == 0)  // kk4s: unparseable data; fail instead of looping
+        throw Error("Could not parse a parameter list");
+      end += len;
+    }
     end++;
     if (*end == '\\')
       end += NextExpression(end);

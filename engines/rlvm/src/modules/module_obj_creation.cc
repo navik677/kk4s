@@ -27,6 +27,7 @@
 
 #include "modules/module_obj_creation.h"
 
+#include <climits>  // kk4s: INT_MIN (glibc builds)
 #include <cmath>
 #include <memory>
 #include <string>

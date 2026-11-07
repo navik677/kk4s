@@ -49,6 +49,7 @@
 #include "utilities/find_font_file.h"
 #include "utilities/gettext.h"
 #include "utilities/string_utilities.h"
+#include "encodings/cp932.h"  // kk4s: LoadCp932HalfwidthTable()
 
 namespace fs = boost::filesystem;
 
@@ -83,6 +84,15 @@ void RLVMInstance::Run(const boost::filesystem::path& gamerootPath) {
 
     Gameexe gameexe(gameexePath);
     gameexe("__GAMEPATH") = gamerootPath.string();
+
+    // kk4s: a translation hook's table for the half-width codes (Cp932).
+    fs::path hook = CorrectPathCase(gamerootPath / "dsound.dll");
+    if (!hook.empty()) {
+      int n = LoadCp932HalfwidthTable(hook.string());
+      if (n > 0)
+        std::cout << "rlvm: " << n << " half-width characters remapped by "
+                  << hook.string() << std::endl;
+    }
 
     // Possibly force starting at a different seen
     if (seen_start_ != -1)

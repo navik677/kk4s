@@ -31,6 +31,7 @@
 #include <boost/filesystem.hpp>
 
 #include <iosfwd>
+#include <memory>  // kk4s: std::unique_ptr (glibc builds)
 #include <string>
 #include <vector>
 

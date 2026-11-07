@@ -38,6 +38,7 @@
 #include <android/log.h>
 #endif
 
+#include "encodings/cp932.h"  // kk4s: IsCp932HalfwidthTableChar()
 #include "libreallive/defs.h"
 #include "libreallive/gameexe.h"
 #include "machine/rlmachine.h"
@@ -568,7 +569,8 @@ bool TextWindow::DisplayCharacter(const std::string& current,
     next_char_italic_ = false;
     text_wrapping_point_x_ += GetWrappingWidthFor(cur_codepoint);
 
-    if (cur_codepoint < 0x300) {
+    if (cur_codepoint < 0x300 ||
+        IsCp932HalfwidthTableChar(cur_codepoint)) {  // kk4s
       // All western characters (ASCII + Latin Extended): use the real TTF
       // advance width, which matches GetWrappingWidthFor. For rlBabel games
       // the bytecode will override text_insertion_point_x_ via TextPosX(xmod)
@@ -765,7 +767,8 @@ int TextWindow::GetWrappingWidthFor(int cur_codepoint) {
   if (cur_codepoint < 0x20) {
     // Control characters: no width
     return 0;
-  } else if (cur_codepoint < 0x300) {
+  } else if (cur_codepoint < 0x300 ||
+             IsCp932HalfwidthTableChar(cur_codepoint)) {  // kk4s
     // All western characters — Basic ASCII and Latin Extended (á, é, í, ó,
     // ú, ñ, ¿, ¡, É, À, etc.) — use the real TTF advance width.
     //

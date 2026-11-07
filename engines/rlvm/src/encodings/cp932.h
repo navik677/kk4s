@@ -47,4 +47,18 @@ struct Cp932 : public Codepage {
   Cp932();
 };
 
+// kk4s: some fan translations keep the game in CP932 and hook the Windows
+// text functions (a dsound.dll in the game folder) so that the one-byte codes
+// 0xA1-0xDF, half-width katakana, are drawn as other letters (the Russian
+// CLANNAD: Cyrillic). The hook carries a table of 63 UTF-16 characters for
+// those codes. LoadCp932HalfwidthTable() looks for such a table in |dll| and,
+// when found, Cp932::Convert() uses it. Returns the number of characters
+// that differ from half-width katakana, or 0 if no table was found.
+int LoadCp932HalfwidthTable(const std::string& dll);
+
+// kk4s: true if |codepoint| is one of the characters of a loaded table. They
+// stand for one-byte codes, so the text window gives them their own width
+// instead of a full-width cell.
+bool IsCp932HalfwidthTableChar(int codepoint);
+
 #endif  // SRC_ENCODINGS_CP932_H_
