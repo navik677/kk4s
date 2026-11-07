@@ -54,7 +54,8 @@ Mix_Chunk* SDLSoundChunk::LoadSample(const boost::filesystem::path& path) {
     // Hack to load NWA sounds into a MixChunk. I was resisted doing this
     // because I assumed there was a better way, but this is essentially what
     // jagarl does in xclannad too :(
-    FILE* f = fopen(PathStr(path).c_str(), "r");
+    // kk4s: binary mode; text mode mangles NWA/Ogg sound chunks on Windows.
+    FILE* f = fopen(PathStr(path).c_str(), "rb");
     if (!f)
       return NULL;
     int size = 0;

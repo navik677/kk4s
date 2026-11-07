@@ -782,6 +782,13 @@ int main(int argc, char** argv) {
 #include "wavfile.h"
 
 void NWAFILE::Seek(int count) {
+  // kk4s: when ReadHeader/CheckHeader rejected the stream, block_size was
+  // never set; allocating from it threw std::bad_alloc inside SDL's audio
+  // callback (CLANNAD crashed on the first BGM loop). Treat it as silence.
+  if (block_size <= 0) {
+    data_len = 0;
+    return;
+  }
   if (data == 0)
     data = new char[block_size];
   nwa->Rewind(stream);
@@ -793,6 +800,8 @@ void NWAFILE::Seek(int count) {
 NWAFILE::NWAFILE(FILE* _stream, int size) {
   skip_count = 0;
   data = 0;
+  data_len = 0;
+  block_size = 0;  // kk4s: defined even when CheckHeader() fails
   stream = _stream;
   nwa = new NWAData;
   nwa->ReadHeader(stream);

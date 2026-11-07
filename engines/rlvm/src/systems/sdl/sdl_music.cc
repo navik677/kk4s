@@ -250,7 +250,10 @@ std::shared_ptr<SDLMusic> SDLMusic::CreateMusic(
   const std::string raw_path = PathStr(file_path);
   for (FileTypes::const_iterator it = types.begin(); it != types.end(); ++it) {
     if (boost::iends_with(raw_path, it->first)) {
-      FILE* f = fopen(raw_path.c_str(), "r");
+      // kk4s: binary mode; text mode corrupts NWA/Ogg data on Windows
+      // (CRLF translation and 0x1A treated as EOF) and made the header
+      // check fail, which later crashed the audio callback in Seek().
+      FILE* f = fopen(raw_path.c_str(), "rb");
       if (f == 0) {
         std::ostringstream oss;
         oss << "Could not open \"" << file_path << "\" for reading.";
