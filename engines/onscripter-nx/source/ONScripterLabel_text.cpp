@@ -24,6 +24,44 @@
 #include "ONScripterLabel.h"
 
 extern unsigned short convSJIS2UTF16( unsigned short in );
+// kk4s: SDL_ttf before 2.0.18 returned a glyph cut to its box, and drawGlyph
+// puts that box at ascent - maxy. Newer SDL_ttf returns the whole line height
+// with the glyph already on the baseline, so the glyph moved twice ("stairs")
+// and descenders were cut off. Cut such a surface back to the glyph's box:
+// rows from the glyph metrics, columns from the pixels that are set.
+static SDL_Surface *kk4sCropGlyph( TTF_Font *font, Uint16 ch, SDL_Surface *s )
+{
+    if ( !s || s->format->BytesPerPixel != 1 ) return s;
+    int minx, maxx, miny, maxy, adv;
+    if ( TTF_GlyphMetrics( font, ch, &minx, &maxx, &miny, &maxy, &adv ) != 0 ) return s;
+    int top = TTF_FontAscent( font ) - maxy, rows = maxy - miny;
+    if ( rows <= 0 || s->h <= rows || top < 0 || top + rows > s->h ) return s; // already cut
+    if ( SDL_MUSTLOCK(s) ) SDL_LockSurface( s );
+    int left = s->w, right = -1;
+    for ( int y = top; y < top + rows; y++ ){
+        const Uint8 *row = (const Uint8 *)s->pixels + y * s->pitch;
+        for ( int x = 0; x < s->w; x++ )
+            if ( row[x] ){
+                if ( x < left ) left = x;
+                if ( x > right ) right = x;
+            }
+    }
+    SDL_Surface *out = NULL;
+    if ( right >= left ){
+        out = SDL_CreateRGBSurfaceWithFormat( 0, right - left + 1, rows, 8, SDL_PIXELFORMAT_INDEX8 );
+        if ( out ){
+            SDL_SetSurfacePalette( out, s->format->palette );
+            for ( int y = 0; y < rows; y++ )
+                memcpy( (Uint8 *)out->pixels + y * out->pitch,
+                        (const Uint8 *)s->pixels + ( top + y ) * s->pitch + left, right - left + 1 );
+        }
+    }
+    if ( SDL_MUSTLOCK(s) ) SDL_UnlockSurface( s );
+    if ( !out ) return s; // blank glyph (space): nothing is drawn anyway
+    SDL_FreeSurface( s );
+    return out;
+}
+
 
 #define IS_KINSOKU(x)	\
         ( *(x) == (char)0x81 && *((x)+1) == (char)0x41 || \
@@ -74,7 +112,7 @@ SDL_Surface *ONScripterLabel::renderGlyph(TTF_Font *font, Uint16 text)
     if (gc->surface) SDL_FreeSurface(gc->surface);
 
     static SDL_Color fcol={0xff, 0xff, 0xff}, bcol={0, 0, 0};
-    gc->surface = TTF_RenderGlyph_Shaded( font, text, fcol, bcol );
+    gc->surface = kk4sCropGlyph( font, text, TTF_RenderGlyph_Shaded( font, text, fcol, bcol ) );
 
     return gc->surface;
 }

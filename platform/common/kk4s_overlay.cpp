@@ -42,6 +42,7 @@ struct Row {
 
 struct State {
     bool open = false, controls = false, quick_exists = false;
+    bool basic = false; // SetBasic: built-in ONScripter
     float anim = 0;
     int row = 0;
     int confirm = -1;
@@ -82,6 +83,18 @@ std::vector<Row> Rows() {
         return rows;
     }
     rows.push_back(Row{kResume, T(i18n::kResume)});
+    if (g.basic) { // built-in ONScripter: only what does not need the Kirikiri side
+        Row ctl{kControls, T(i18n::kControls), T(i18n::kControlsHint)};
+        ctl.submenu = true;
+        rows.push_back(ctl);
+        Row launcher{kToLauncher, T(i18n::kExitToLauncher)};
+        launcher.danger = true;
+        rows.push_back(launcher);
+        Row quit{kQuit, T(i18n::kExitApp)};
+        quit.danger = true;
+        rows.push_back(quit);
+        return rows;
+    }
     rows.push_back(Row{kQuickSave, T(i18n::kQuickSave), T(i18n::kQuickSaveHint)});
     Row load{kQuickLoad, T(i18n::kQuickLoad)};
     load.disabled = !g.quick_exists;
@@ -176,6 +189,7 @@ void Activate() {
 
 } // namespace
 
+void SetBasic(bool basic) { g.basic = basic; }
 bool IsOpen() { return g.open; }
 bool Visible() { return g.open || g.anim > 0.01f; }
 

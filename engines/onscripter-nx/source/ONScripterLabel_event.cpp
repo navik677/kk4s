@@ -22,6 +22,7 @@
  */
 
 #include "ONScripterLabel.h"
+#include "kk4s_ons.h"
 #if defined(LINUX)
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -1262,6 +1263,11 @@ int ONScripterLabel::eventLoop()
         #endif
             event = tmp_event;
         }
+
+#ifdef KK4S_EMBEDDED
+        // kk4s: its menu (L3 + R3 / F1) and its own events
+        if ( kk4sOnsFilterEvent( &event, window, screen_surface ) ) continue;
+#endif
 
         switch (event.type) {
           case SDL_MOUSEMOTION:

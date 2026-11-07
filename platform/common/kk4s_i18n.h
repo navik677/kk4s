@@ -23,7 +23,7 @@ enum Str {
     kSoftMode, kSoftModeHint,
     kProtectedGame,
     kScreenMode, kScreenModeHint, kScreenOriginal, kScreenStretch, kScreenZoom,
-    kEngineMissing,
+    kEngineMissing, kAllEngines,
     kCount
 };
 

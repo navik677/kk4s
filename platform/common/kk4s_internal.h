@@ -19,8 +19,11 @@ void CloseLog();
 void LogBanner(const char* platform_name);
 
 // Game folders (names, sorted) inside GamesDir() that contain startup.tjs or *.xp3.
+// A folder of several games (games/ons/<game>/) is a collection: each of its
+// games is listed as "<collection>/<game>".
 std::vector<std::string> ScanGames();
 bool IsGameFolder(const std::string& dir);
+std::vector<std::string> CollectionGames(const std::string& dir);
 
 // Offset of an XP3 archive inside a Windows executable, -1 if none. Looks after
 // the PE image first; full_scan also searches the whole file as Kirikiri does.

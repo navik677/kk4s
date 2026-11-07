@@ -7,6 +7,7 @@
 // See docs/engines.md.
 #include "kk4s_platform.h"
 #include "kk4s_internal.h"
+#include "kk4s_files.h"
 
 #include <cstdio>
 #include <cstring>
@@ -61,7 +62,14 @@ std::string GameKey(const std::string& game_dir) {
     std::string dir = NoSlash(game_dir), root = NoSlash(GamesDir()) + "/";
     if (dir.compare(0, root.size(), root) == 0) {
         std::string rest = dir.substr(root.size());
-        return rest.substr(0, rest.find('/'));
+        size_t s1 = rest.find('/');
+        std::string first = rest.substr(0, s1);
+        // a game of a collection (games/ons/<game>): "ons/<game>", as the launcher lists it
+        if (s1 != std::string::npos && !IsGameFolder(root + first)) {
+            size_t s2 = rest.find('/', s1 + 1);
+            return rest.substr(0, s2);
+        }
+        return first;
     }
     size_t s = dir.find_last_of("/\\");
     return s == std::string::npos ? dir : dir.substr(s + 1);
@@ -167,8 +175,7 @@ std::vector<std::string> ExternalEngineArgs(GameEngine e, const std::string& gam
 // (engines/renpy/renpy.py in the repository): key=value lines.
 bool WriteRenPyHandoff(const std::string& game_dir, const std::string& return_to) {
     std::string saves = SavesDir() + "/" + GameKey(game_dir) + "/renpy";
-    MakeDir(SavesDir() + "/" + GameKey(game_dir));
-    MakeDir(saves);
+    files::MakeDirs(saves);
     std::string path = RootDir() + "/engines/renpy/kk4s_game.txt";
     FILE* f = fopen(path.c_str(), "wb");
     if (!f) {

@@ -139,6 +139,7 @@ const Entry kTable[kCount] = {
     {{"Заповнити екран (обрізати)", "Fill the screen (crop)", "Заполнить экран (обрезать)", "画面を埋める（切り取り）"}},
     {{"Потрібен рушій: kk4s/engines/%s", "Engine needed: kk4s/engines/%s", "Нужен движок: kk4s/engines/%s",
       "エンジンが必要です: kk4s/engines/%s"}},
+    {{"Усі ігри", "All games", "Все игры", "すべて"}},
 };
 
 Lang g_lang = kEn;

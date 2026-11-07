@@ -532,6 +532,22 @@ std::string DetectGameIssue(const std::string& game_dir) {
     return "";
 }
 
+// Names of the sub-folders of dir that are games (one level down).
+std::vector<std::string> CollectionGames(const std::string& dir) {
+    std::vector<std::string> out;
+    DIR* d = opendir(dir.c_str());
+    if (!d) return out;
+    while (struct dirent* e = readdir(d)) {
+        if (e->d_name[0] == '.') continue;
+        std::string sub = dir + "/" + e->d_name;
+        struct stat st;
+        if (stat(sub.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) continue;
+        if (IsGameFolder(sub)) out.push_back(e->d_name);
+    }
+    closedir(d);
+    return out;
+}
+
 std::vector<std::string> ScanGames() {
     std::vector<std::string> games;
     std::string root = GamesDir();
@@ -548,6 +564,14 @@ std::vector<std::string> ScanGames() {
             if (!issue.empty())
                 Log("launcher: %s: %s (a plain Kirikiri game has no native protection; "
                     "a clean DRM-free release is needed, see docs/HANDOFF.md)", e->d_name, issue.c_str());
+        } else {
+            // A collection: a folder of several games (games/ons/<game>/). Each
+            // one is listed as "<collection>/<game>".
+            std::vector<std::string> inner = CollectionGames(full);
+            if (inner.size() >= 2) {
+                Log("launcher: %s: collection of %zu game(s)", e->d_name, inner.size());
+                for (const std::string& g : inner) games.push_back(std::string(e->d_name) + "/" + g);
+            }
         }
     }
     closedir(d);
