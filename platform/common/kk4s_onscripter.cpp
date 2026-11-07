@@ -21,11 +21,13 @@ namespace kk4s {
 
 bool IsBuiltInEngine(GameEngine e) {
 #ifdef KK4S_HAS_ONSCRIPTER
-    return e == GameEngine::NScripter;
-#else
+    if (e == GameEngine::NScripter) return true;
+#endif
+#ifdef KK4S_HAS_RLVM
+    if (e == GameEngine::RealLive) return true;
+#endif
     (void)e;
     return false;
-#endif
 }
 
 #ifdef KK4S_HAS_ONSCRIPTER
@@ -36,6 +38,12 @@ static void AfterOnscripter() {
 #endif
 
 void RunBuiltInEngine(GameEngine e, const std::string& game_dir, SDL_Window* window, SDL_Renderer* renderer) {
+#ifdef KK4S_HAS_RLVM
+    if (e == GameEngine::RealLive) {
+        RunBuiltInRealLive(game_dir, window, renderer);  // does not return
+        return;
+    }
+#endif
 #ifdef KK4S_HAS_ONSCRIPTER
     if (e != GameEngine::NScripter) return;
     std::string saves = SavesDir() + "/" + detail::GameKey(game_dir) + "/";

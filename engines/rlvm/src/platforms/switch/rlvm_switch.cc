@@ -89,11 +89,18 @@ class SwitchRLVMInstance : public RLVMInstance {
   // The system error applet; SDL is shut down by then (SDLSystem's destructor
   // runs before Run() reports the error).
   static void ShowError(const std::string& title, const std::string& detail) {
+#ifdef KK4S_EMBEDDED
+    // kk4s owns this process and its log: no system error applet over the
+    // launcher, whose window rlvm has already replaced.
+    std::cerr << "rlvm: " << title << ": " << detail << std::endl;
+    return;
+#else
     ErrorApplicationConfig c;
     std::string shortText = "rlvm: " + title;
     if (R_SUCCEEDED(errorApplicationCreate(&c, shortText.c_str(),
                                            detail.c_str())))
       errorApplicationShow(&c);
+#endif
   }
 
  private:
@@ -188,6 +195,9 @@ int main(int argc, char* argv[]) {
       return argv[++i];
     };
     if (a == "--kk4s-return") {
+#ifdef KK4S_EMBEDDED
+      value("--kk4s-return");  // no NRO hand-off: kk4s exits to the launcher
+#else
       std::string nro = value("--kk4s-return");
       // hbloader runs this NRO after rlvm exits, however it exits.
       if (!nro.empty() && envHasNextLoad()) {
@@ -195,6 +205,7 @@ int main(int argc, char* argv[]) {
         envSetNextLoad(nro.c_str(), args.c_str());
         std::cout << "return to " << nro << std::endl;
       }
+#endif
     } else if (a == "--kk4s-saves") {
       saves = value("--kk4s-saves");
     } else if (a == "--font") {
@@ -249,7 +260,7 @@ int main(int argc, char* argv[]) {
   if (font.empty() && CorrectPathCase(gamerootPath / "msgothic.ttc").empty()) {
     // kk4s: the Steam editions of Key's games ship the font of the translation
     // instead of msgothic.ttc (CLANNAD HD: dat/migmix-1m-regular.ttf).
-    font = CorrectPathCase(gamerootPath / "dat" / "migmix-1m-regular.ttf");
+    font = CorrectPathCase(gamerootPath / "dat" / "migmix-1m-regular.ttf").string();
     if (font.empty())
       font = SharedFontFile();
   }

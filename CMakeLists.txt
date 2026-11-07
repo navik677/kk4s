@@ -128,6 +128,7 @@ set(SOURCES
     platform/common/kk4s_common.cpp
     platform/common/kk4s_engines.cpp
     platform/common/kk4s_onscripter.cpp
+    platform/common/kk4s_rlvm.cpp
     platform/common/kk4s_files.cpp
     platform/common/kk4s_i18n.cpp
     platform/common/kk4s_image.cpp
@@ -480,6 +481,93 @@ else()
     message(STATUS "kk4s: ONScripter not built in (separate program from engines/onscripter/)")
     set(KK4S_ONS_LINK "")
 endif()
+
+# --- rlvm built in (RealLive games, docs/engines.md) ---
+# GPL-3+: with it the kk4s binary is distributed under the GPL. AUTO = on for
+# the Switch when the libraries rlvm needs (Boost, libsndfile) are where
+# tools/build-rlvm-deps.sh puts them and the SDL2 ports are installed; without
+# them RealLive games use a separate rlvm.nro from <root>/engines/rlvm/.
+set(KK4S_RLVM "AUTO" CACHE STRING "Build rlvm into kk4s: AUTO, ON or OFF")
+set_property(CACHE KK4S_RLVM PROPERTY STRINGS AUTO ON OFF)
+set(KK4S_RLVM_PREFIX "${CMAKE_SOURCE_DIR}/out-engines/rlvm-deps/prefix" CACHE PATH
+    "Boost and libsndfile for rlvm (tools/build-rlvm-deps.sh)")
+if(KK4S_PLATFORM STREQUAL "switch" AND NOT KK4S_RLVM STREQUAL "OFF")
+    if(KK4S_RLVM STREQUAL "ON")
+        set(KK4S_RLVM_REQUIRED REQUIRED)
+    endif()
+    pkg_check_modules(KK4S_RLVM_PC ${KK4S_RLVM_REQUIRED} SDL2_image SDL2_ttf)
+    find_path(KK4S_RLVM_BOOST_INCLUDE_DIR boost/filesystem.hpp HINTS ${KK4S_RLVM_PREFIX}/include)
+    find_library(KK4S_RLVM_BOOST_SERIALIZATION NAMES boost_serialization HINTS ${KK4S_RLVM_PREFIX}/lib)
+    find_library(KK4S_RLVM_SNDFILE NAMES sndfile HINTS ${KK4S_RLVM_PREFIX}/lib)
+    if(KK4S_RLVM_PC_FOUND AND KK4S_RLVM_BOOST_INCLUDE_DIR AND KK4S_RLVM_BOOST_SERIALIZATION
+            AND KK4S_RLVM_SNDFILE AND EXISTS "${DEVKITPRO}/portlibs/switch/lib/libSDL2_mixer.a")
+        set(KK4S_RLVM_FOUND TRUE)
+    elseif(KK4S_RLVM STREQUAL "ON")
+        message(FATAL_ERROR "kk4s: rlvm dependencies not found (run tools/build-rlvm-deps.sh; "
+            "needs the switch-sdl2_image / switch-sdl2_ttf / switch-libvorbis ports)")
+    endif()
+endif()
+if(KK4S_RLVM_FOUND)
+    message(STATUS "kk4s: rlvm built in")
+    set(KK4S_RLVM_DIR ${CMAKE_SOURCE_DIR}/engines/rlvm)
+    # The same sources as engines/rlvm/Makefile: rlvm, its vendored libraries
+    # (guichan, zita-resampler, xclannad, pygame's alphablit) and the Switch
+    # front end, which with -DKK4S_EMBEDDED is rlvm_main() instead of main().
+    file(GLOB_RECURSE KK4S_RLVM_SOURCES ${KK4S_RLVM_DIR}/src/*.cc)
+    list(FILTER KK4S_RLVM_SOURCES EXCLUDE REGEX "/src/platforms/")
+    list(APPEND KK4S_RLVM_SOURCES
+        ${KK4S_RLVM_DIR}/src/platforms/gcn/gcn_platform.cc
+        ${KK4S_RLVM_DIR}/src/platforms/switch/rlvm_switch.cc)
+    file(GLOB KK4S_RLVM_VENDOR
+        ${KK4S_RLVM_DIR}/vendor/xclannad/*.cc ${KK4S_RLVM_DIR}/vendor/xclannad/*.cpp
+        ${KK4S_RLVM_DIR}/vendor/pygame/alphablit.cc
+        ${KK4S_RLVM_DIR}/vendor/zita-resampler/src/*.cc
+        ${KK4S_RLVM_DIR}/vendor/guichan/src/*.cpp
+        ${KK4S_RLVM_DIR}/vendor/guichan/src/widgets/*.cpp
+        ${KK4S_RLVM_DIR}/vendor/guichan/src/sdl/*.cpp
+        ${KK4S_RLVM_DIR}/vendor/guichan/src/opengl/*.cpp)
+    add_library(kk4s_rlvm STATIC ${KK4S_RLVM_SOURCES} ${KK4S_RLVM_VENDOR})
+    set_target_properties(kk4s_rlvm PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)
+    target_include_directories(kk4s_rlvm PRIVATE
+        ${KK4S_RLVM_DIR}/src ${KK4S_RLVM_DIR} ${KK4S_RLVM_DIR}/vendor
+        ${KK4S_RLVM_DIR}/vendor/guichan/include ${KK4S_RLVM_DIR}/vendor/zita-resampler/include
+        ${KK4S_RLVM_DIR}/vendor/xclannad ${KK4S_RLVM_DIR}/switch/include
+        ${KK4S_RLVM_PREFIX}/include ${DEVKITPRO}/portlibs/switch/include
+        ${KK4S_RLVM_PC_INCLUDE_DIRS})
+    target_compile_definitions(kk4s_rlvm PRIVATE
+        __SWITCH__ KK4S_EMBEDDED HAVE_CONFIG_H NO_SDL_GLEXT CASE_SENSITIVE_FILESYSTEM
+        _THREAD_SAFE NDEBUG BOOST_DISABLE_ASSERTS BOOST_HAS_GETTIMEOFDAY
+        # Class names that also exist in the Kirikiri engine (kk4s' x86 Memory,
+        # ResampleImage.cpp's Resampler): same-named inline members would be
+        # merged silently by the linker, so rlvm's get an rlvm_ prefix, like
+        # ONScripter's ons_ prefix above.
+        Memory=rlvm_Memory Resampler=rlvm_Resampler)
+    target_compile_options(kk4s_rlvm PRIVATE
+        -O2 -ffunction-sections -fdata-sections -funsigned-char -fexceptions -frtti
+        -Wno-sign-compare -Wno-narrowing -Wno-write-strings -w)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE KK4S_HAS_RLVM=1)
+    target_link_directories(${PROJECT_NAME} PRIVATE ${KK4S_RLVM_PREFIX}/lib)
+    # SDL_mixer's Tremor with renamed symbols (see cmake/kk4s_tremor_rename.cmake):
+    # reuse the copies ONScripter made, or make them for rlvm alone.
+    if(KK4S_ONS_FOUND)
+        list(GET KK4S_ONS_MIXER 0 KK4S_RLVM_MIXER)
+        list(GET KK4S_ONS_MIXER 1 KK4S_RLVM_VORBISIDEC)
+    else()
+        include(${CMAKE_SOURCE_DIR}/cmake/kk4s_tremor_rename.cmake)
+        kk4s_tremor_rename("${DEVKITPRO}/portlibs/switch/lib" "${CMAKE_BINARY_DIR}/kk4s-tremor" KK4S_RLVM_TREMOR)
+        list(GET KK4S_RLVM_TREMOR 0 KK4S_RLVM_MIXER)
+        list(GET KK4S_RLVM_TREMOR 1 KK4S_RLVM_VORBISIDEC)
+    endif()
+    set(KK4S_RLVM_LINK ${KK4S_RLVM_SNDFILE} ${KK4S_RLVM_BOOST_SERIALIZATION}
+        ${KK4S_RLVM_MIXER} ${KK4S_RLVM_VORBISIDEC}
+        boost_program_options boost_serialization boost_iostreams boost_filesystem boost_date_time
+        SDL2_ttf SDL2_image vorbisfile vorbis ogg
+        modplug mpg123 opusfile opus FLAC)
+else()
+    message(STATUS "kk4s: rlvm not built in (separate program from engines/rlvm/)")
+    set(KK4S_RLVM_LINK "")
+endif()
+
 if(WIN32 AND KK4S_PLATFORM STREQUAL "desktop")
     target_sources(${PROJECT_NAME} PRIVATE platform/desktop/kk4s.rc)
 endif()
@@ -493,8 +581,11 @@ if(KK4S_PLATFORM STREQUAL "switch")
     if(KK4S_ONS_FOUND)
         target_link_libraries(${PROJECT_NAME} kk4s_onscripter)
     endif()
+    if(KK4S_RLVM_FOUND)
+        target_link_libraries(${PROJECT_NAME} kk4s_rlvm)
+    endif()
     target_link_libraries(${PROJECT_NAME}
-        -Wl,--start-group ${KK4S_ONS_LINK} ${KK4S_DEPS_STATIC_LIBRARIES} -Wl,--end-group
+        -Wl,--start-group ${KK4S_ONS_LINK} ${KK4S_RLVM_LINK} ${KK4S_DEPS_STATIC_LIBRARIES} -Wl,--end-group
         ${KK4S_DEPS_STATIC_LDFLAGS_OTHER}
     )
 else()

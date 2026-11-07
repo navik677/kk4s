@@ -80,7 +80,9 @@ SDLSystem::~SDLSystem() {
   event_system_.reset();
   text_system_.reset();
 
+#ifndef KK4S_EMBEDDED
   SDL_Quit();
+#endif  // kk4s: linked into kk4s, which owns SDL and exits right after the game
 }
 
 // -----------------------------------------------------------------------

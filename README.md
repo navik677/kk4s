@@ -28,7 +28,7 @@ Homebrew-рушій для Nintendo Switch, який запускає візуа
 
 Якщо гра розпакувалась у «обгортку» (`games/<Назва>/<Назва>/data.xp3`), kk4s сам знайде гру в єдиній вкладеній папці. Файли з не-ASCII іменами (наприклад, японські `.cf`) краще копіювати кардрідером або MTP, а не по FTP: FTP-сервер приставки їх не показує.
 
-**Інші рушії (експериментально).** Ігри на NScripter запускаються вбудованим у kk4s ONScripter-NX; ігри Ren'Py 7.x — окремою програмою з `sdmc:/switch/kk4s/engines/renpy/`; ігри RealLive — окремою програмою rlvm з `sdmc:/switch/kk4s/engines/rlvm/`. Докладніше — [docs/engines.md](docs/engines.md).
+**Інші рушії (експериментально).** Ігри на NScripter запускаються вбудованим у kk4s ONScripter-NX; ігри Ren'Py 7.x — окремою програмою з `sdmc:/switch/kk4s/engines/renpy/`; ігри RealLive — вбудованим rlvm (а якщо його бібліотек немає, окремою програмою з `sdmc:/switch/kk4s/engines/rlvm/`). Докладніше — [docs/engines.md](docs/engines.md).
 
 Гра розпізнається, якщо в папці є `startup.tjs` або хоча б один `*.xp3`, підпапка `data/` зі `startup.tjs` (розпакована гра) або `.exe`, у кінець якого дописано архів XP3 (ігри, що поставляються одним exe, і `data.exe`). Перевірити, що бачить лаунчер, на ПК: `kk4s --list-games`.
 

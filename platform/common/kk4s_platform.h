@@ -138,6 +138,9 @@ bool IsExternalEngine(GameEngine e);   // runs in a separate program
 // goes back to the launcher like after a Kirikiri game (ExitAfterGame).
 bool IsBuiltInEngine(GameEngine e);
 void RunBuiltInEngine(GameEngine e, const std::string& game_dir, SDL_Window* window, SDL_Renderer* renderer);
+// RealLive built in (kk4s_rlvm.cpp, KK4S_HAS_RLVM): runs rlvm in this process
+// and does not return (ExitAfterGame when the game ends).
+void RunBuiltInRealLive(const std::string& game_dir, SDL_Window* window, SDL_Renderer* renderer);
 // The program that runs this game, "" if it is not installed.
 std::string ExternalEngineProgram(GameEngine e, const std::string& game_dir);
 // Runs a game of an external engine. game_dir ends with '/'.

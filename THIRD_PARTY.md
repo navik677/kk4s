@@ -78,15 +78,16 @@ See docs/engines.md.
   SDL2_image, SDL2_mixer, SDL2_ttf (zlib), smpeg2 (LGPL-2), libmodplug (public
   domain), mpg123 (LGPL-2.1) and Tremor (BSD-3).
   Its `romfs/default.ttf` comes with the upstream repository.
-- `engines/rlvm/` (a separate program, `rlvm.nro`, not linked into kk4s): rlvm, the RealLive virtual machine clone (Elliot Glaysher
+- `engines/rlvm/` (a separate program `rlvm.nro`, or built into kk4s with `KK4S_RLVM`): rlvm, the RealLive virtual machine clone (Elliot Glaysher
   et al.; contains code by Peter "Haeleth" Jolly and Kazunori "jagarl" Ueno),
   GNU GPL v3 or later, see `engines/rlvm/COPYING`; taken from the rlvm-project
   tree with the GLES 3.2 renderer (`engines/rlvm/UPSTREAM.txt`). Bundled with
   it: guichan 0.8 (BSD), zita-resampler (GPL-3), xclannad parts (GPL-2 or later and permissive,
   jagarl), pygame `alphablit` (LGPL-2 or later), utf8cpp (Boost license). kk4s changes
   are marked `kk4s:`; the Switch front end is `src/platforms/switch/`.
-  `rlvm.nro` links Boost (Boost Software License) and libsndfile (LGPL-2.1+),
+  rlvm links Boost (Boost Software License) and libsndfile (LGPL-2.1+),
   both built by `tools/build-rlvm-deps.sh` from upstream source archives.
+  Built into kk4s (`KK4S_RLVM`), it makes the kk4s binary GPL-3+ as well.
 - `engines/renpy/renpy.py` (a separate program, not linked into kk4s): `renpy.py` of Ren'Py 7.3.5 (Tom Rothamel), MIT
   license (header of the file), as shipped with the Ren'Py Switch SDK; kk4s
   lines marked `kk4s:`. The SDK binary (renpy-switch, uyjulian) and its
