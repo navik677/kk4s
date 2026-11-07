@@ -153,13 +153,20 @@ std::vector<std::string> ExternalEngineArgs(GameEngine e, const std::string& gam
             }
             break;
         }
-        case GameEngine::RealLive:
+        case GameEngine::RealLive: {
+            // Saves next to kk4s' own, under the name the launcher lists the
+            // game by (saves/rlvm/LB/rlvm), on every platform.
+            std::string saves = SavesDir() + "/" + GameKey(game_dir) + "/rlvm";
+            files::MakeDirs(saves);
+            args.push_back("--kk4s-saves");
+            args.push_back(saves);
             if (!return_to.empty()) {
                 args.push_back("--kk4s-return");
                 args.push_back(return_to);
             }
             args.push_back(dir);
             break;
+        }
         case GameEngine::RenPy:
             // The Switch Ren'Py takes no arguments: it reads WriteRenPyHandoff()'s file.
             // The game's own launcher on PC knows its folder.

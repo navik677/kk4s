@@ -21,10 +21,8 @@ int rlvm_main(int argc, char* argv[]);
 namespace kk4s {
 
 void RunBuiltInRealLive(const std::string& game_dir, SDL_Window* window, SDL_Renderer* renderer) {
-    std::string saves = SavesDir() + "/" + detail::GameKey(game_dir) + "/rlvm";
-    detail::MakeDir(saves);
-    std::vector<std::string> args{"rlvm", "--kk4s-saves", saves};
-    // The game folder (with its trailing '/'), as for the separate program.
+    // --kk4s-saves and the game folder, as for the separate program.
+    std::vector<std::string> args{"rlvm"};
     for (const std::string& a : detail::ExternalEngineArgs(GameEngine::RealLive, game_dir, "", "")) args.push_back(a);
     std::string line;
     for (const std::string& a : args) line += " \"" + a + "\"";
