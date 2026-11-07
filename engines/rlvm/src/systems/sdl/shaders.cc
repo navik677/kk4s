@@ -9,7 +9,7 @@
 // Rewritten for OpenGL ES 3.2 / core profile.
 // All ARB extension calls replaced with standard ES 3.2 / GL 3.3 core API.
 // All shaders updated from GLSL 1.10 (gl_FragColor, varying, gl_TexCoord)
-// to GLSL ES 3.20 (out vec4, in/out, texture()).
+// to GLSL ES 3.10 (out vec4, in/out, texture()).
 // -----------------------------------------------------------------------
 
 #if defined(__ANDROID__) || defined(__SWITCH__) || defined(KK4S_GLES)  // kk4s: GLES on the Switch too
@@ -31,10 +31,10 @@
 namespace {
 
 // -----------------------------------------------------------------------
-// GLSL ES 3.20 / GLSL 3.30 version string
+// GLSL ES 3.10 / GLSL 3.30 version string (ANGLE on PC tops out at ES 3.1)
 // -----------------------------------------------------------------------
 #if defined(__ANDROID__) || defined(__SWITCH__) || defined(KK4S_GLES)  // kk4s: GLES on the Switch too
-#  define GLSL_VERSION "#version 320 es\n"
+#  define GLSL_VERSION "#version 310 es\n"
 #  define PRECISION    "precision mediump float;\n"
 #else
 #  define GLSL_VERSION "#version 330 core\n"

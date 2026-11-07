@@ -31,7 +31,7 @@ export RLVM OUT CXX
 # up through SDL_GL_CreateContext when the ES profile is requested.
 CXXFLAGS="-std=gnu++17 -O2 -g -w -fexceptions -frtti -funsigned-char \
 -DHAVE_CONFIG_H -DNO_SDL_GLEXT -D_THREAD_SAFE -DNDEBUG -DBOOST_DISABLE_ASSERTS \
--DBOOST_HAS_GETTIMEOFDAY -DKK4S_GLES \
+-DBOOST_HAS_GETTIMEOFDAY -DKK4S_GLES  \
 -include $RLVM/src/platforms/win32/win_compat.h \
 -I$RLVM -I$RLVM/src -I$RLVM/vendor -I$RLVM/vendor/guichan/include \
 -I$RLVM/vendor/zita-resampler/include -I$RLVM/vendor/xclannad \

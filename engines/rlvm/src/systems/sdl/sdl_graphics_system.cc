@@ -80,6 +80,25 @@
 #include "utilities/string_utilities.h"
 #include "xclannad/file.h"
 
+#if defined(KK4S_GLES) && defined(_WIN32)
+// kk4s: SDL2 on Windows only provides WGL, not OpenGL ES. SDL_GL_CreateContext
+// there returns a desktop context, so every GLES call of this renderer becomes
+// a silent no-op and the window stays black. Create the ES 3.2 context
+// ourselves through EGL (ANGLE), the same API the Switch build uses.
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#define NOGDI
+#define NOUSER
+#include <SDL2/SDL_syswm.h>
+#include <EGL/egl.h>
+#undef min
+#undef max
+#endif
+
+namespace {
+void SwapWindowBuffers(SDL_Window* window);
+}  // namespace
+
 // -----------------------------------------------------------------------
 // Private Interface
 // -----------------------------------------------------------------------
@@ -239,7 +258,7 @@ void SDLGraphicsSystem::EndFrame() {
 
   // Swap the buffers
   glFlush();
-  SDL_GL_SwapWindow(screen_);
+  SwapWindowBuffers(screen_);
   ShowGLErrors();
 }
 
@@ -263,7 +282,7 @@ void SDLGraphicsSystem::RedrawLastFrame() {
 
     DrawCursor();
     glFlush();
-    SDL_GL_SwapWindow(screen_);
+    SwapWindowBuffers(screen_);
     ShowGLErrors();
   }
 }
@@ -348,10 +367,89 @@ SDLGraphicsSystem::SDLGraphicsSystem(System& system, Gameexe& gameexe)
                  Source<GraphicsSystem>(static_cast<GraphicsSystem*>(this)));
 }
 
+#if defined(KK4S_GLES) && defined(_WIN32)
+namespace {
+
+EGLDisplay egl_display_ = EGL_NO_DISPLAY;
+EGLSurface egl_surface_ = EGL_NO_SURFACE;
+EGLContext egl_context_ = EGL_NO_CONTEXT;
+
+// kk4s: an ES 3.2 context on the SDL window's HWND, like the Switch build has.
+bool CreateWindowsEGL(SDL_Window* window) {
+  SDL_SysWMinfo info;
+  SDL_VERSION(&info.version);
+  if (!SDL_GetWindowWMInfo(window, &info) || info.subsystem != SDL_SYSWM_WINDOWS)
+    return false;
+
+  egl_display_ = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+  EGLint major = 0, minor = 0;
+  if (egl_display_ == EGL_NO_DISPLAY ||
+      !eglInitialize(egl_display_, &major, &minor))
+    return false;
+  eglBindAPI(EGL_OPENGL_ES_API);
+
+  // No alpha request: ANGLE's window configs have none, and EGL_ALPHA_SIZE 8
+  // makes eglChooseConfig return zero configurations.
+  // Colour sizes are left out: ANGLE's window configs have no alpha and asking
+  // for RGBA 8/8/8/8 makes eglChooseConfig return zero configurations.
+  const EGLint config_attribs[] = {
+      EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+      EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+      EGL_NONE};
+  EGLConfig config = nullptr;
+  EGLint config_count = 0;
+  if (!eglChooseConfig(egl_display_, config_attribs, &config, 1, &config_count) ||
+      config_count < 1)
+    return false;
+
+  // ANGLE reports OpenGL ES 3.1 (shaders: GLSL ES 3.10), Mesa on the Switch
+  // gives 3.2; the renderer needs only 3.1 features.
+  for (EGLint minor : {2, 1}) {
+    const EGLint context_attribs[] = {
+        EGL_CONTEXT_MAJOR_VERSION, 3, EGL_CONTEXT_MINOR_VERSION, minor, EGL_NONE};
+    egl_context_ = eglCreateContext(egl_display_, config, EGL_NO_CONTEXT, context_attribs);
+    if (egl_context_ != EGL_NO_CONTEXT)
+      break;
+  }
+  if (egl_context_ == EGL_NO_CONTEXT)
+    return false;
+
+  egl_surface_ = eglCreateWindowSurface(
+      egl_display_, config, (EGLNativeWindowType)info.info.win.window, nullptr);
+  if (egl_surface_ == EGL_NO_SURFACE)
+    return false;
+  if (!eglMakeCurrent(egl_display_, egl_surface_, egl_surface_, egl_context_))
+    return false;
+
+  std::fprintf(stderr, "kk4s: EGL %s, %s\n", eglQueryString(egl_display_, EGL_VERSION),
+               (const char*)glGetString(GL_VERSION));
+  return true;
+}
+
+}  // namespace
+#endif
+
+namespace {
+
+// kk4s: eglSwapBuffers for the Windows EGL context, SDL's window otherwise.
+void SwapWindowBuffers(SDL_Window* window) {
+#if defined(KK4S_GLES) && defined(_WIN32)
+  if (egl_display_ != EGL_NO_DISPLAY && egl_surface_ != EGL_NO_SURFACE) {
+    eglSwapBuffers(egl_display_, egl_surface_);
+    return;
+  }
+#endif
+  SDL_GL_SwapWindow(window);
+}
+
+}  // namespace
+
 void SDLGraphicsSystem::SetupVideo() {
   // the flags to pass to SDL_SetVideoMode
   int video_flags = 0;
+#if !defined(KK4S_GLES) || !defined(_WIN32)
   video_flags |= SDL_WINDOW_OPENGL;  // Enable OpenGL in SDL
+#endif
 
   if (screen_mode() == 0)
     video_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
@@ -395,12 +493,21 @@ void SDLGraphicsSystem::SetupVideo() {
 
   SDL_SetWindowTitle(screen_, "rlvm");
 
+#if defined(KK4S_GLES) && defined(_WIN32)
+  if (!CreateWindowsEGL(screen_)) {
+    std::ostringstream ss;
+    ss << "Failed to create an EGL/OpenGL ES 3.2 context (ANGLE): error 0x"
+       << std::hex << eglGetError();
+    throw SystemError(ss.str());
+  }
+#else
   SDL_GLContext context = SDL_GL_CreateContext(screen_);
   if (!context) {
     std::ostringstream ss;
     ss << "Failed to create OpenGL context: " << SDL_GetError();
     throw SystemError(ss.str());
   }
+#endif
 
   // Clear any residual GL errors from context creation (common on PowerVR)
   while (glGetError() != GL_NO_ERROR) {}
