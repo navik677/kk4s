@@ -246,8 +246,13 @@ int main(int argc, char* argv[]) {
   instance.set_save_dir(saves);
   std::cout << "saves " << saves << std::endl;
 
-  if (font.empty() && CorrectPathCase(gamerootPath / "msgothic.ttc").empty())
-    font = SharedFontFile();
+  if (font.empty() && CorrectPathCase(gamerootPath / "msgothic.ttc").empty()) {
+    // kk4s: the Steam editions of Key's games ship the font of the translation
+    // instead of msgothic.ttc (CLANNAD HD: dat/migmix-1m-regular.ttf).
+    font = CorrectPathCase(gamerootPath / "dat" / "migmix-1m-regular.ttf");
+    if (font.empty())
+      font = SharedFontFile();
+  }
   if (!font.empty()) {
     instance.set_custom_font(font);
     std::cout << "font " << font << std::endl;

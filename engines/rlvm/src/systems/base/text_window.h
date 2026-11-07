@@ -223,6 +223,9 @@ class TextWindow {
   // but also that we'll perform kinsoku rules correctly.
   bool MustLineBreak(int cur_codepoint, const std::string& rest);
 
+  // kk4s: whether the word starting |rest| does not fit on the current line.
+  bool NextWordDoesNotFit(const std::string& rest);
+
   // Returns whether another character can be placed on the screen.
   bool IsFull() const;
 

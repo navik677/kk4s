@@ -1152,6 +1152,13 @@ bool IsCp932HalfwidthTableChar(int codepoint) {
   return false;
 }
 
+bool HasCp932HalfwidthTable() {
+  for (uint16_t v : g_halfwidth_table)
+    if (v != 0)
+      return true;
+  return false;
+}
+
 int LoadCp932HalfwidthTable(const std::string& dll) {
   FILE* f = fopen(dll.c_str(), "rb");
   if (!f)
@@ -1188,4 +1195,5 @@ int LoadCp932HalfwidthTable(const std::string& dll) {
 #else
 int LoadCp932HalfwidthTable(const std::string&) { return 0; }
 bool IsCp932HalfwidthTableChar(int) { return false; }
+bool HasCp932HalfwidthTable() { return false; }
 #endif

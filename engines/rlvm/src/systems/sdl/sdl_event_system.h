@@ -85,6 +85,9 @@ class SDLEventSystem : public EventSystem {
   void HandleMouseButtonEvent(RLMachine& machine, SDL_Event& event);
   void HandleActiveEvent(RLMachine& machine, SDL_Event& event);
 
+  // kk4s: convert a mouse event for Guichan (game coordinates).
+  void RawMouseToGameCoords(SDL_Event& event);
+
 #ifdef __SWITCH__
   // kk4s: Switch controller as mouse/keys (sdl_event_system.cc).
   void TranslatePadEvent(SDL_Event& event);

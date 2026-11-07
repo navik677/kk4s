@@ -552,6 +552,19 @@ bool TextWindow::DisplayCharacter(const std::string& current,
       }
     }
 
+    // kk4s: a translation (half-width table loaded) has spaces where the
+    // Japanese original has none. At a space, if the next word doesn't fit,
+    // end the line here and drop the space instead of splitting the word.
+    if (cur_codepoint == 0x20 && HasCp932HalfwidthTable() &&
+        NextWordDoesNotFit(rest)) {
+      HardBrake();
+
+      if (IsFull())
+        return false;
+
+      return true;
+    }
+
     // If the width of this glyph plus the spacing will put us over the
     // edge of the window, then line increment.
     if (MustLineBreak(cur_codepoint, rest)) {
@@ -656,6 +669,27 @@ bool TextWindow::MustLineBreak(int cur_codepoint, const std::string& rest) {
   }
 
   return false;
+}
+
+// kk4s: whether the word after |rest| (which starts right after a space)
+// sticks out of the current line. Used for wrapping translated text.
+bool TextWindow::NextWordDoesNotFit(const std::string& rest) {
+  int normal_width =
+      x_window_size_in_chars_ * (default_font_size_in_pixels_ + x_spacing_);
+  int width = text_wrapping_point_x_ + GetWrappingWidthFor(0x20);
+  bool word = false;
+
+  string::const_iterator cur = rest.begin();
+  string::const_iterator end = rest.end();
+  while (cur != end) {
+    int point = utf8::next(cur, end);
+    if (point == 0x20 || point < 0x20)
+      break;
+    width += GetWrappingWidthFor(point);
+    word = true;
+  }
+
+  return word && width > normal_width;
 }
 
 bool TextWindow::IsFull() const {

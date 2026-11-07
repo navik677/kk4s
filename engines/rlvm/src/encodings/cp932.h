@@ -61,4 +61,9 @@ int LoadCp932HalfwidthTable(const std::string& dll);
 // instead of a full-width cell.
 bool IsCp932HalfwidthTableChar(int codepoint);
 
+// kk4s: true if such a table is loaded, i.e. the game's text is a translation
+// written over the Japanese one (translated text has spaces, the original
+// doesn't). The text window then wraps between words instead of any character.
+bool HasCp932HalfwidthTable();
+
 #endif  // SRC_ENCODINGS_CP932_H_

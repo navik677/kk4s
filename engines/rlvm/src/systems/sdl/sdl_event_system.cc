@@ -110,8 +110,13 @@ void SDLEventSystem::ExecuteEventSystem(RLMachine& machine) {
         break;
       }
       case SDL_MOUSEMOTION: {
-        if (raw_handler_)
-          raw_handler_->pushInput(event);
+        if (raw_handler_) {
+          // kk4s: Guichan lays its widgets out in game coordinates, while SDL
+          // reports window coordinates (the mouse, the Switch pointer).
+          SDL_Event game_event = event;
+          RawMouseToGameCoords(game_event);
+          raw_handler_->pushInput(game_event);
+        }
         HandleMouseMotion(machine, event);
         break;
       }
@@ -124,9 +129,11 @@ void SDLEventSystem::ExecuteEventSystem(RLMachine& machine) {
         if (g_two_finger_active.load(std::memory_order_relaxed) &&
             event.button.which == SDL_TOUCH_MOUSEID)
           break;
-        if (raw_handler_)
-          raw_handler_->pushInput(event);
-        else
+        if (raw_handler_) {
+          SDL_Event game_event = event;  // kk4s: see SDL_MOUSEMOTION
+          RawMouseToGameCoords(game_event);
+          raw_handler_->pushInput(game_event);
+        } else
           HandleMouseButtonEvent(machine, event);
         break;
       }
@@ -281,6 +288,23 @@ void SDLEventSystem::HandleKeyUp(RLMachine& machine, SDL_Event& event) {
   KeyCode code = KeyCode(event.key.keysym.sym);
   DispatchEvent(machine,
                 bind(&EventListener::KeyStateChanged, _1, code, false));
+}
+
+// kk4s: rlvm's own menus (Guichan: the syscom menu, the save/load window) are
+// laid out for the game's screen size, but SDL reports window pixels. Without
+// this conversion a click lands somewhere other than what the player sees.
+void SDLEventSystem::RawMouseToGameCoords(SDL_Event& event) {
+  SDLGraphicsSystem* sdl_graphics =
+      static_cast<SDLGraphicsSystem*>(&system_.graphics());
+  if (event.type == SDL_MOUSEMOTION) {
+    Point p = sdl_graphics->WindowToGameCoords(event.motion.x, event.motion.y);
+    event.motion.x = p.x();
+    event.motion.y = p.y();
+  } else {
+    Point p = sdl_graphics->WindowToGameCoords(event.button.x, event.button.y);
+    event.button.x = p.x();
+    event.button.y = p.y();
+  }
 }
 
 void SDLEventSystem::HandleMouseMotion(RLMachine& machine, SDL_Event& event) {

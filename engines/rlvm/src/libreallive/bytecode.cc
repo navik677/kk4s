@@ -103,6 +103,9 @@ inline BytecodeElement* ReadFunction(const char* stream,
     case 0x00020001:
     case 0x00020002:
     case 0x00020003:
+    // kk4s: 0:2:10, as in CLANNAD's SEEN9801: the same layout as the others,
+    // only the option texts are ###PRINT(...) of string variables.
+    case 0x0002000A:
     case 0x00020010:
       return new SelectElement(stream);
   }
